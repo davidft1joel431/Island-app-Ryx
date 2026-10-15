@@ -13,6 +13,7 @@ import android.graphics.Rect
 import android.graphics.Typeface
 import android.graphics.drawable.Drawable
 import android.graphics.drawable.GradientDrawable
+import android.graphics.drawable.LayerDrawable
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
@@ -46,25 +47,52 @@ class NotifListener : NotificationListenerService() {
     private var appView: TextView? = null
     private var titleView: TextView? = null
     private var bodyView: TextView? = null
+    private var style: IslandStyle = Styles.HYPEROS
     private var attached = false
+    private var expanded = false
+    private var anim: ValueAnimator? = null
     private var currentPkg: String? = null
 
     private fun px(v: Int) = (v * resources.displayMetrics.density).toInt()
+    private fun px(v: Float) = (v * resources.displayMetrics.density).toInt()
+
+    // ---------- Ciclo de vida ----------
 
     override fun onListenerConnected() {
         instance = this
         wm = getSystemService(WINDOW_SERVICE) as WindowManager
+        main.post { if (Prefs.permanent(this)) showIdle() }
+        if (Prefs.hideHeadsUp(this)) Thread { Root.setHeadsUp(false) }.start()
     }
 
     override fun onListenerDisconnected() {
         main.post { removeNow() }
+        restoreHeadsUp()
         instance = null
     }
 
     override fun onDestroy() {
+        anim?.cancel()
         removeNow()
+        restoreHeadsUp()
         instance = null
         super.onDestroy()
+    }
+
+    // Si la isla deja de funcionar, se devuelven los avisos del sistema para no perder notificaciones
+    private fun restoreHeadsUp() {
+        if (Prefs.hideHeadsUp(this)) Thread { Root.setHeadsUp(true) }.start()
+    }
+
+    /** Se llama desde la pantalla de ajustes cuando cambia estilo, posicion o modo permanente. */
+    fun applySettings() {
+        main.post {
+            if (!::wm.isInitialized) return@post
+            anim?.cancel()
+            removeNow()
+            island = null
+            if (Prefs.permanent(this)) showIdle()
+        }
     }
 
     override fun onNotificationPosted(sbn: StatusBarNotification) {
@@ -87,42 +115,61 @@ class NotifListener : NotificationListenerService() {
         show(packageName, "Ryx Island", "Funciona. Toca para abrir en ventana flotante.", null)
     }
 
-    // ---------- Vista de la isla ----------
+    // ---------- Construccion de la isla ----------
+
+    private fun buildBackground(s: IslandStyle): Drawable {
+        val r = px(s.cornerDp).toFloat()
+        val base = GradientDrawable(
+            GradientDrawable.Orientation.TOP_BOTTOM, intArrayOf(s.bgTop, s.bgBottom)
+        ).apply {
+            cornerRadius = r
+            if (s.strokeDp > 0f) setStroke(maxOf(1, px(s.strokeDp)), s.strokeColor)
+        }
+        if (s.highlight == 0) return base
+        val glow = GradientDrawable(
+            GradientDrawable.Orientation.TOP_BOTTOM, intArrayOf(s.highlight, 0x00FFFFFF)
+        ).apply { cornerRadius = r }
+        return LayerDrawable(arrayOf(base, glow)).apply {
+            val i = px(1)
+            setLayerInset(1, i, i, i, i)
+        }
+    }
 
     private fun buildIsland() {
         if (island != null) return
-        val gold = getColor(R.color.gold)
+        val s = Styles.byId(Prefs.style(this))
+        style = s
 
-        val bg = GradientDrawable().apply {
-            setColor(Color.BLACK)
-            cornerRadius = px(40).toFloat()
-            setStroke(px(1), 0x33FFFFFF)
-        }
         val icon = ImageView(this).apply {
             scaleType = ImageView.ScaleType.CENTER_CROP
             outlineProvider = object : ViewOutlineProvider() {
                 override fun getOutline(view: View, outline: Outline) {
-                    outline.setRoundRect(0, 0, view.width, view.height, px(10).toFloat())
+                    if (s.iconCircle) {
+                        outline.setOval(0, 0, view.width, view.height)
+                    } else {
+                        outline.setRoundRect(0, 0, view.width, view.height, px(s.iconCornerDp).toFloat())
+                    }
                 }
             }
             clipToOutline = true
         }
         val app = TextView(this).apply {
-            setTextColor(gold)
+            setTextColor(getColor(R.color.gold))
             textSize = 10f
             maxLines = 1
             ellipsize = TextUtils.TruncateAt.END
+            visibility = if (s.showAppName) View.VISIBLE else View.GONE
         }
         val title = TextView(this).apply {
             setTextColor(Color.WHITE)
-            textSize = 14f
+            textSize = s.titleSp
             maxLines = 1
             ellipsize = TextUtils.TruncateAt.END
             setTypeface(typeface, Typeface.BOLD)
         }
         val body = TextView(this).apply {
-            setTextColor(0xFFBBBBBB.toInt())
-            textSize = 12f
+            setTextColor(0xCCFFFFFF.toInt())
+            textSize = s.bodySp
             maxLines = 1
             ellipsize = TextUtils.TruncateAt.END
         }
@@ -135,14 +182,22 @@ class NotifListener : NotificationListenerService() {
         val row = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            background = bg
-            setPadding(px(12), px(10), px(18), px(10))
-            addView(icon, LinearLayout.LayoutParams(px(38), px(38)))
+            background = buildBackground(s)
+            minimumHeight = px(32)
+            setPadding(px(s.padH), px(s.padV), px(s.padH + 4), px(s.padV))
+            addView(icon, LinearLayout.LayoutParams(px(s.iconDp), px(s.iconDp)))
             addView(col, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
                 marginStart = px(10)
             })
-            setOnClickListener { openCurrent() }
-            setOnLongClickListener { collapse(); true }
+            setOnClickListener { if (expanded) openCurrent() }
+            setOnLongClickListener {
+                if (expanded) {
+                    collapse()
+                    true
+                } else {
+                    false
+                }
+            }
         }
         island = row
         iconView = icon
@@ -151,8 +206,9 @@ class NotifListener : NotificationListenerService() {
         titleView = title
         bodyView = body
 
+        val yPx = px(Prefs.yOffsetDp(this))
         lp = WindowManager.LayoutParams(
-            px(90),
+            idleWidth(),
             WindowManager.LayoutParams.WRAP_CONTENT,
             WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
@@ -161,7 +217,7 @@ class NotifListener : NotificationListenerService() {
             PixelFormat.TRANSLUCENT
         ).apply {
             gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL
-            y = px(8)
+            y = yPx
             if (Build.VERSION.SDK_INT >= 30) {
                 layoutInDisplayCutoutMode =
                     WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS
@@ -172,12 +228,40 @@ class NotifListener : NotificationListenerService() {
         }
     }
 
+    private fun idleWidth(): Int = px(Prefs.idleWidthDp(this))
+
     private fun expandedWidth(): Int =
-        minOf(resources.displayMetrics.widthPixels - px(24), px(340))
+        minOf(resources.displayMetrics.widthPixels - px(24), px(style.expandedWidthDp))
 
     private fun setContentAlpha(a: Float) {
         iconView?.alpha = a
         textCol?.alpha = a
+    }
+
+    private fun setIdleContent() {
+        iconView?.visibility = View.GONE
+        textCol?.visibility = View.GONE
+        setContentAlpha(1f)
+    }
+
+    // ---------- Estados: oculta / reposo (permanente) / expandida ----------
+
+    private fun showIdle() {
+        if (!::wm.isInitialized || !Settings.canDrawOverlays(this)) return
+        buildIsland()
+        val v = island ?: return
+        val params = lp ?: return
+        if (!attached) {
+            params.width = idleWidth()
+            setIdleContent()
+            try {
+                wm.addView(v, params)
+            } catch (e: Exception) {
+                return
+            }
+            attached = true
+        }
+        expanded = false
     }
 
     private fun show(pkg: String, t: CharSequence?, b: CharSequence?, large: Drawable?) {
@@ -199,14 +283,20 @@ class NotifListener : NotificationListenerService() {
             )
             main.removeCallbacks(hideTask)
             if (!attached) {
-                params.width = px(90)
-                setContentAlpha(0f)
+                params.width = idleWidth()
+                setIdleContent()
                 try {
                     wm.addView(v, params)
                 } catch (e: Exception) {
                     return@post
                 }
                 attached = true
+            }
+            if (!expanded) {
+                expanded = true
+                iconView?.visibility = View.VISIBLE
+                textCol?.visibility = View.VISIBLE
+                setContentAlpha(0f)
                 animateWidth(params.width, expandedWidth(), true, null)
             } else {
                 pulse()
@@ -215,49 +305,14 @@ class NotifListener : NotificationListenerService() {
         }
     }
 
-    @Suppress("DEPRECATION")
-    private fun appLabel(pkg: String): String = try {
-        packageManager.getApplicationLabel(packageManager.getApplicationInfo(pkg, 0)).toString()
-    } catch (e: Exception) {
-        pkg
-    }
-
-    private fun animateWidth(from: Int, to: Int, expanding: Boolean, end: (() -> Unit)?) {
-        ValueAnimator.ofInt(from, to).apply {
-            duration = 280
-            interpolator = DecelerateInterpolator()
-            addUpdateListener { anim ->
-                val params = lp ?: return@addUpdateListener
-                params.width = anim.animatedValue as Int
-                val f = anim.animatedFraction
-                setContentAlpha(if (expanding) f else 1f - f)
-                if (attached) {
-                    try {
-                        wm.updateViewLayout(island, params)
-                    } catch (e: Exception) {
-                    }
-                }
-            }
-            addListener(object : AnimatorListenerAdapter() {
-                override fun onAnimationEnd(animation: Animator) {
-                    end?.invoke()
-                }
-            })
-            start()
-        }
-    }
-
-    private fun pulse() {
-        island?.animate()?.scaleX(1.04f)?.scaleY(1.04f)?.setDuration(110)?.withEndAction {
-            island?.animate()?.scaleX(1f)?.scaleY(1f)?.setDuration(140)?.start()
-        }?.start()
-    }
-
     private fun collapse() {
         main.removeCallbacks(hideTask)
         val params = lp ?: return
-        if (!attached) return
-        animateWidth(params.width, px(90), false) { removeNow() }
+        if (!attached || !expanded) return
+        expanded = false
+        animateWidth(params.width, idleWidth(), false) {
+            if (Prefs.permanent(this)) setIdleContent() else removeNow()
+        }
     }
 
     private fun removeNow() {
@@ -269,6 +324,51 @@ class NotifListener : NotificationListenerService() {
             }
         }
         attached = false
+        expanded = false
+    }
+
+    private fun animateWidth(from: Int, to: Int, expanding: Boolean, end: (() -> Unit)?) {
+        anim?.cancel()
+        val a = ValueAnimator.ofInt(from, to)
+        a.duration = 280
+        a.interpolator = DecelerateInterpolator()
+        a.addUpdateListener { va ->
+            val params = lp ?: return@addUpdateListener
+            params.width = va.animatedValue as Int
+            val f = va.animatedFraction
+            setContentAlpha(if (expanding) f else 1f - f)
+            if (attached) {
+                try {
+                    wm.updateViewLayout(island, params)
+                } catch (e: Exception) {
+                }
+            }
+        }
+        a.addListener(object : AnimatorListenerAdapter() {
+            private var canceled = false
+            override fun onAnimationCancel(animation: Animator) {
+                canceled = true
+            }
+
+            override fun onAnimationEnd(animation: Animator) {
+                if (!canceled) end?.invoke()
+            }
+        })
+        anim = a
+        a.start()
+    }
+
+    private fun pulse() {
+        island?.animate()?.scaleX(1.04f)?.scaleY(1.04f)?.setDuration(110)?.withEndAction {
+            island?.animate()?.scaleX(1f)?.scaleY(1f)?.setDuration(140)?.start()
+        }?.start()
+    }
+
+    @Suppress("DEPRECATION")
+    private fun appLabel(pkg: String): String = try {
+        packageManager.getApplicationLabel(packageManager.getApplicationInfo(pkg, 0)).toString()
+    } catch (e: Exception) {
+        pkg
     }
 
     // ---------- Abrir app ----------
@@ -286,16 +386,21 @@ class NotifListener : NotificationListenerService() {
         launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
 
         if (freeform) {
-            // 1) Con root: windowingMode 5 = freeform
+            // 1) Con root. Si la app ya estaba abierta en pantalla completa, "am start" solo
+            //    la trae al frente en ese mismo modo; por eso se fuerza una tarea nueva.
             val comp = launch.component?.flattenToShortString()
             if (comp != null) {
-                try {
-                    val p = Runtime.getRuntime()
-                        .exec(arrayOf("su", "-c", "am start --windowingMode 5 -n $comp"))
-                    if (p.waitFor() == 0) return
-                } catch (e: Exception) {
-                }
+                val extra = if (Prefs.forceNew(this)) "--activity-new-task --activity-multiple-task" else ""
+                val cmd = "settings put global enable_freeform_support 1; " +
+                    "settings put global force_resizable_activities 1; " +
+                    "am start --user 0 --windowingMode 5 $extra -n $comp"
+                val res = Root.run(cmd)
+                Prefs.setLastLog(this, "Comando:\n$cmd\n\nCodigo: ${res.first}\n${res.second}")
+                if (res.first == 0 && !res.second.contains("Error", ignoreCase = true)) return
+            } else {
+                Prefs.setLastLog(this, "No se encontro la actividad principal de $pkg")
             }
+
             // 2) Sin root: API oculta de ActivityOptions (depende de la ROM)
             try {
                 val opts = ActivityOptions.makeBasic()
