@@ -16,14 +16,18 @@ jobs:
         with:
           distribution: temurin
           java-version: 17
+      - name: SDK Android 36
+        run: |
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-36" "build-tools;36.0.0" > /dev/null || true
       - uses: gradle/actions/setup-gradle@v4
         with:
-          gradle-version: 8.9
+          gradle-version: 8.13
       - run: gradle assembleDebug --no-daemon
       - name: Renombrar APK
-        run: cp app/build/outputs/apk/debug/app-debug.apk IslaPropia.apk
+        run: cp app/build/outputs/apk/debug/app-debug.apk RyxIsland.apk
       - uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ github.run_number }}
-          name: Isla Propia v${{ github.run_number }}
-          files: IslaPropia.apk
+          name: Ryx Island v${{ github.run_number }}
+          files: RyxIsland.apk

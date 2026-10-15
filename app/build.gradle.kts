@@ -5,14 +5,14 @@ plugins {
 
 android {
     namespace = "com.dav.isla"
-    compileSdk = 34
+    compileSdk = 36
 
     defaultConfig {
         applicationId = "com.dav.isla"
         minSdk = 26
-        targetSdk = 33
-        versionCode = 1
-        versionName = "0.1"
+        targetSdk = 36
+        versionCode = 2
+        versionName = "0.2"
     }
 
     compileOptions {
