@@ -42,6 +42,8 @@ class MainActivity : Activity() {
     private var landscapeView = false
     private val expandedGroups = HashSet<String>().apply { add("power") }
     private var demoShowing = 0
+    private var previewView: IslandPreview? = null
+    private var previewOpen = false
 
     private fun px(v: Int) = (v * resources.displayMetrics.density).toInt()
     private fun col(id: Int) = getColor(id)
@@ -136,7 +138,48 @@ class MainActivity : Activity() {
             2 -> buildDemo(page)
             else -> buildSettings(page)
         }
-        content.addView(ScrollView(this).apply { addView(page); isVerticalScrollBarEnabled = false })
+        val scroll = ScrollView(this).apply { addView(page); isVerticalScrollBarEnabled = false }
+        previewView = null
+        if (tab == 1) {
+            val col = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+            col.addView(buildPreview(), LinearLayout.LayoutParams(MATCH, WRAP).apply {
+                marginStart = px(18); marginEnd = px(18); topMargin = px(4)
+            })
+            col.addView(scroll, LinearLayout.LayoutParams(MATCH, 0, 1f))
+            content.addView(col)
+        } else content.addView(scroll)
+    }
+
+    /** Editor visual fijo arriba: muestra la parte superior de ESTE teléfono con la isla en vivo. */
+    private fun buildPreview(): View {
+        val c = card().apply { setPadding(px(12), px(12), px(12), px(12)) }
+        val m = resources.displayMetrics
+        val wDp = (minOf(m.widthPixels, m.heightPixels) / m.density).toInt()
+        val hDp = (maxOf(m.widthPixels, m.heightPixels) / m.density).toInt()
+        c.addView(label("Vista previa · ${Build.MANUFACTURER.replaceFirstChar { it.uppercase() }} ${Build.MODEL}", 15f, R.color.text, true))
+        c.addView(label("Pantalla $wDp × $hDp dp · Android ${Build.VERSION.RELEASE} · " +
+            (if (landscapeView) "horizontal" else "vertical"), 12f, R.color.muted))
+        val pv = IslandPreview(this)
+        pv.landscape = landscapeView
+        val ins = window.decorView.rootWindowInsets
+        if (Build.VERSION.SDK_INT >= 28) {
+            ins?.displayCutout?.boundingRects?.firstOrNull { it.top <= 5 }?.let {
+                pv.cutout = android.graphics.RectF(it)
+            }
+        }
+        pv.statusBarPx = if (Build.VERSION.SDK_INT >= 30 && ins != null)
+            ins.getInsets(WindowInsets.Type.statusBars()).top.toFloat() else 0f
+        previewView = pv
+        if (previewOpen) pv.setExpanded(true)
+        c.addView(pv, LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = px(8) })
+        val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+        row.addView(button(if (previewOpen) "Ver compacta" else "Ver expandida", false) {
+            previewOpen = !previewOpen; pv.setExpanded(previewOpen); render()
+        }, LinearLayout.LayoutParams(0, WRAP, 1f).apply { marginEnd = px(6) })
+        row.addView(button("▶ Animación", true) { previewOpen = false; pv.play() },
+            LinearLayout.LayoutParams(0, WRAP, 1f).apply { marginStart = px(6) })
+        c.addView(row, lp(8))
+        return c
     }
 
     private fun svc() = NotifListener.instance
@@ -235,7 +278,7 @@ class MainActivity : Activity() {
                 "Isla grande tipo iPhone" to Triple(10, 126, 36)).forEach { (n, v) ->
                 b.addView(button(n, false) {
                     Prefs.setYOffsetDp(this, v.first); Prefs.setIdleWidthDp(this, v.second)
-                    Prefs.setHeightDp(this, v.third); applyAll(); svc()?.showTest(); toast("Aplicado: $n")
+                    Prefs.setHeightDp(this, v.third); applyAll(); svc()?.showTest(); toast("Aplicado: $n"); render()
                 }, lp(6))
             }
         }
@@ -246,6 +289,9 @@ class MainActivity : Activity() {
         }
         section(p, "Tamaño y posición", "Ancho, alto, desplazamientos y radio de esquina") { b ->
             seekRow(b, "Ancho en reposo", "dp", 60, 220, Prefs.idleWidthDp(this)) { Prefs.setIdleWidthDp(this, it) }
+            seekRow(b, "Ancho expandido", "dp", 220, 420,
+                Prefs.expandedWidthDp(this).let { if (it > 0) it else Styles.byId(Prefs.style(this)).expandedWidthDp }) { Prefs.setExpandedWidthDp(this, it) }
+            seekRow(b, "Margen lateral mínimo", "dp", 0, 40, Prefs.sideMarginDp(this)) { Prefs.setSideMarginDp(this, it) }
             seekRow(b, "Alto", "dp", 20, 60, Prefs.heightDp(this)) { Prefs.setHeightDp(this, it) }
             seekRow(b, "Posición vertical", "dp", 0, 80, Prefs.yOffsetDp(this)) { Prefs.setYOffsetDp(this, it) }
             seekRow(b, "Posición horizontal", "dp", -100, 100, Prefs.xOffsetDp(this)) { Prefs.setXOffsetDp(this, it) }
@@ -255,12 +301,13 @@ class MainActivity : Activity() {
             b.addView(label("Mueve «Posición horizontal» y «Posición vertical» hasta que la isla " +
                 "cubra exactamente el agujero de la cámara.", 13f, R.color.muted))
             b.addView(button("Restablecer posición", false) {
-                Prefs.setXOffsetDp(this, 0); Prefs.setYOffsetDp(this, 8); applyAll(); svc()?.showTest(); render()
+                Prefs.setXOffsetDp(this, 0); Prefs.setYOffsetDp(this, 8); Prefs.setSideMarginDp(this, 12)
+                Prefs.setExpandedWidthDp(this, -1); applyAll(); svc()?.showTest(); render()
             }, lp(8))
         }
         section(p, "Sombra", "Sombra bajo la isla y su opacidad") { b ->
             b.addView(rowWithSwitch("Mostrar sombra", "", Prefs.shadow(this)) { v ->
-                Prefs.setShadow(this, v); applyAll(); svc()?.showTest() })
+                Prefs.setShadow(this, v); applyAll(); svc()?.showTest(); previewView?.refresh() })
             seekRow(b, "Opacidad", "%", 30, 100, Prefs.opacity(this)) { Prefs.setOpacity(this, it) }
         }
 
@@ -357,7 +404,10 @@ class MainActivity : Activity() {
         }
         item(p, "code", gray, "Opciones de desarrollador", "Diagnóstico, registros y opciones avanzadas", "") { devDialog() }
         item(p, "info", gray, "Acerca de", "Versión, el proyecto original y licencias", "") {
-            dialog("Ryx Island", "Versión 0.5\nHecha para Android 16/17 con estilo HyperOS Liquid Glass.\nCompilación automática con GitHub Actions.")
+            dialog("Acerca de Ryx Island", "Ryx Island v0.6\nCreador: David Joel\n\nLa interfaz está inspirada en Smart Island, " +
+                "de Animesh Gupta (licencia GPL-3.0): github.com/agupta07505/SmartIsland.\n\n" +
+                "Este código es propio y no copia el de Smart Island. Si en el futuro se incorpora código suyo, " +
+                "hay que conservar su aviso de copyright y publicar el proyecto bajo GPL-3.0.")
         }
     }
 
@@ -596,7 +646,7 @@ class MainActivity : Activity() {
             thumbTintList = ColorStateList.valueOf(Color.WHITE)
             setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
                 override fun onProgressChanged(s: SeekBar?, p: Int, fromUser: Boolean) {
-                    lbl.text = "$title: ${p + lo} $unit"; onChange(p + lo)
+                    lbl.text = "$title: ${p + lo} $unit"; onChange(p + lo); previewView?.refresh()
                 }
                 override fun onStartTrackingTouch(s: SeekBar?) {}
                 override fun onStopTrackingTouch(s: SeekBar?) { svc()?.let { it.applySettings(); it.showTest() } }

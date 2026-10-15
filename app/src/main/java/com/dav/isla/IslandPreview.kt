@@ -1,0 +1,156 @@
+package com.dav.isla
+
+import android.animation.ValueAnimator
+import android.content.Context
+import android.graphics.Canvas
+import android.graphics.LinearGradient
+import android.graphics.Paint
+import android.graphics.Path
+import android.graphics.RadialGradient
+import android.graphics.RectF
+import android.graphics.Shader
+import android.graphics.Typeface
+import android.view.View
+import android.view.animation.DecelerateInterpolator
+
+/**
+ * Vista previa en vivo, estilo editor de la isla de HyperOS: dibuja la parte superior
+ * de ESTE teléfono (ancho real, barra de estado y recorte de cámara detectado) y la isla
+ * con exactamente los valores guardados en Prefs.
+ */
+class IslandPreview(c: Context) : View(c) {
+
+    var landscape = false
+    var cutout: RectF? = null          // en píxeles reales de pantalla (puede ser null)
+    var statusBarPx = 0f
+    private var progress = 0f
+    private var anim: ValueAnimator? = null
+    private val dens = c.resources.displayMetrics.density
+    private val p = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val rect = RectF()
+    private val path = Path()
+
+    private val screenW: Float get() {
+        val m = resources.displayMetrics
+        return (if (landscape) maxOf(m.widthPixels, m.heightPixels) else minOf(m.widthPixels, m.heightPixels)).toFloat()
+    }
+    private val regionDp = 150f
+    private val scale: Float get() = if (width > 0) width / screenW else 1f
+
+    fun refresh() = invalidate()
+
+    private fun durationMs(): Long = when (Prefs.speed(context)) { 0 -> 420L; 2 -> 160L; else -> 280L }
+
+    fun setExpanded(e: Boolean) = animateTo(if (e) 1f else 0f)
+
+    private fun animateTo(t: Float, then: (() -> Unit)? = null) {
+        anim?.cancel()
+        anim = ValueAnimator.ofFloat(progress, t).apply {
+            duration = durationMs(); interpolator = DecelerateInterpolator(1.4f)
+            addUpdateListener { progress = it.animatedValue as Float; invalidate() }
+            if (then != null) addListener(object : android.animation.AnimatorListenerAdapter() {
+                override fun onAnimationEnd(a: android.animation.Animator) { then() }
+            })
+            start()
+        }
+    }
+
+    /** Abre, espera y cierra: muestra la animación con la velocidad elegida. */
+    fun play() { animateTo(1f) { postDelayed({ animateTo(0f) }, 900) } }
+
+    override fun onMeasure(w: Int, h: Int) {
+        val ww = MeasureSpec.getSize(w)
+        val hh = (regionDp * dens * (ww / screenW)).toInt()
+        setMeasuredDimension(ww, hh)
+    }
+
+    private fun lerp(a: Float, b: Float, t: Float) = a + (b - a) * t
+
+    override fun onDraw(cv: Canvas) {
+        val s = scale
+        val w = width.toFloat(); val h = height.toFloat()
+        fun u(dp: Float) = dp * dens * s          // dp reales -> px de la vista previa
+        val ctx = context
+
+        // Pantalla con fondo de ejemplo (para que se note el cristal)
+        val r = u(34f)
+        path.reset(); rect.set(0f, 0f, w, h + r)
+        path.addRoundRect(rect, r, r, Path.Direction.CW)
+        cv.save(); cv.clipPath(path)
+        p.shader = LinearGradient(0f, 0f, w, h, intArrayOf(0xFF46705A.toInt(), 0xFF22364A.toInt(), 0xFF3A2D52.toInt()), null, Shader.TileMode.CLAMP)
+        p.style = Paint.Style.FILL; cv.drawRect(0f, 0f, w, h + r, p)
+        p.shader = RadialGradient(w * 0.8f, h * 0.9f, w * 0.6f, 0x66FFD6A0, 0x00FFD6A0, Shader.TileMode.CLAMP)
+        cv.drawRect(0f, 0f, w, h + r, p); p.shader = null
+
+        // Barra de estado
+        val sbH = if (statusBarPx > 0) statusBarPx * s else u(26f)
+        p.color = 0xFFFFFFFF.toInt(); p.textSize = u(13f); p.typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+        cv.drawText("9:41", u(24f), sbH * 0.5f + p.textSize * 0.35f, p)
+        p.color = 0xFFFFFFFF.toInt()
+        rect.set(w - u(30f), sbH * 0.5f - u(4f), w - u(14f), sbH * 0.5f + u(4f)); cv.drawRoundRect(rect, u(2f), u(2f), p)
+        cv.drawCircle(w - u(40f), sbH * 0.5f, u(4f), p)
+        cv.drawCircle(w - u(54f), sbH * 0.5f, u(4f), p)
+
+        // Recorte de cámara real del teléfono
+        val cr = cutout
+        p.color = 0xFF000000.toInt()
+        if (cr != null) {
+            rect.set(cr.left * s, cr.top * s, cr.right * s, cr.bottom * s)
+            cv.drawRoundRect(rect, rect.height() / 2f, rect.height() / 2f, p)
+        } else cv.drawCircle(w / 2f, u(18f), u(7f), p)
+
+        // Isla con los valores guardados
+        val st = Styles.byId(Prefs.style(ctx))
+        val screenWdp = screenW / dens
+        val margin = Prefs.sideMarginDp(ctx)
+        val expDp = minOf(screenWdp - 2 * margin, Prefs.expandedWidthDp(ctx).let { if (it > 0) it else st.expandedWidthDp }.toFloat())
+        val wdp = lerp(Prefs.idleWidthDp(ctx).toFloat(), expDp, progress)
+        val hdp = lerp(Prefs.heightDp(ctx).toFloat(), 74f, progress)
+        val cx = w / 2f + u(Prefs.xOffsetDp(ctx).toFloat())
+        val top = u(Prefs.yOffsetDp(ctx).toFloat())
+        rect.set(cx - u(wdp) / 2f, top, cx + u(wdp) / 2f, top + u(hdp))
+        val cd = Prefs.cornerDp(ctx)
+        val cornerDp = if (cd >= 0) cd.toFloat() else st.cornerDp
+        val cr2 = u(minOf(cornerDp, hdp / 2f))
+        val a = (Prefs.opacity(ctx) / 100f * 255).toInt()
+
+        if (Prefs.shadow(ctx)) { p.setShadowLayer(u(10f), 0f, u(4f), 0x99000000.toInt()) }
+        p.style = Paint.Style.FILL
+        p.shader = LinearGradient(0f, rect.top, 0f, rect.bottom, st.bgTop, st.bgBottom, Shader.TileMode.CLAMP)
+        p.alpha = a
+        cv.drawRoundRect(rect, cr2, cr2, p)
+        p.clearShadowLayer(); p.shader = null
+        if (st.strokeDp > 0f) {
+            p.style = Paint.Style.STROKE; p.strokeWidth = maxOf(1f, u(st.strokeDp)); p.color = st.strokeColor
+            cv.drawRoundRect(rect, cr2, cr2, p); p.style = Paint.Style.FILL
+        }
+
+        // Contenido de ejemplo al abrir
+        if (progress > 0.35f) {
+            val k = ((progress - 0.35f) / 0.65f).coerceIn(0f, 1f)
+            val ic = u(st.iconDp.toFloat() * 0.9f)
+            val ix = rect.left + u(st.padH.toFloat() + 2f); val iy = rect.top + (rect.height() - ic) / 2f
+            p.color = 0xFFC3D29A.toInt(); p.alpha = (255 * k).toInt()
+            val ir = RectF(ix, iy, ix + ic, iy + ic); cv.drawRoundRect(ir, u(st.iconCornerDp), u(st.iconCornerDp), p)
+            p.color = 0xFFFFFFFF.toInt(); p.alpha = (255 * k).toInt(); p.typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+            p.textSize = u(st.titleSp)
+            cv.drawText("Ryx Island", ix + ic + u(10f), rect.centerY() - u(1f), p)
+            p.typeface = Typeface.DEFAULT; p.textSize = u(st.bodySp); p.alpha = (200 * k).toInt()
+            cv.drawText("Vista previa", ix + ic + u(10f), rect.centerY() + u(st.bodySp + 1f), p)
+        }
+        p.alpha = 255
+
+        // Cotas
+        p.color = 0xFFC3D29A.toInt(); p.textSize = u(11f); p.typeface = Typeface.DEFAULT; p.textAlign = Paint.Align.CENTER
+        cv.drawText("${wdp.toInt()} × ${hdp.toInt()} dp", rect.centerX(), rect.bottom + u(16f), p)
+        p.strokeWidth = maxOf(1f, u(1f)); p.style = Paint.Style.STROKE
+        p.pathEffect = android.graphics.DashPathEffect(floatArrayOf(u(3f), u(3f)), 0f)
+        cv.drawLine(rect.left, rect.bottom + u(4f), rect.right, rect.bottom + u(4f), p)
+        p.pathEffect = null; p.style = Paint.Style.FILL; p.textAlign = Paint.Align.LEFT
+        cv.restore()
+
+        // Borde del teléfono
+        p.style = Paint.Style.STROKE; p.strokeWidth = u(2f); p.color = 0x66FFFFFF
+        rect.set(0f, 0f, w, h + r); cv.drawRoundRect(rect, r, r, p); p.style = Paint.Style.FILL
+    }
+}
