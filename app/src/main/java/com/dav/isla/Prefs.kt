@@ -98,4 +98,9 @@ object Prefs {
         } }
         e.apply(); true
     } catch (e: Exception) { false }
+
+    fun expandedWidthDp(c: Context): Int = sp(c).getInt("exp_w", -1)
+    fun setExpandedWidthDp(c: Context, v: Int) = sp(c).edit().putInt("exp_w", v).apply()
+    fun sideMarginDp(c: Context): Int = sp(c).getInt("side_m", 12)
+    fun setSideMarginDp(c: Context, v: Int) = sp(c).edit().putInt("side_m", v).apply()
 }

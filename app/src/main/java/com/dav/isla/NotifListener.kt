@@ -333,7 +333,8 @@ class NotifListener : NotificationListenerService() {
     private fun idleWidth(): Int = px(Prefs.idleWidthDp(this))
 
     private fun expandedWidth(): Int =
-        minOf(resources.displayMetrics.widthPixels - px(24), px(style.expandedWidthDp))
+        minOf(resources.displayMetrics.widthPixels - px(2 * Prefs.sideMarginDp(this)),
+            px(Prefs.expandedWidthDp(this).let { if (it > 0) it else style.expandedWidthDp }))
 
     private fun setContentAlpha(a: Float) {
         iconView?.alpha = a
