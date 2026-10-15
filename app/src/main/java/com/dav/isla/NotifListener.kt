@@ -5,7 +5,14 @@ import android.animation.AnimatorListenerAdapter
 import android.animation.ValueAnimator
 import android.app.ActivityOptions
 import android.app.Notification
+import android.content.BroadcastReceiver
+import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
+import android.os.BatteryManager
+import android.os.PowerManager
+import android.os.VibrationEffect
+import android.os.Vibrator
 import android.graphics.Color
 import android.graphics.Outline
 import android.graphics.PixelFormat
@@ -61,17 +68,20 @@ class NotifListener : NotificationListenerService() {
     override fun onListenerConnected() {
         instance = this
         wm = getSystemService(WINDOW_SERVICE) as WindowManager
-        main.post { if (Prefs.permanent(this)) showIdle() }
+        main.post { if (Prefs.islandOn(this) && Prefs.permanent(this)) showIdle() }
+        registerSystemReceivers()
         if (Prefs.hideHeadsUp(this)) Thread { Root.setHeadsUp(false) }.start()
     }
 
     override fun onListenerDisconnected() {
+        try { unregisterReceiver(sysReceiver) } catch (e: Exception) {}
         main.post { removeNow() }
         restoreHeadsUp()
         instance = null
     }
 
     override fun onDestroy() {
+        try { unregisterReceiver(sysReceiver) } catch (e: Exception) {}
         anim?.cancel()
         removeNow()
         restoreHeadsUp()
@@ -91,12 +101,15 @@ class NotifListener : NotificationListenerService() {
             anim?.cancel()
             removeNow()
             island = null
-            if (Prefs.permanent(this)) showIdle()
+            if (Prefs.islandOn(this) && Prefs.permanent(this)) showIdle()
         }
     }
 
     override fun onNotificationPosted(sbn: StatusBarNotification) {
         if (sbn.packageName == packageName) return
+        if (!Prefs.islandOn(this)) return
+        if (sbn.packageName in Prefs.blocked(this)) return
+        if (!Prefs.lockScreen(this) && (getSystemService(KEYGUARD_SERVICE) as android.app.KeyguardManager).isKeyguardLocked) return
         val n = sbn.notification
         if ((n.flags and Notification.FLAG_GROUP_SUMMARY) != 0) return
         if (sbn.isOngoing) return
@@ -108,17 +121,103 @@ class NotifListener : NotificationListenerService() {
         } catch (e: Exception) {
             null
         }
+        if (Prefs.keepHistory(this)) {
+            Prefs.addHistory(this, "${appLabel(sbn.packageName)}: ${title ?: ""} ${text ?: ""}".trim())
+        }
         show(sbn.packageName, title, text, large)
     }
 
+    // ---------- Eventos del sistema ----------
+
+    private val sysReceiver = object : BroadcastReceiver() {
+        override fun onReceive(c: Context, i: Intent) {
+            when (i.action) {
+                Intent.ACTION_POWER_CONNECTED -> showEvent("plugged")
+                Intent.ACTION_POWER_DISCONNECTED -> showEvent("unplugged")
+                Intent.ACTION_BATTERY_LOW -> showEvent("low")
+                Intent.ACTION_BATTERY_OKAY -> {}
+                Intent.ACTION_BATTERY_CHANGED -> {
+                    val st = i.getIntExtra(BatteryManager.EXTRA_STATUS, -1)
+                    if (st == BatteryManager.BATTERY_STATUS_FULL && !fullShown) {
+                        fullShown = true; showEvent("full")
+                    } else if (st != BatteryManager.BATTERY_STATUS_FULL) fullShown = false
+                }
+                PowerManager.ACTION_POWER_SAVE_MODE_CHANGED -> {
+                    val pm = c.getSystemService(Context.POWER_SERVICE) as PowerManager
+                    if (pm.isPowerSaveMode) showEvent("saver")
+                }
+                Intent.ACTION_AIRPLANE_MODE_CHANGED -> {
+                    if (i.getBooleanExtra("state", false)) showEvent("airplane")
+                }
+                android.bluetooth.BluetoothDevice.ACTION_ACL_CONNECTED -> showEvent("bt")
+            }
+        }
+    }
+    private var fullShown = false
+
+    private fun registerSystemReceivers() {
+        val f = IntentFilter().apply {
+            addAction(Intent.ACTION_POWER_CONNECTED)
+            addAction(Intent.ACTION_POWER_DISCONNECTED)
+            addAction(Intent.ACTION_BATTERY_LOW)
+            addAction(Intent.ACTION_BATTERY_OKAY)
+            addAction(Intent.ACTION_BATTERY_CHANGED)
+            addAction(PowerManager.ACTION_POWER_SAVE_MODE_CHANGED)
+            addAction(Intent.ACTION_AIRPLANE_MODE_CHANGED)
+            addAction(android.bluetooth.BluetoothDevice.ACTION_ACL_CONNECTED)
+        }
+        try {
+            if (Build.VERSION.SDK_INT >= 33) registerReceiver(sysReceiver, f, RECEIVER_EXPORTED)
+            else registerReceiver(sysReceiver, f)
+        } catch (e: Exception) {}
+        // Wi-Fi / datos móviles / VPN
+        try {
+            val cm = getSystemService(CONNECTIVITY_SERVICE) as android.net.ConnectivityManager
+            cm.registerDefaultNetworkCallback(object : android.net.ConnectivityManager.NetworkCallback() {
+                private var last = ""
+                override fun onCapabilitiesChanged(n: android.net.Network, c: android.net.NetworkCapabilities) {
+                    val t = when {
+                        c.hasTransport(android.net.NetworkCapabilities.TRANSPORT_VPN) -> "vpn"
+                        c.hasTransport(android.net.NetworkCapabilities.TRANSPORT_WIFI) -> "wifi"
+                        c.hasTransport(android.net.NetworkCapabilities.TRANSPORT_CELLULAR) -> "data"
+                        else -> ""
+                    }
+                    if (t.isNotEmpty() && t != last) { last = t; showEvent(t) }
+                }
+            })
+        } catch (e: Exception) {}
+    }
+
+    /** Muestra un evento (real o de demostración) respetando los ajustes de Inicio. */
+    fun showEvent(id: String, force: Boolean = false) {
+        val ev = Events.find(id) ?: return
+        if (!force && (!Prefs.islandOn(this) || !Prefs.eventOn(this, id))) return
+        showCard(ev, force)
+    }
+
+    fun clearDemo() { main.post { main.removeCallbacks(hideTask); collapse() } }
+
+    private fun showCard(ev: IslandEvent, force: Boolean) {
+        val shouldExpand = !force || Prefs.demoExpanded(this)
+        show(packageName, ev.title, ev.body, eventIcon(ev.symbol), ev.short, shouldExpand && Prefs.eventExpand(this, ev.id))
+    }
+
+    /** Icono vectorial del evento sobre un círculo de cristal. */
+    private fun eventIcon(name: String): Drawable? {
+        val ic = Glass.icon(this, name, Color.WHITE) ?: return null
+        val bg = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(0x33C3D29A) }
+        return LayerDrawable(arrayOf(bg, ic)).apply { val i = px(8); setLayerInset(1, i, i, i, i) }
+    }
+
     fun showTest() {
-        show(packageName, "Ryx Island", "Funciona. Toca para abrir en ventana flotante.", null)
+        show(packageName, "Ryx Island", "Funciona. Toca para abrir en ventana flotante.", null, true, true)
     }
 
     // ---------- Construccion de la isla ----------
 
     private fun buildBackground(s: IslandStyle): Drawable {
-        val r = px(s.cornerDp).toFloat()
+        val cd = Prefs.cornerDp(this)
+        val r = px(if (cd >= 0) cd.toFloat() else s.cornerDp).toFloat()
         val base = GradientDrawable(
             GradientDrawable.Orientation.TOP_BOTTOM, intArrayOf(s.bgTop, s.bgBottom)
         ).apply {
@@ -165,7 +264,7 @@ class NotifListener : NotificationListenerService() {
             textSize = s.titleSp
             maxLines = 1
             ellipsize = TextUtils.TruncateAt.END
-            setTypeface(typeface, Typeface.BOLD)
+            setTypeface(typeface, if (Prefs.fontBold(this@NotifListener)) Typeface.BOLD else Typeface.NORMAL)
         }
         val body = TextView(this).apply {
             setTextColor(0xCCFFFFFF.toInt())
@@ -183,13 +282,15 @@ class NotifListener : NotificationListenerService() {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
             background = buildBackground(s)
-            minimumHeight = px(32)
+            minimumHeight = px(Prefs.heightDp(this@NotifListener))
+            alpha = Prefs.opacity(this@NotifListener) / 100f
+            if (Prefs.shadow(this@NotifListener)) elevation = px(10).toFloat()
             setPadding(px(s.padH), px(s.padV), px(s.padH + 4), px(s.padV))
             addView(icon, LinearLayout.LayoutParams(px(s.iconDp), px(s.iconDp)))
             addView(col, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
                 marginStart = px(10)
             })
-            setOnClickListener { if (expanded) openCurrent() }
+            setOnClickListener { if (expanded && Prefs.tapOpens(this@NotifListener)) openCurrent() }
             setOnLongClickListener {
                 if (expanded) {
                     collapse()
@@ -218,6 +319,7 @@ class NotifListener : NotificationListenerService() {
         ).apply {
             gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL
             y = yPx
+            x = px(Prefs.xOffsetDp(this@NotifListener))
             if (Build.VERSION.SDK_INT >= 30) {
                 layoutInDisplayCutoutMode =
                     WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS
@@ -264,7 +366,7 @@ class NotifListener : NotificationListenerService() {
         expanded = false
     }
 
-    private fun show(pkg: String, t: CharSequence?, b: CharSequence?, large: Drawable?) {
+    private fun show(pkg: String, t: CharSequence?, b: CharSequence?, large: Drawable?, autoHide: Boolean = true, expand: Boolean = true) {
         main.post {
             if (!::wm.isInitialized || !Settings.canDrawOverlays(this)) return@post
             buildIsland()
@@ -292,7 +394,9 @@ class NotifListener : NotificationListenerService() {
                 }
                 attached = true
             }
-            if (!expanded) {
+            if (!expand && !expanded) {
+                pulse()
+            } else if (!expanded) {
                 expanded = true
                 iconView?.visibility = View.VISIBLE
                 textCol?.visibility = View.VISIBLE
@@ -301,8 +405,17 @@ class NotifListener : NotificationListenerService() {
             } else {
                 pulse()
             }
-            main.postDelayed(hideTask, Prefs.durationMs(this))
+            if (autoHide) main.postDelayed(hideTask, Prefs.durationMs(this))
+            if (Prefs.vibrate(this)) buzz()
         }
+    }
+
+    @Suppress("DEPRECATION")
+    private fun buzz() {
+        try {
+            val v = getSystemService(VIBRATOR_SERVICE) as Vibrator
+            v.vibrate(VibrationEffect.createOneShot(18, VibrationEffect.DEFAULT_AMPLITUDE))
+        } catch (e: Exception) {}
     }
 
     private fun collapse() {
@@ -330,7 +443,7 @@ class NotifListener : NotificationListenerService() {
     private fun animateWidth(from: Int, to: Int, expanding: Boolean, end: (() -> Unit)?) {
         anim?.cancel()
         val a = ValueAnimator.ofInt(from, to)
-        a.duration = 280
+        a.duration = when (Prefs.speed(this)) { 0 -> 420L; 2 -> 160L; else -> 280L }
         a.interpolator = DecelerateInterpolator()
         a.addUpdateListener { va ->
             val params = lp ?: return@addUpdateListener
@@ -386,19 +499,50 @@ class NotifListener : NotificationListenerService() {
         launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
 
         if (freeform) {
-            // 1) Con root. Si la app ya estaba abierta en pantalla completa, "am start" solo
-            //    la trae al frente en ese mismo modo; por eso se fuerza una tarea nueva.
+            // 1) Con root. Se activan las banderas de ventanas libres, se lanza la app en modo
+            //    freeform (5) en la pantalla principal y se COMPRUEBA con dumpsys si de verdad
+            //    quedó flotando. Si el sistema la dejó en pantalla completa se reintenta
+            //    forzando el tamaño de la tarea.
             val comp = launch.component?.flattenToShortString()
             if (comp != null) {
+                val m = resources.displayMetrics
+                val l = m.widthPixels / 10; val t = m.heightPixels / 6
+                val r = m.widthPixels * 9 / 10; val bt = m.heightPixels * 2 / 3
                 val extra = if (Prefs.forceNew(this)) "--activity-new-task --activity-multiple-task" else ""
-                val cmd = "settings put global enable_freeform_support 1; " +
+                val prep = "settings put global enable_freeform_support 1; " +
                     "settings put global force_resizable_activities 1; " +
-                    "am start --user 0 --windowingMode 5 $extra -n $comp"
-                val res = Root.run(cmd)
-                Prefs.setLastLog(this, "Comando:\n$cmd\n\nCodigo: ${res.first}\n${res.second}")
+                    "settings put global freeform_window_management 1; "
+                val start = "am start --user 0 --display 0 --windowingMode 5 $extra -n $comp"
+                val log = StringBuilder("Comando:\n$prep$start\n")
+                val res = Root.run(prep + start)
+                log.append("\nCódigo: ${res.first}\n${res.second}\n")
+                Thread.sleep(700)
+                // Verificación: busca la tarea del paquete y su modo de ventana
+                val dump = Root.run("dumpsys activity activities | grep -i -A12 \"$pkg\" | head -60").second
+                val isFree = dump.contains("freeform", ignoreCase = true) ||
+                    Regex("windowingMode=(5|\\w*freeform)", RegexOption.IGNORE_CASE).containsMatchIn(dump)
+                log.append("\nVerificación (¿flotante?): ${if (isFree) "SÍ" else "NO"}\n")
+                if (!isFree) {
+                    // Reintento: pasa la tarea a freeform y le da tamaño
+                    val id = Regex("taskId=(\\d+)|#(\\d+) type=").find(dump)
+                        ?.groupValues?.drop(1)?.firstOrNull { it.isNotEmpty() }
+                    log.append("Tarea encontrada: ${id ?: "ninguna"}\n")
+                    if (id != null) {
+                        val fix = Root.run(
+                            "cmd activity task set-windowing-mode $id 5; " +
+                                "cmd activity task resize $id $l $t $r $bt; " +
+                                "am task resize $id $l $t $r $bt"
+                        )
+                        log.append("Reintento: ${fix.first} ${fix.second}\n")
+                    }
+                    log.append("\nSi sigue sin aparecer: en Opciones de desarrollador desactiva " +
+                        "\"Forzar modo escritorio\" y \"Forzar actividades en cualquier app\" (déjalas " +
+                        "solo \"Permitir ventanas de forma libre\") y reinicia el teléfono.")
+                }
+                Prefs.setLastLog(this, log.toString())
                 if (res.first == 0 && !res.second.contains("Error", ignoreCase = true)) return
             } else {
-                Prefs.setLastLog(this, "No se encontro la actividad principal de $pkg")
+                Prefs.setLastLog(this, "No se encontró la actividad principal de $pkg")
             }
 
             // 2) Sin root: API oculta de ActivityOptions (depende de la ROM)
