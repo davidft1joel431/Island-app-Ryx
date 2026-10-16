@@ -6,6 +6,9 @@ import android.animation.ValueAnimator
 import android.app.ActivityOptions
 import android.app.Notification
 import android.content.BroadcastReceiver
+import android.graphics.Bitmap
+import android.graphics.PorterDuff
+import android.graphics.PorterDuffColorFilter
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
@@ -107,25 +110,43 @@ class NotifListener : NotificationListenerService() {
 
     override fun onNotificationPosted(sbn: StatusBarNotification) {
         if (sbn.packageName == packageName) return
-        if (!Prefs.islandOn(this)) return
-        if (sbn.packageName in Prefs.blocked(this)) return
-        if (!Prefs.lockScreen(this) && (getSystemService(KEYGUARD_SERVICE) as android.app.KeyguardManager).isKeyguardLocked) return
         val n = sbn.notification
         if ((n.flags and Notification.FLAG_GROUP_SUMMARY) != 0) return
-        if (sbn.isOngoing) return
-        val title = n.extras.getCharSequence(Notification.EXTRA_TITLE)
-        val text = n.extras.getCharSequence(Notification.EXTRA_TEXT)
+        var title: CharSequence? = n.extras.getCharSequence(Notification.EXTRA_TITLE)
+        var text: CharSequence? = n.extras.getCharSequence(Notification.EXTRA_TEXT)
         if (title == null && text == null) return
-        val large: Drawable? = try {
-            n.getLargeIcon()?.loadDrawable(this)
-        } catch (e: Exception) {
-            null
+
+        // Palabras ocultas (privacidad): se reemplaza el contenido
+        val words = Prefs.hiddenWords(this)
+        if (words.isNotEmpty()) {
+            val all = "${title ?: ""} ${text ?: ""}".lowercase()
+            if (words.any { all.contains(it) }) { title = appLabel(sbn.packageName); text = "Contenido oculto" }
         }
-        if (Prefs.keepHistory(this)) {
-            Prefs.addHistory(this, "${appLabel(sbn.packageName)}: ${title ?: ""} ${text ?: ""}".trim())
+
+        // 1) La isla REGISTRA todo en el historial, por aplicación
+        if (Prefs.keepHistory(this) && !sbn.isOngoing) {
+            Prefs.addHist(this, sbn.packageName, title?.toString() ?: "", text?.toString() ?: "")
         }
+
+        // 2) Filtros de la isla
+        if (!Prefs.islandOn(this)) return
+        if (sbn.packageName in Prefs.blocked(this)) return
+        if (!Prefs.lockScreen(this) &&
+            (getSystemService(KEYGUARD_SERVICE) as android.app.KeyguardManager).isKeyguardLocked) return
+        if (sbn.isOngoing) return
+
+        // 3) Solo la isla muestra la notificación: se quita la del sistema
+        if (Prefs.blockSystem(this) && sbn.isClearable && !keepInSystem(n)) {
+            try { cancelNotification(sbn.key) } catch (e: Exception) {}
+        }
+
+        val large: Drawable? = try { n.getLargeIcon()?.loadDrawable(this) } catch (e: Exception) { null }
         show(sbn.packageName, title, text, large)
     }
+
+    /** Llamadas, multimedia y navegación se quedan en el sistema para no romper sus controles. */
+    private fun keepInSystem(n: Notification): Boolean =
+        n.category in setOf("call", "transport", "navigation", "alarm", "progress")
 
     // ---------- Eventos del sistema ----------
 
@@ -205,7 +226,7 @@ class NotifListener : NotificationListenerService() {
     /** Icono vectorial del evento sobre un círculo de cristal. */
     private fun eventIcon(name: String): Drawable? {
         val ic = Glass.icon(this, name, Color.WHITE) ?: return null
-        val bg = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(0x33C3D29A) }
+        val bg = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(0x33FF8A4C) }
         return LayerDrawable(arrayOf(bg, ic)).apply { val i = px(8); setLayerInset(1, i, i, i, i) }
     }
 
@@ -215,15 +236,19 @@ class NotifListener : NotificationListenerService() {
 
     // ---------- Construccion de la isla ----------
 
-    private fun buildBackground(s: IslandStyle): Drawable {
+    private var bgShape: GradientDrawable? = null
+
+    private fun buildBackground(s: IslandStyle, accent: Int? = null): Drawable {
         val cd = Prefs.cornerDp(this)
         val r = px(if (cd >= 0) cd.toFloat() else s.cornerDp).toFloat()
         val base = GradientDrawable(
             GradientDrawable.Orientation.TOP_BOTTOM, intArrayOf(s.bgTop, s.bgBottom)
         ).apply {
             cornerRadius = r
-            if (s.strokeDp > 0f) setStroke(maxOf(1, px(s.strokeDp)), s.strokeColor)
+            if (accent != null) setStroke(maxOf(1, px(1.6f)), (accent and 0x00FFFFFF) or 0xB0000000.toInt())
+            else if (s.strokeDp > 0f) setStroke(maxOf(1, px(s.strokeDp)), s.strokeColor)
         }
+        bgShape = base
         if (s.highlight == 0) return base
         val glow = GradientDrawable(
             GradientDrawable.Orientation.TOP_BOTTOM, intArrayOf(s.highlight, 0x00FFFFFF)
@@ -239,18 +264,9 @@ class NotifListener : NotificationListenerService() {
         val s = Styles.byId(Prefs.style(this))
         style = s
 
-        val icon = ImageView(this).apply {
+        val icon = ShapedImageView(this).apply {
             scaleType = ImageView.ScaleType.CENTER_CROP
-            outlineProvider = object : ViewOutlineProvider() {
-                override fun getOutline(view: View, outline: Outline) {
-                    if (s.iconCircle) {
-                        outline.setOval(0, 0, view.width, view.height)
-                    } else {
-                        outline.setRoundRect(0, 0, view.width, view.height, px(s.iconCornerDp).toFloat())
-                    }
-                }
-            }
-            clipToOutline = true
+            shape = Prefs.iconShape(this@NotifListener)
         }
         val app = TextView(this).apply {
             setTextColor(getColor(R.color.gold))
@@ -342,6 +358,8 @@ class NotifListener : NotificationListenerService() {
     }
 
     private fun setIdleContent() {
+        island?.minimumHeight = px(Prefs.heightDp(this))
+        iconView?.scaleX = 1f; iconView?.scaleY = 1f; textCol?.translationX = 0f
         iconView?.visibility = View.GONE
         textCol?.visibility = View.GONE
         setContentAlpha(1f)
@@ -377,13 +395,18 @@ class NotifListener : NotificationListenerService() {
             appView?.text = appLabel(pkg)
             titleView?.text = t
             bodyView?.text = b
-            iconView?.setImageDrawable(
-                large ?: try {
-                    packageManager.getApplicationIcon(pkg)
-                } catch (e: Exception) {
-                    null
-                }
-            )
+            val appIcon: Drawable? = try { packageManager.getApplicationIcon(pkg) } catch (e: Exception) { null }
+            val shown: Drawable? = when {
+                pkg == packageName && large != null -> large                      // iconos de eventos
+                Prefs.iconMode(this) == 1 -> large ?: appIcon                     // el de la notificación
+                Prefs.iconMode(this) == 2 -> appIcon?.constantState?.newDrawable()?.mutate()?.also {
+                    it.colorFilter = PorterDuffColorFilter(Color.WHITE, PorterDuff.Mode.SRC_IN) } // monocromo
+                else -> appIcon                                                   // el del sistema
+            }
+            iconView?.setImageDrawable(shown)
+            (iconView as? ShapedImageView)?.shape = Prefs.iconShape(this)
+            val accent = if (Prefs.smartColor(this) && pkg != packageName) dominantColor(appIcon) else null
+            v.background = buildBackground(style, accent)
             main.removeCallbacks(hideTask)
             if (!attached) {
                 params.width = idleWidth()
@@ -402,7 +425,7 @@ class NotifListener : NotificationListenerService() {
                 iconView?.visibility = View.VISIBLE
                 textCol?.visibility = View.VISIBLE
                 setContentAlpha(0f)
-                animateWidth(params.width, expandedWidth(), true, null)
+                morph(true, null)
             } else {
                 pulse()
             }
@@ -424,7 +447,7 @@ class NotifListener : NotificationListenerService() {
         val params = lp ?: return
         if (!attached || !expanded) return
         expanded = false
-        animateWidth(params.width, idleWidth(), false) {
+        morph(false) {
             if (Prefs.permanent(this)) setIdleContent() else removeNow()
         }
     }
@@ -441,40 +464,75 @@ class NotifListener : NotificationListenerService() {
         expanded = false
     }
 
-    private fun animateWidth(from: Int, to: Int, expanding: Boolean, end: (() -> Unit)?) {
+    /** Color más vivo del icono (para el borde de la isla). */
+    private fun dominantColor(d: Drawable?): Int? {
+        if (d == null) return null
+        return try {
+            val bmp = Bitmap.createBitmap(24, 24, Bitmap.Config.ARGB_8888)
+            val cv = android.graphics.Canvas(bmp)
+            d.setBounds(0, 0, 24, 24); d.draw(cv)
+            var best = 0; var bestScore = 0f
+            val hsv = FloatArray(3)
+            for (y in 0 until 24) for (x in 0 until 24) {
+                val c = bmp.getPixel(x, y)
+                if ((c ushr 24) < 200) continue
+                Color.colorToHSV(c, hsv)
+                val score = hsv[1] * hsv[2]
+                if (score > bestScore) { bestScore = score; best = c }
+            }
+            if (bestScore < 0.25f) null else best
+        } catch (e: Exception) { null }
+    }
+
+    private fun lerp(a: Float, b: Float, t: Float) = a + (b - a) * t
+
+    /**
+     * Animación tipo HyperOS 3: ancho y alto con resorte (sube un poco y se asienta), la esquina pasa de
+     * píldora a tarjeta, y el contenido aparece escalado y deslizado con retraso. Cerrar es suave y sin rebote.
+     */
+    private fun morph(toExpanded: Boolean, end: (() -> Unit)?) {
         anim?.cancel()
-        val a = ValueAnimator.ofInt(from, to)
-        a.duration = when (Prefs.speed(this)) { 0 -> 420L; 2 -> 160L; else -> 280L }
-        a.interpolator = DecelerateInterpolator()
+        val params = lp ?: return
+        val row = island
+        val idleH = px(Prefs.heightDp(this))
+        val expH = px(maxOf(style.iconDp + 2 * style.padV, 64))
+        val fromW = params.width; val toW = if (toExpanded) expandedWidth() else idleWidth()
+        val fromH = (row?.minimumHeight ?: idleH); val toH = if (toExpanded) expH else idleH
+        val cd = Prefs.cornerDp(this)
+        val cornerPx = px(if (cd >= 0) cd.toFloat() else style.cornerDp).toFloat()
+        val fromR = bgShape?.cornerRadius ?: (idleH / 2f)
+        val toR = if (toExpanded) minOf(cornerPx, toH / 2f + px(4)) else idleH / 2f
+        val maxW = resources.displayMetrics.widthPixels
+        val a = ValueAnimator.ofFloat(0f, 1f)
+        a.duration = if (toExpanded) Motion.expandMs(this) else Motion.collapseMs(this)
+        a.interpolator = if (toExpanded) Motion.spring() else Motion.smooth()
         a.addUpdateListener { va ->
-            val params = lp ?: return@addUpdateListener
-            params.width = va.animatedValue as Int
-            val f = va.animatedFraction
-            setContentAlpha(if (expanding) f else 1f - f)
+            val t = va.animatedValue as Float
+            val time = va.currentPlayTime.toFloat() / va.duration.toFloat()
+            params.width = lerp(fromW.toFloat(), toW.toFloat(), t).toInt().coerceIn(px(40), maxW)
+            row?.minimumHeight = lerp(fromH.toFloat(), toH.toFloat(), t).toInt().coerceAtLeast(idleH)
+            bgShape?.cornerRadius = lerp(fromR, toR, t.coerceIn(0f, 1f))
+            val c = if (toExpanded) ((time - 0.22f) / 0.5f).coerceIn(0f, 1f) else (1f - time / 0.45f).coerceIn(0f, 1f)
+            setContentAlpha(c)
+            iconView?.scaleX = 0.6f + 0.4f * c; iconView?.scaleY = 0.6f + 0.4f * c
+            textCol?.translationX = (1f - c) * px(14)
             if (attached) {
-                try {
-                    wm.updateViewLayout(island, params)
-                } catch (e: Exception) {
-                }
+                try { wm.updateViewLayout(island, params) } catch (e: Exception) {}
             }
         }
         a.addListener(object : AnimatorListenerAdapter() {
             private var canceled = false
-            override fun onAnimationCancel(animation: Animator) {
-                canceled = true
-            }
-
-            override fun onAnimationEnd(animation: Animator) {
-                if (!canceled) end?.invoke()
-            }
+            override fun onAnimationCancel(animation: Animator) { canceled = true }
+            override fun onAnimationEnd(animation: Animator) { if (!canceled) end?.invoke() }
         })
         anim = a
         a.start()
     }
 
     private fun pulse() {
-        island?.animate()?.scaleX(1.04f)?.scaleY(1.04f)?.setDuration(110)?.withEndAction {
-            island?.animate()?.scaleX(1f)?.scaleY(1f)?.setDuration(140)?.start()
+        island?.animate()?.scaleX(1.06f)?.scaleY(1.06f)?.setDuration(110)?.withEndAction {
+            island?.animate()?.scaleX(1f)?.scaleY(1f)?.setDuration((420 * Motion.factor(this)).toLong())
+                ?.setInterpolator(Motion.spring())?.start()
         }?.start()
     }
 
@@ -496,79 +554,9 @@ class NotifListener : NotificationListenerService() {
     }
 
     private fun openApp(pkg: String, freeform: Boolean) {
+        if (freeform) { FloatingWindow.open(this, pkg); return }
         val launch = packageManager.getLaunchIntentForPackage(pkg) ?: return
         launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-
-        if (freeform) {
-            // 1) Con root. Se activan las banderas de ventanas libres, se lanza la app en modo
-            //    freeform (5) en la pantalla principal y se COMPRUEBA con dumpsys si de verdad
-            //    quedó flotando. Si el sistema la dejó en pantalla completa se reintenta
-            //    forzando el tamaño de la tarea.
-            val comp = launch.component?.flattenToShortString()
-            if (comp != null) {
-                val m = resources.displayMetrics
-                val l = m.widthPixels / 10; val t = m.heightPixels / 6
-                val r = m.widthPixels * 9 / 10; val bt = m.heightPixels * 2 / 3
-                val extra = if (Prefs.forceNew(this)) "--activity-new-task --activity-multiple-task" else ""
-                val prep = "settings put global enable_freeform_support 1; " +
-                    "settings put global force_resizable_activities 1; " +
-                    "settings put global freeform_window_management 1; "
-                val start = "am start --user 0 --display 0 --windowingMode 5 $extra -n $comp"
-                val log = StringBuilder("Comando:\n$prep$start\n")
-                val res = Root.run(prep + start)
-                log.append("\nCódigo: ${res.first}\n${res.second}\n")
-                Thread.sleep(700)
-                // Verificación: busca la tarea del paquete y su modo de ventana
-                val dump = Root.run("dumpsys activity activities | grep -i -A12 \"$pkg\" | head -60").second
-                val isFree = dump.contains("freeform", ignoreCase = true) ||
-                    Regex("windowingMode=(5|\\w*freeform)", RegexOption.IGNORE_CASE).containsMatchIn(dump)
-                log.append("\nVerificación (¿flotante?): ${if (isFree) "SÍ" else "NO"}\n")
-                if (!isFree) {
-                    // Reintento: pasa la tarea a freeform y le da tamaño
-                    val id = Regex("taskId=(\\d+)|#(\\d+) type=").find(dump)
-                        ?.groupValues?.drop(1)?.firstOrNull { it.isNotEmpty() }
-                    log.append("Tarea encontrada: ${id ?: "ninguna"}\n")
-                    if (id != null) {
-                        val fix = Root.run(
-                            "cmd activity task set-windowing-mode $id 5; " +
-                                "cmd activity task resize $id $l $t $r $bt; " +
-                                "am task resize $id $l $t $r $bt"
-                        )
-                        log.append("Reintento: ${fix.first} ${fix.second}\n")
-                    }
-                    log.append("\nSi sigue sin aparecer: en Opciones de desarrollador desactiva " +
-                        "\"Forzar modo escritorio\" y \"Forzar actividades en cualquier app\" (déjalas " +
-                        "solo \"Permitir ventanas de forma libre\") y reinicia el teléfono.")
-                }
-                Prefs.setLastLog(this, log.toString())
-                if (res.first == 0 && !res.second.contains("Error", ignoreCase = true)) return
-            } else {
-                Prefs.setLastLog(this, "No se encontró la actividad principal de $pkg")
-            }
-
-            // 2) Sin root: API oculta de ActivityOptions (depende de la ROM)
-            try {
-                val opts = ActivityOptions.makeBasic()
-                try {
-                    ActivityOptions::class.java
-                        .getMethod("setLaunchWindowingMode", Int::class.javaPrimitiveType)
-                        .invoke(opts, 5)
-                } catch (e: Throwable) {
-                }
-                val m = resources.displayMetrics
-                opts.setLaunchBounds(
-                    Rect(m.widthPixels / 10, m.heightPixels / 6, m.widthPixels * 9 / 10, m.heightPixels * 2 / 3)
-                )
-                startActivity(launch, opts.toBundle())
-                return
-            } catch (e: Exception) {
-            }
-        }
-
-        // 3) Apertura normal
-        try {
-            startActivity(launch)
-        } catch (e: Exception) {
-        }
+        try { startActivity(launch) } catch (e: Exception) {}
     }
 }

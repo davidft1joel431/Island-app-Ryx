@@ -87,7 +87,7 @@ object Prefs {
     // ---- Respaldo ----
     fun exportAll(c: Context): String =
         org.json.JSONObject().also { o -> sp(c).all.forEach { (k, v) ->
-            if (k != "hist" && k != "last_log") o.put(k, if (v is Set<*>) org.json.JSONArray(v.toList()) else v) } }.toString()
+            if (k != "hist" && k != "hist2" && k != "last_log") o.put(k, if (v is Set<*>) org.json.JSONArray(v.toList()) else v) } }.toString()
     fun importAll(c: Context, json: String): Boolean = try {
         val o = org.json.JSONObject(json); val e = sp(c).edit()
         o.keys().forEach { k -> when (val v = o.get(k)) {
@@ -103,4 +103,51 @@ object Prefs {
     fun setExpandedWidthDp(c: Context, v: Int) = sp(c).edit().putInt("exp_w", v).apply()
     fun sideMarginDp(c: Context): Int = sp(c).getInt("side_m", 12)
     fun setSideMarginDp(c: Context, v: Int) = sp(c).edit().putInt("side_m", v).apply()
+
+    // ---- Puente de notificaciones ----
+    fun blockSystem(c: Context): Boolean = sp(c).getBoolean("block_sys", true)
+    fun setBlockSystem(c: Context, v: Boolean) = sp(c).edit().putBoolean("block_sys", v).apply()
+    fun iconMode(c: Context): Int = sp(c).getInt("icon_mode", 0)       // 0 sistema, 1 notificación, 2 monocromo
+    fun setIconMode(c: Context, v: Int) = sp(c).edit().putInt("icon_mode", v).apply()
+    fun iconShape(c: Context): Int = sp(c).getInt("icon_shape", 1)     // 0 círculo, 1 squircle, 2 flor, 3 hexágono
+    fun setIconShape(c: Context, v: Int) = sp(c).edit().putInt("icon_shape", v).apply()
+    fun smartColor(c: Context): Boolean = sp(c).getBoolean("smart_color", true)
+    fun setSmartColor(c: Context, v: Boolean) = sp(c).edit().putBoolean("smart_color", v).apply()
+    fun hiddenWordsRaw(c: Context): String = sp(c).getString("hidden_words", "") ?: ""
+    fun setHiddenWords(c: Context, v: String) = sp(c).edit().putString("hidden_words", v).apply()
+    fun hiddenWords(c: Context): List<String> =
+        hiddenWordsRaw(c).split(",").map { it.trim().lowercase() }.filter { it.isNotEmpty() }
+
+    // ---- Ventana flotante ----
+    fun fwWidthPct(c: Context): Int = sp(c).getInt("fw_w", 72)
+    fun setFwWidthPct(c: Context, v: Int) = sp(c).edit().putInt("fw_w", v).apply()
+    fun fwHeightPct(c: Context): Int = sp(c).getInt("fw_h", 58)
+    fun setFwHeightPct(c: Context, v: Int) = sp(c).edit().putInt("fw_h", v).apply()
+    fun fwPos(c: Context): Int = sp(c).getInt("fw_pos", 0)             // 0 centro, 1 arriba, 2 abajo
+    fun setFwPos(c: Context, v: Int) = sp(c).edit().putInt("fw_pos", v).apply()
+    fun fwAnim(c: Context): Int = sp(c).getInt("fw_anim", 0)           // 0 resorte, 1 desvanecer, 2 deslizar
+    fun setFwAnim(c: Context, v: Int) = sp(c).edit().putInt("fw_anim", v).apply()
+    fun fwTestPkg(c: Context): String = sp(c).getString("fw_test", "") ?: ""
+    fun setFwTestPkg(c: Context, v: String) = sp(c).edit().putString("fw_test", v).apply()
+
+    // ---- Historial por app (JSON) ----
+    data class HistItem(val pkg: String, val title: String, val text: String, val ts: Long)
+
+    fun addHist(c: Context, pkg: String, title: String, text: String) {
+        val old = try { org.json.JSONArray(sp(c).getString("hist2", "[]")) } catch (e: Exception) { org.json.JSONArray() }
+        val first = old.optJSONObject(0)
+        val now = System.currentTimeMillis()
+        if (first != null && first.optString("p") == pkg && first.optString("t") == title &&
+            first.optString("x") == text && now - first.optLong("ts") < 3000) return
+        val out = org.json.JSONArray()
+        out.put(org.json.JSONObject().put("p", pkg).put("t", title).put("x", text).put("ts", now))
+        for (i in 0 until minOf(old.length(), 599)) out.put(old.get(i))
+        sp(c).edit().putString("hist2", out.toString()).apply()
+    }
+    fun histAll(c: Context): List<HistItem> = try {
+        val a = org.json.JSONArray(sp(c).getString("hist2", "[]"))
+        (0 until a.length()).map { val o = a.getJSONObject(it)
+            HistItem(o.optString("p"), o.optString("t"), o.optString("x"), o.optLong("ts")) }
+    } catch (e: Exception) { emptyList() }
+    fun clearHist(c: Context) = sp(c).edit().remove("hist2").apply()
 }

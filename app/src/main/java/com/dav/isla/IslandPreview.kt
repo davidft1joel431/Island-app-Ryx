@@ -11,7 +11,6 @@ import android.graphics.RectF
 import android.graphics.Shader
 import android.graphics.Typeface
 import android.view.View
-import android.view.animation.DecelerateInterpolator
 
 /**
  * Vista previa en vivo, estilo editor de la isla de HyperOS: dibuja la parte superior
@@ -39,14 +38,14 @@ class IslandPreview(c: Context) : View(c) {
 
     fun refresh() = invalidate()
 
-    private fun durationMs(): Long = when (Prefs.speed(context)) { 0 -> 420L; 2 -> 160L; else -> 280L }
 
     fun setExpanded(e: Boolean) = animateTo(if (e) 1f else 0f)
 
     private fun animateTo(t: Float, then: (() -> Unit)? = null) {
         anim?.cancel()
         anim = ValueAnimator.ofFloat(progress, t).apply {
-            duration = durationMs(); interpolator = DecelerateInterpolator(1.4f)
+            duration = if (t >= progress) Motion.expandMs(context) else Motion.collapseMs(context)
+            interpolator = if (t >= progress) Motion.spring() else Motion.smooth()
             addUpdateListener { progress = it.animatedValue as Float; invalidate() }
             if (then != null) addListener(object : android.animation.AnimatorListenerAdapter() {
                 override fun onAnimationEnd(a: android.animation.Animator) { then() }
@@ -130,7 +129,7 @@ class IslandPreview(c: Context) : View(c) {
             val k = ((progress - 0.35f) / 0.65f).coerceIn(0f, 1f)
             val ic = u(st.iconDp.toFloat() * 0.9f)
             val ix = rect.left + u(st.padH.toFloat() + 2f); val iy = rect.top + (rect.height() - ic) / 2f
-            p.color = 0xFFC3D29A.toInt(); p.alpha = (255 * k).toInt()
+            p.color = Glass.ACCENT; p.alpha = (255 * k).toInt()
             val ir = RectF(ix, iy, ix + ic, iy + ic); cv.drawRoundRect(ir, u(st.iconCornerDp), u(st.iconCornerDp), p)
             p.color = 0xFFFFFFFF.toInt(); p.alpha = (255 * k).toInt(); p.typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
             p.textSize = u(st.titleSp)
@@ -141,7 +140,7 @@ class IslandPreview(c: Context) : View(c) {
         p.alpha = 255
 
         // Cotas
-        p.color = 0xFFC3D29A.toInt(); p.textSize = u(11f); p.typeface = Typeface.DEFAULT; p.textAlign = Paint.Align.CENTER
+        p.color = Glass.ACCENT; p.textSize = u(11f); p.typeface = Typeface.DEFAULT; p.textAlign = Paint.Align.CENTER
         cv.drawText("${wdp.toInt()} × ${hdp.toInt()} dp", rect.centerX(), rect.bottom + u(16f), p)
         p.strokeWidth = maxOf(1f, u(1f)); p.style = Paint.Style.STROKE
         p.pathEffect = android.graphics.DashPathEffect(floatArrayOf(u(3f), u(3f)), 0f)

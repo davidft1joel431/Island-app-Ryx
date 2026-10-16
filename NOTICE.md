@@ -8,6 +8,8 @@ La interfaz y el conjunto de funciones están inspirados en
 [Smart Island](https://github.com/agupta07505/SmartIsland) de **Animesh Gupta**
 (© 2026 Animesh Gupta, licencia GPL-3.0).
 
+También se inspira en las ideas de [Hyper Bridge](https://play.google.com/store/apps/details?id=com.d4viddf.hyperbridge) (formas de icono, colores inteligentes, reglas por app).
+
 El código de este repositorio está escrito de forma independiente y no incluye código de Smart Island.
 
 **Importante:** si alguna vez se copia o adapta código de Smart Island, la licencia GPL-3.0 exige
