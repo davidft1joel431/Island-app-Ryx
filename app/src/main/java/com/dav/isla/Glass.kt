@@ -15,28 +15,28 @@ import android.animation.ValueAnimator
 
 /** Estilo "Liquid Glass" de HyperOS: fondo oliva con brillo, tarjetas translúcidas y bordes claros. */
 object Glass {
-    const val ACCENT = 0xFFC3D29A.toInt()      // verde claro (interruptores, seleccionados)
-    const val ACCENT_DARK = 0xFF5F6B3E.toInt() // pastilla de la pestaña activa
-    const val TEXT = 0xFFF4F5EE.toInt()
-    const val MUTED = 0xFFB4B8A6.toInt()
+    const val ACCENT = 0xFFFF8A4C.toInt()      // naranja Ryx (interruptores, seleccionados)
+    const val ACCENT_DARK = 0xFF6B3317.toInt() // pastilla de la pestaña activa
+    const val TEXT = 0xFFF5F6F8.toInt()
+    const val MUTED = 0xFFA9AEBB.toInt()
 
     private fun dp(c: Context, v: Float) = v * c.resources.displayMetrics.density
 
     fun page(c: Context): Drawable {
         val d = c.resources.displayMetrics
         val base = GradientDrawable(GradientDrawable.Orientation.TL_BR,
-            intArrayOf(0xFF2D3124.toInt(), 0xFF1B1E15.toInt(), 0xFF12140E.toInt()))
+            intArrayOf(0xFF1D2028.toInt(), 0xFF13151B.toInt(), 0xFF0B0C10.toInt()))
         val glow = GradientDrawable().apply {
             gradientType = GradientDrawable.RADIAL_GRADIENT
-            setGradientCenter(0.92f, 0.42f)
+            setGradientCenter(0.95f, 0.08f)
             gradientRadius = d.widthPixels * 0.9f
-            colors = intArrayOf(0x88808066.toInt(), 0x00808066)
+            colors = intArrayOf(0x55FF7A3D, 0x00FF7A3D)
         }
         val glow2 = GradientDrawable().apply {
             gradientType = GradientDrawable.RADIAL_GRADIENT
-            setGradientCenter(0.05f, 0.02f)
+            setGradientCenter(0.05f, 0.95f)
             gradientRadius = d.widthPixels * 0.8f
-            colors = intArrayOf(0x44707A55, 0x00707A55)
+            colors = intArrayOf(0x444F7CFF, 0x004F7CFF)
         }
         return LayerDrawable(arrayOf(base, glow, glow2))
     }
@@ -44,10 +44,10 @@ object Glass {
     fun card(c: Context, radiusDp: Float = 26f, strong: Boolean = false): Drawable {
         val r = dp(c, radiusDp)
         val body = GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM,
-            if (strong) intArrayOf(0xB0444A38.toInt(), 0xCC1D2016.toInt())
-            else intArrayOf(0x70434838, 0x99181A12.toInt())).apply { cornerRadius = r }
+            if (strong) intArrayOf(0xB03A4050.toInt(), 0xCC15171E.toInt())
+            else intArrayOf(0x70373C4A, 0x99161820.toInt())).apply { cornerRadius = r }
         val rim = GradientDrawable().apply {
-            cornerRadius = r; setColor(0); setStroke(maxOf(1, dp(c, 1.1f).toInt()), 0x55E6EBD2)
+            cornerRadius = r; setColor(0); setStroke(maxOf(1, dp(c, 1.1f).toInt()), 0x55FFFFFF)
         }
         val shine = GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM,
             intArrayOf(0x22FFFFFF, 0x00FFFFFF)).apply { cornerRadius = r }
@@ -56,7 +56,7 @@ object Glass {
         return l
     }
 
-    fun tile(c: Context, color: Int = 0xFF3A4030.toInt(), radiusDp: Float = 14f): Drawable =
+    fun tile(c: Context, color: Int = 0xFF2A2E38.toInt(), radiusDp: Float = 14f): Drawable =
         GradientDrawable().apply { cornerRadius = dp(c, radiusDp); setColor(color) }
 
     fun pill(c: Context, fill: Int, stroke: Int = 0, radiusDp: Float = 18f): Drawable =
@@ -99,11 +99,11 @@ class GlassSwitch(c: Context) : View(c) {
     override fun onDraw(cv: Canvas) {
         val w = width.toFloat(); val h = height.toFloat()
         rect.set(0f, 0f, w, h)
-        p.color = blend(0xFF4A4F40.toInt(), Glass.ACCENT, t); p.style = Paint.Style.FILL
+        p.color = blend(0xFF474C58.toInt(), Glass.ACCENT, t); p.style = Paint.Style.FILL
         cv.drawRoundRect(rect, h / 2, h / 2, p)
         val r = h / 2 - 4 * d
         val cx = h / 2 + (w - h) * t
-        p.color = blend(0xFFB9BCAE.toInt(), 0xFFFFFFFF.toInt(), t)
+        p.color = blend(0xFFB4B8C4.toInt(), 0xFFFFFFFF.toInt(), t)
         cv.drawCircle(cx, h / 2, r + (2 * d * t), p)
     }
 
