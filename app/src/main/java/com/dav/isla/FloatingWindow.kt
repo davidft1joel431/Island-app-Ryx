@@ -47,7 +47,17 @@ object FloatingWindow {
         sb.append("enable_freeform_support = $f1\n")
         sb.append("force_resizable_activities = ${g("force_resizable_activities")}\n")
         sb.append("freeform_window_management = ${g("freeform_window_management")}\n")
+        sb.append("force_desktop_mode_on_external_displays = ${g("force_desktop_mode_on_external_displays")}\n")
+        // Recursos internos de la ROM que indican si hay modo escritorio (solo se muestran los que existen)
+        val sys = android.content.res.Resources.getSystem()
+        listOf("config_isDesktopModeSupported", "config_canInternalDisplayHostDesktops", "config_enableDesktopWindowing",
+            "config_desktopModeSupported", "config_freeformWindowManagement").forEach { n ->
+            val id = sys.getIdentifier(n, "bool", "android")
+            if (id != 0) try { sb.append("$n = ${sys.getBoolean(id)}\n") } catch (e: Exception) {}
+        }
         sb.append("\nMétodo actual: ${Shell.label(c)}\n")
+        sb.append("\nLa barra para mover/redimensionar la dibuja el sistema, y en Android 15+ solo en modo escritorio: " +
+            "en Opciones de desarrollador activa también la opción de ventanas/modo escritorio (\"Desktop\" / \"Escritorio\") y reinicia.\n")
         if (!has && f1 != "1")
             sb.append("\nActiva «Permitir ventanas de forma libre» en Opciones de desarrollador y reinicia.")
         else if (!has)
@@ -101,9 +111,9 @@ object FloatingWindow {
                     dump = taskDump(c, pkg); free = isFreeTask(dump, id)
                 }
                 log.append("\nVerificación final (¿flotante?): ${if (free) "SÍ" else "NO"}\n")
-                if (id != null && Prefs.fwFrame(c)) { FloatFrame.show(c, id, b); log.append("Asas de Ryx: mostradas (mover y cambiar tamaño)\n") }
+                if (id != null && Prefs.fwFrame(c)) { FloatFrame.show(c, id, b, pkg); log.append("Asas de Ryx: mostradas (mover y cambiar tamaño)\n") }
                 if (!free) log.append("\nSi no aparece: en Opciones de desarrollador activa «Permitir ventanas de forma libre» " +
-                    "y «Forzar que las actividades sean redimensionables», deja apagado «Forzar modo escritorio» y reinicia una vez.")
+                    "y «Forzar que las actividades sean redimensionables», activa el modo escritorio de la ROM y reinicia una vez.")
                 return save(c, log)       // ya se lanzó con privilegios; no se abre una segunda vez
             }
             log.append("\nLos comandos fallaron; se prueba sin privilegios.\n")
@@ -130,6 +140,7 @@ object FloatingWindow {
             if (Prefs.fwOwnBounds(c)) opts.setLaunchBounds(b) else log.append("Tamaño y posición: los elige Android.\n")
             if (Prefs.forceNew(c)) launch.addFlags(Intent.FLAG_ACTIVITY_MULTIPLE_TASK)
             c.startActivity(launch, opts.toBundle())
+            if (Prefs.fwFrame(c)) { FloatFrame.show(c, "", b, pkg); log.append("Asas de Ryx: mostradas (modo sin privilegios, experimental)\n") }
             log.append("\nLanzada sin privilegios · modo libre pedido: ${if (modeAsked) "sí" else "no"}\n" +
                 "Ryx no puede comprobar el resultado sin permisos: mira si la ventana quedó flotante.")
             return save(c, log)
@@ -138,6 +149,22 @@ object FloatingWindow {
         // 3) Apertura normal
         try { c.startActivity(launch); log.append("\nSe abrió en pantalla completa.") } catch (e: Exception) {}
         return save(c, log)
+    }
+
+    /** Sin privilegios: vuelve a pedir la ventana libre en otra posición/tamaño (experimental; depende de la ROM). */
+    fun reposition(c: Context, pkg: String, r: Rect) {
+        try {
+            val launch = c.packageManager.getLaunchIntentForPackage(pkg) ?: return
+            launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            unlockHiddenApi(StringBuilder())
+            val opts = ActivityOptions.makeBasic()
+            try { opts.setLaunchDisplayId(0) } catch (e: Throwable) {}
+            try {
+                ActivityOptions::class.java.getMethod("setLaunchWindowingMode", Int::class.javaPrimitiveType).invoke(opts, 5)
+            } catch (e: Throwable) {}
+            opts.setLaunchBounds(r)
+            c.startActivity(launch, opts.toBundle())
+        } catch (e: Exception) {}
     }
 
     /** Mueve/redimensiona una tarea ya abierta (solo con Shizuku o root). */

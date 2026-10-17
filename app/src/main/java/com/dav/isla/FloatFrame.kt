@@ -17,7 +17,7 @@ import android.widget.TextView
 
 /**
  * Asa propia de Ryx para mover y cambiar el tamaño de la ventana flotante.
- * Mover una ventana de otra app exige permisos de shell, así que solo actúa con Shizuku (o root si lo elegiste).
+ * Con Shizuku (o root si lo elegiste) mueve la ventana real; sin privilegios la vuelve a abrir en el nuevo sitio (experimental).
  */
 object FloatFrame {
     private val main = Handler(Looper.getMainLooper())
@@ -32,18 +32,20 @@ object FloatFrame {
     private var downX = 0f
     private var downY = 0f
     private var taskId = ""
+    private var pkgName = ""
+    private var priv = false
     @Volatile private var generation = 0
     @Volatile private var pending: Rect? = null
     @Volatile private var worker = false
 
     private fun dp(c: Context, v: Int) = (v * c.resources.displayMetrics.density).toInt()
 
-    fun show(c: Context, id: String, bounds: Rect) {
+    fun show(c: Context, id: String, bounds: Rect, pkg: String = "") {
         val app = c.applicationContext
         main.post {
             if (!Settings.canDrawOverlays(app)) return@post
             hide()
-            ctx = app; taskId = id; r.set(bounds)
+            ctx = app; taskId = id; pkgName = pkg; priv = id.isNotEmpty() && Shell.privileged(app); r.set(bounds)
             val w = app.getSystemService(Context.WINDOW_SERVICE) as WindowManager
             wm = w
             val gen = generation
@@ -77,7 +79,8 @@ object FloatFrame {
             handle = bar; grip = g
             place()
             try { w.addView(bar, hp); w.addView(g, gp) } catch (e: Exception) { hide(); return@post }
-            watchTask(app, id, gen)
+            if (priv) watchTask(app, id, gen)
+            else main.postDelayed({ if (generation == gen) hide() }, 120_000L)   // sin verificación: se quitan solas a los 2 min
         }
     }
 
@@ -113,9 +116,16 @@ object FloatFrame {
                     val bb = maxOf(start.bottom + dy, start.top + dp(c, 220))
                     r.set(start.left, start.top, rr, bb)
                 }
-                place(); push(c); true
+                place(); if (priv) push(c); true
             }
-            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> { push(c); true }
+            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                if (priv) push(c)
+                else if (pkgName.isNotEmpty() && (r.left != start.left || r.top != start.top || r.right != start.right || r.bottom != start.bottom)) {
+                    val rr = Rect(r); val pk = pkgName
+                    Thread { FloatingWindow.reposition(c, pk, rr) }.start()
+                }
+                true
+            }
             else -> false
         }
     }
