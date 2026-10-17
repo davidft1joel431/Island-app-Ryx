@@ -816,9 +816,14 @@ class MainActivity : Activity() {
             }, lp(8))
         }
         val cp = titled(p, "Compatibilidad de la ROM", "${Build.DISPLAY} · Android ${Build.VERSION.RELEASE}")
-        cp.addView(label("Las ventanas libres necesitan «Permitir ventanas de forma libre» en Opciones de desarrollador y un reinicio. " +
-            "«Forzar que las actividades sean redimensionables» ayuda con apps que no se dejan; «Forzar modo escritorio» déjalo apagado.",
+        cp.addView(label("Para que la ventana tenga barra y se pueda mover, en Opciones de desarrollador activa: " +
+            "«Permitir ventanas de forma libre», «Forzar que las actividades sean redimensionables» y la opción de " +
+            "ventanas/modo escritorio de tu ROM (Infinity X: busca «escritorio» o «desktop»). Después reinicia. " +
+            "El modo escritorio es lo que hace que Android dibuje la barra de la ventana; ya no se recomienda dejarlo apagado.",
             12f, R.color.muted), lp(8))
+        cp.addView(button("Abrir Opciones de desarrollador", false) {
+            try { startActivity(Intent(Settings.ACTION_APPLICATION_DEVELOPMENT_SETTINGS)) } catch (e: Exception) { toast("No se pudo abrir") }
+        }, lp(10))
         cp.addView(button("Comprobar soporte", false) {
             toast("Comprobando…")
             dialog("Soporte de ventanas libres", FloatingWindow.support(this))
@@ -826,7 +831,7 @@ class MainActivity : Activity() {
         cp.addView(button("Activar y reiniciar el teléfono", false) {
             if (!Shell.privileged(this)) {
                 dialog("Sin privilegios", "Sin Shizuku ni root no se puede cambiar ese ajuste desde la app. " +
-                    "Actívalo a mano en Opciones de desarrollador («Habilitar ventanas libres» o «Permitir ventanas de forma libre») y reinicia.")
+                    "Actívalo a mano en Opciones de desarrollador («Permitir ventanas de forma libre» y la opción de modo escritorio) y reinicia.")
                 return@button
             }
             glass(AlertDialog.Builder(this).setTitle("Reiniciar teléfono")
@@ -843,7 +848,7 @@ class MainActivity : Activity() {
             "le ponga su barra y se pueda mover y cambiar de tamaño. Si no te funciona, prueba la otra.", 12f, R.color.muted), lp(6))
         g.addView(rowWithSwitch("Usar mi tamaño y posición", "Apágalo para que Android elija el tamaño, como en el lanzador",
             Prefs.fwOwnBounds(this)) { Prefs.setFwOwnBounds(this, it) })
-        g.addView(rowWithSwitch("Asas de Ryx para mover y cambiar tamaño", "Solo con Shizuku o root. Úsalo si la ventana sale sin barra",
+        g.addView(rowWithSwitch("Asas de Ryx para mover y cambiar tamaño", "Úsalo si la ventana sale sin barra. Con Shizuku mueve la real; sin privilegios la reabre en el nuevo sitio (experimental)",
             Prefs.fwFrame(this)) { Prefs.setFwFrame(this, it) })
 
         val sz = titled(p, "Tamaño y posición")
