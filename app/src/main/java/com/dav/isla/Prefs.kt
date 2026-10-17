@@ -87,7 +87,7 @@ object Prefs {
     // ---- Respaldo ----
     fun exportAll(c: Context): String =
         org.json.JSONObject().also { o -> sp(c).all.forEach { (k, v) ->
-            if (k != "hist" && k != "hist2" && k != "last_log") o.put(k, if (v is Set<*>) org.json.JSONArray(v.toList()) else v) } }.toString()
+            if (k != "hist" && k != "hist2" && k != "last_log" && !k.startsWith("cloud_") && !k.startsWith("upd_")) o.put(k, if (v is Set<*>) org.json.JSONArray(v.toList()) else v) } }.toString()
     fun importAll(c: Context, json: String): Boolean = try {
         val o = org.json.JSONObject(json); val e = sp(c).edit()
         o.keys().forEach { k -> when (val v = o.get(k)) {
@@ -204,4 +204,30 @@ object Prefs {
     fun setCardGlass(c: Context, v: Boolean) = sp(c).edit().putBoolean("card_glass", v).apply()
     fun cardColor(c: Context): Int = sp(c).getInt("card_color", 0)     // 0 = el del estilo
     fun setCardColor(c: Context, v: Int) = sp(c).edit().putInt("card_color", v).apply()
+
+    // ---- Visibilidad de la isla ----
+    fun hideInGames(c: Context): Boolean = sp(c).getBoolean("hide_games", false)
+    fun setHideInGames(c: Context, v: Boolean) = sp(c).edit().putBoolean("hide_games", v).apply()
+    fun hideApps(c: Context): Set<String> = sp(c).getStringSet("hide_apps", emptySet()) ?: emptySet()
+    fun setHideApps(c: Context, v: Set<String>) = sp(c).edit().putStringSet("hide_apps", v).apply()
+
+    // ---- Ventana flotante: cómo se abre ----
+    fun fwMode(c: Context): Int = sp(c).getInt("fw_mode", 0)            // 0 como el lanzador, 1 con animación de Ryx
+    fun setFwMode(c: Context, v: Int) = sp(c).edit().putInt("fw_mode", v).apply()
+    fun fwOwnBounds(c: Context): Boolean = sp(c).getBoolean("fw_own_bounds", true)
+    fun setFwOwnBounds(c: Context, v: Boolean) = sp(c).edit().putBoolean("fw_own_bounds", v).apply()
+    fun fwFrame(c: Context): Boolean = sp(c).getBoolean("fw_frame", false)
+    fun setFwFrame(c: Context, v: Boolean) = sp(c).edit().putBoolean("fw_frame", v).apply()
+
+    // ---- Copia en la nube y actualizaciones ----
+    fun cloudUri(c: Context): String = sp(c).getString("cloud_uri", "") ?: ""
+    fun setCloudUri(c: Context, v: String) = sp(c).edit().putString("cloud_uri", v).apply()
+    fun cloudLast(c: Context): Long = sp(c).getLong("cloud_last", 0L)
+    fun setCloudLast(c: Context, v: Long) = sp(c).edit().putLong("cloud_last", v).apply()
+    fun updLast(c: Context): Long = sp(c).getLong("upd_last", 0L)
+    fun setUpdLast(c: Context, v: Long) = sp(c).edit().putLong("upd_last", v).apply()
+    fun restoreAsked(c: Context): Boolean = sp(c).getBoolean("restore_asked", false)
+    fun setRestoreAsked(c: Context, v: Boolean) = sp(c).edit().putBoolean("restore_asked", v).apply()
+    fun histRaw(c: Context): String = sp(c).getString("hist2", "[]") ?: "[]"
+    fun setHistRaw(c: Context, v: String) = sp(c).edit().putString("hist2", v).apply()
 }

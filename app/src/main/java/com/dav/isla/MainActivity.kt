@@ -134,6 +134,152 @@ class MainActivity : Activity() {
             Shizuku.addBinderReceivedListener(binderListener)
             Shizuku.addBinderDeadListener(deadListener)
         } catch (e: Throwable) {}
+        Backup.maybeUpload(this, 60 * 60_000L)
+        offerRestore()
+        if (System.currentTimeMillis() - Prefs.updLast(this) > 12 * 3600_000L) checkUpdates(false)
+    }
+
+    private val REQ_TREE = 71
+    private val REQ_RESTORE = 72
+
+    @Suppress("DEPRECATION")
+    override fun onActivityResult(req: Int, res: Int, data: Intent?) {
+        super.onActivityResult(req, res, data)
+        val uri = data?.data ?: return
+        if (res != RESULT_OK) return
+        when (req) {
+            REQ_TREE -> {
+                try { contentResolver.takePersistableUriPermission(uri,
+                    Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION) } catch (e: Exception) {}
+                Prefs.setCloudUri(this, uri.toString())
+                toast("Carpeta elegida. Guardando copia…")
+                Thread {
+                    val r = Backup.upload(this)
+                    runOnUiThread { toast(if (r.isEmpty()) "Copia guardada en la nube" else r); render() }
+                }.start()
+            }
+            REQ_RESTORE -> Thread {
+                val msg = try {
+                    contentResolver.openInputStream(uri)?.use { Backup.restore(this, it) } ?: "No se pudo abrir el archivo."
+                } catch (e: Exception) { "No se pudo restaurar: ${e.message ?: e.javaClass.simpleName}" }
+                runOnUiThread { applyAll(); render(); dialog("Restaurar copia", msg) }
+            }.start()
+        }
+    }
+
+    private fun pickRestore() = startActivityForResult(
+        Intent(Intent.ACTION_OPEN_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType("*/*"), REQ_RESTORE)
+
+    private fun pickCloudFolder() = startActivityForResult(
+        Intent(Intent.ACTION_OPEN_DOCUMENT_TREE).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or
+            Intent.FLAG_GRANT_WRITE_URI_PERMISSION or Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION), REQ_TREE)
+
+    /** Instalación nueva y sin historial: ofrece traer la copia guardada (una sola vez). */
+    private fun offerRestore() {
+        if (Prefs.restoreAsked(this) || Prefs.histAll(this).isNotEmpty() || Backup.configured(this)) return
+        Prefs.setRestoreAsked(this, true)
+        glass(AlertDialog.Builder(this).setTitle("¿Restaurar tu historial?")
+            .setMessage("Si ya tenías una copia de Ryx Island (por ejemplo en Google Drive), puedes traerla ahora: " +
+                "recupera tus ajustes y el historial de notificaciones.")
+            .setPositiveButton("Elegir copia") { _, _ -> pickRestore() }
+            .setNegativeButton("Ahora no", null).show())
+    }
+
+    private fun openUrl(u: String) {
+        try { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(u))) } catch (e: Exception) { toast("No se pudo abrir el enlace") }
+    }
+
+    private fun checkUpdates(manual: Boolean) {
+        if (manual) toast("Buscando actualizaciones…")
+        Prefs.setUpdLast(this, System.currentTimeMillis())
+        Thread {
+            val r = Updater.check(this)
+            runOnUiThread {
+                if (isFinishing) return@runOnUiThread
+                val i = r.info
+                if (i == null) {
+                    if (manual) dialog("Actualizaciones", r.error)
+                } else if (i.newer) {
+                    val warn = if (i.channel.isEmpty()) "" else
+                        "⚠ Esta versión es ${i.channel.uppercase()}. Puede tener errores o fallar; instalarla es bajo tu propio riesgo.\n\n"
+                    glass(AlertDialog.Builder(this).setTitle("Hay una versión nueva: ${i.name}")
+                        .setMessage(warn + i.notes.trim().take(500).ifEmpty { "Hay una actualización disponible." } +
+                            "\n\nPara actualizar, Ryx descarga el APK, guarda tu copia en la nube y desinstala esta versión; " +
+                            "luego abres el archivo descargado para instalar la nueva.")
+                        .setPositiveButton(if (i.channel.isEmpty()) "Actualizar" else "Entiendo el riesgo, actualizar") { _, _ -> startUpdate(i) }
+                        .setNegativeButton("Luego", null).show())
+                } else if (manual) {
+                    dialog("Actualizaciones", "Ya tienes la última versión (v${BuildConfig.VERSION_NAME}).")
+                }
+            }
+        }.start()
+    }
+
+    /** 1) copia en la nube  2) descarga del APK a Descargas  3) desinstala esta versión  4) el usuario instala el APK descargado. */
+    private fun startUpdate(i: Updater.Info) {
+        if (i.apk.isEmpty()) { openUrl(i.page); return }
+        if (!Backup.configured(this)) {
+            glass(AlertDialog.Builder(this).setTitle("Sin copia en la nube")
+                .setMessage("Al desinstalar se borra el historial de notificaciones y tus ajustes. " +
+                    "Configura la copia en la nube primero si quieres conservarlos.")
+                .setPositiveButton("Configurar copia") { _, _ -> cloudDialog() }
+                .setNeutralButton("Actualizar sin copia") { _, _ -> downloadAndUninstall(i) }
+                .setNegativeButton("Cancelar", null).show())
+        } else downloadAndUninstall(i)
+    }
+
+    private fun downloadAndUninstall(i: Updater.Info) {
+        val fileName = "RyxIsland-${i.tag.ifEmpty { "nueva" }}.apk"
+        val dm = getSystemService(DOWNLOAD_SERVICE) as android.app.DownloadManager
+        val id = try {
+            dm.enqueue(android.app.DownloadManager.Request(Uri.parse(i.apk))
+                .setTitle("Ryx Island ${i.name}")
+                .setMimeType("application/vnd.android.package-archive")
+                .setNotificationVisibility(android.app.DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
+                .setDestinationInExternalPublicDir(android.os.Environment.DIRECTORY_DOWNLOADS, fileName))
+        } catch (e: Exception) { dialog("Actualizar", "No se pudo iniciar la descarga: ${e.message ?: e.javaClass.simpleName}"); return }
+        toast("Descargando la actualización…")
+        Thread {
+            var status = 0
+            for (n in 0 until 600) {                          // hasta ~5 minutos
+                val cur = dm.query(android.app.DownloadManager.Query().setFilterById(id))
+                if (cur != null) cur.use {
+                    if (it.moveToFirst()) status = it.getInt(it.getColumnIndexOrThrow(android.app.DownloadManager.COLUMN_STATUS))
+                }
+                if (status == android.app.DownloadManager.STATUS_SUCCESSFUL || status == android.app.DownloadManager.STATUS_FAILED) break
+                Thread.sleep(500)
+            }
+            if (status != android.app.DownloadManager.STATUS_SUCCESSFUL) {
+                runOnUiThread { dialog("Actualizar", "No se pudo descargar el APK. No se desinstaló nada.") }
+                return@Thread
+            }
+            val backup = if (Backup.configured(this)) Backup.upload(this) else "sin copia"
+            runOnUiThread {
+                if (isFinishing) return@runOnUiThread
+                val bMsg = when {
+                    backup.isEmpty() -> "Copia en la nube guardada ✔"
+                    backup == "sin copia" -> "Sin copia en la nube: el historial se perderá."
+                    else -> "⚠ La copia en la nube falló: $backup"
+                }
+                glass(AlertDialog.Builder(this).setTitle("Listo para actualizar")
+                    .setMessage("$bMsg\n\nAPK descargado en Descargas/$fileName.\n\n" +
+                        "Ahora se desinstalará esta versión. Después, abre la notificación de descarga o el archivo en Descargas " +
+                        "para instalar la nueva (Android puede pedirte permitir instalar desde esa app). " +
+                        "Al abrir la nueva, usa «Restaurar» para recuperar tu historial.")
+                    .setPositiveButton("Desinstalar ahora") { _, _ ->
+                        try { startActivity(Intent(Intent.ACTION_DELETE, Uri.parse("package:$packageName"))) }
+                        catch (e: Exception) { toast("No se pudo abrir el desinstalador") }
+                    }.setNegativeButton("Cancelar", null).show())
+            }
+        }.start()
+    }
+
+    private fun askUsageAccess() {
+        try {
+            startActivity(Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS, Uri.parse("package:$packageName")))
+        } catch (e: Exception) {
+            try { startActivity(Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS)) } catch (e2: Exception) {}
+        }
     }
 
     override fun onRequestPermissionsResult(code: Int, perms: Array<out String>, res: IntArray) {
@@ -441,6 +587,24 @@ class MainActivity : Activity() {
             Prefs.setPermanent(this, v); applyAll() })
         co.addView(rowWithSwitch("Vibrar al mostrar", "", Prefs.vibrate(this)) { Prefs.setVibrate(this, it) })
 
+        val vi = titled(p, "Visibilidad", "Cuándo se muestra la isla")
+        vi.addView(rowWithSwitch("Mostrar en la pantalla de bloqueo", "La isla aparece también con el teléfono bloqueado",
+            Prefs.lockScreen(this)) { Prefs.setLockScreen(this, it); applyAll() })
+        vi.addView(rowWithSwitch("Ocultar en juegos",
+            if (Foreground.hasAccess(this)) "Si detecta un juego abierto, la isla se esconde (las notificaciones siguen en el sistema)"
+            else "Necesita «Acceso de uso» para saber qué app está al frente",
+            Prefs.hideInGames(this)) { v ->
+            Prefs.setHideInGames(this, v)
+            if (v && !Foreground.hasAccess(this)) askUsageAccess()
+        })
+        val hid = Prefs.hideApps(this).size
+        vi.addView(button(if (hid == 0) "Ocultar en apps concretas…" else "Ocultar en apps concretas ($hid)", false) {
+            if (!Foreground.hasAccess(this)) { toast("Concede primero el acceso de uso"); askUsageAccess() }
+            pickApps("Ocultar la isla en…", Prefs.hideApps(this)) { Prefs.setHideApps(this, it) }
+        }, lp(10))
+        vi.addView(label("Un juego se detecta si la app se declara como juego (la mayoría de los instalados desde Play Store). " +
+            "Si alguno no se detecta, agrégalo en «Ocultar en apps concretas».", 12f, R.color.muted), lp(8))
+
         val ge = titled(p, "Gestos", "Con la isla abierta. Si hay varias notificaciones, se acumulan a la derecha.")
         gestureRow(ge, "Tocar", Prefs.gTap(this)) { Prefs.setGTap(this, it) }
         gestureRow(ge, "Deslizar hacia abajo", Prefs.gDown(this)) { Prefs.setGDown(this, it) }
@@ -673,6 +837,14 @@ class MainActivity : Activity() {
         }, lp(8))
         val g = titled(p, "Ventana flotante", "Se abre con el gesto «Ventana flotante» (por defecto, deslizar hacia abajo)")
         g.addView(rowWithSwitch("Forzar ventana nueva", "Aunque la app ya esté abierta", Prefs.forceNew(this)) { Prefs.setForceNew(this, it) })
+        g.addView(label("Apertura sin privilegios", 13f, R.color.muted, true), lp(12))
+        g.addView(segmented(listOf("Como el lanzador", "Con animación Ryx"), Prefs.fwMode(this), true) { Prefs.setFwMode(this, it) }, lp(6))
+        g.addView(label("«Como el lanzador» pide la ventana igual que el menú «Formato libre» de tu launcher, para que Android " +
+            "le ponga su barra y se pueda mover y cambiar de tamaño. Si no te funciona, prueba la otra.", 12f, R.color.muted), lp(6))
+        g.addView(rowWithSwitch("Usar mi tamaño y posición", "Apágalo para que Android elija el tamaño, como en el lanzador",
+            Prefs.fwOwnBounds(this)) { Prefs.setFwOwnBounds(this, it) })
+        g.addView(rowWithSwitch("Asas de Ryx para mover y cambiar tamaño", "Solo con Shizuku o root. Úsalo si la ventana sale sin barra",
+            Prefs.fwFrame(this)) { Prefs.setFwFrame(this, it) })
 
         val sz = titled(p, "Tamaño y posición")
         seekRow(sz, "Ancho", "%", 40, 100, Prefs.fwWidthPct(this)) { Prefs.setFwWidthPct(this, it) }
@@ -682,7 +854,7 @@ class MainActivity : Activity() {
 
         val an = titled(p, "Animación de apertura", "Resorte: crece desde la isla, como en HyperOS")
         an.addView(segmented(listOf("Resorte", "Desvanecer", "Deslizar"), Prefs.fwAnim(this), true) { Prefs.setFwAnim(this, it) }, lp(10))
-        an.addView(label("Con root, el sistema usa su propia animación; sin root se usa esta.", 12f, R.color.muted), lp(8))
+        an.addView(label("Con root, el sistema usa su propia animación; sin privilegios solo se usa con «Con animación Ryx».", 12f, R.color.muted), lp(8))
 
         val t = titled(p, "Probar ventana flotante")
         val test = Prefs.fwTestPkg(this)
@@ -725,9 +897,13 @@ class MainActivity : Activity() {
         item(p, "history", 0xFF6A62E8.toInt(), "Historial de notificaciones", "Ordenado por aplicación, con su icono", "$n") { subPage = "history"; render() }
         item(p, "shield", 0xFF2DAA55.toInt(), "Permisos", "Superposición, acceso a notificaciones, batería", "") { subPage = "perms"; render() }
         item(p, "backup", 0xFF3F7BEA.toInt(), "Copia de seguridad", "Exporta o importa todos los ajustes", "") { backupDialog() }
+        item(p, "upload", 0xFF2D8CCB.toInt(), "Copia en la nube",
+            "Historial y ajustes en Google Drive u otra carpeta", if (Backup.configured(this)) "Activa" else "") { cloudDialog() }
+        item(p, "download", 0xFF2DAA55.toInt(), "Buscar actualizaciones", "Consulta la última versión en GitHub",
+            "v${BuildConfig.VERSION_NAME}") { checkUpdates(true) }
         item(p, "code", 0xFF5F6B80.toInt(), "Opciones de desarrollador", "Registro de la ventana flotante", "") { devDialog() }
         item(p, "info", 0xFF5F6B80.toInt(), "Acerca de", "Versión y créditos", "") {
-            dialog("Acerca de Ryx Island", "Ryx Island v0.9.3\nCreador: David Joel\n\nLa interfaz está inspirada en Smart Island, " +
+            dialog("Acerca de Ryx Island", "Ryx Island v${BuildConfig.VERSION_NAME}\nCreador: David Joel\n\nLa interfaz está inspirada en Smart Island, " +
                 "de Animesh Gupta (licencia GPL-3.0): github.com/agupta07505/SmartIsland, y en Hyper Bridge.\n\n" +
                 "Este código es propio y no copia el de esos proyectos. Si en el futuro se incorpora código ajeno, " +
                 "hay que conservar su aviso de copyright y respetar su licencia.")
@@ -834,6 +1010,8 @@ class MainActivity : Activity() {
             Build.VERSION.SDK_INT < 31 || checkSelfPermission("android.permission.BLUETOOTH_CONNECT") == 0) {
             if (Build.VERSION.SDK_INT >= 31) requestPermissions(arrayOf("android.permission.BLUETOOTH_CONNECT"), 1)
         }
+        permRow(b, "Acceso de uso (detectar juegos)", "Para ocultar la isla cuando hay un juego o una app elegida al frente",
+            Foreground.hasAccess(this)) { askUsageAccess() }
         val ignoring = (getSystemService(POWER_SERVICE) as PowerManager).isIgnoringBatteryOptimizations(packageName)
         permRow(b, "Sin optimización de batería", "Evita que el sistema cierre la isla en segundo plano", ignoring) {
             startActivity(Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, Uri.parse("package:$packageName")))
@@ -870,6 +1048,28 @@ class MainActivity : Activity() {
             val txt = cb.primaryClip?.getItemAt(0)?.text?.toString() ?: ""
             if (Prefs.importAll(this, txt)) { applyAll(); render(); toast("Ajustes importados") } else toast("El portapapeles no tiene una copia válida")
         }, lp(8))
+    }
+
+    private fun cloudDialog() = sheet("Copia en la nube") { b ->
+        val last = Prefs.cloudLast(this)
+        b.addView(label(if (Backup.configured(this)) "Carpeta elegida ✔" + (if (last > 0) "\nÚltima copia: " +
+            android.text.format.DateUtils.getRelativeTimeSpanString(last, System.currentTimeMillis(),
+                android.text.format.DateUtils.MINUTE_IN_MILLIS) else "") else "Todavía no hay carpeta elegida.", 14f, R.color.text), lp(6))
+        b.addView(button("Elegir carpeta (Google Drive u otra)", true) { pickCloudFolder() }, lp(10))
+        b.addView(button("Guardar copia ahora", false) {
+            toast("Guardando…")
+            Thread {
+                val r = Backup.upload(this)
+                runOnUiThread { toast(if (r.isEmpty()) "Copia guardada" else r) }
+            }.start()
+        }, lp(8))
+        b.addView(button("Restaurar desde una copia", false) { pickRestore() }, lp(8))
+        b.addView(label("En el selector que se abre, entra a Google Drive y elige o crea una carpeta. Ryx guarda ahí un archivo " +
+            "(ryx_respaldo.zip) con tus ajustes, el historial y sus imágenes, y lo actualiza solo cuando llegan notificaciones. " +
+            "Como queda en tu Drive, sigue ahí aunque desinstales la app; al reinstalar, usa «Restaurar».", 12f, R.color.muted), lp(10))
+        b.addView(label("Además, Android respalda estos datos con la copia de seguridad de tu cuenta de Google y los " +
+            "restaura al reinstalar desde la tienda. Al instalar un APK a mano, Android a veces no los restaura: para eso sirve la carpeta.",
+            12f, R.color.muted), lp(8))
     }
 
     private fun devDialog() = sheet("Opciones de desarrollador") { b ->

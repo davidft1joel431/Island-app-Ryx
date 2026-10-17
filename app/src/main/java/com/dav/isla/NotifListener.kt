@@ -86,6 +86,31 @@ class NotifListener : NotificationListenerService() {
     private var cardIndex = 0
     private val currentPkg: String? get() = cards.getOrNull(cardIndex)?.pkg
 
+    /** ¿La isla debe estar oculta ahora? (bloqueo desactivado, juego al frente o app elegida) */
+    private fun hiddenNow(): Boolean {
+        if (!Prefs.lockScreen(this) &&
+            (getSystemService(KEYGUARD_SERVICE) as android.app.KeyguardManager).isKeyguardLocked) return true
+        val apps = Prefs.hideApps(this)
+        if (!Prefs.hideInGames(this) && apps.isEmpty()) return false
+        val fg = Foreground.pkg(this) ?: return false
+        if (fg == packageName) return false
+        return fg in apps || (Prefs.hideInGames(this) && Foreground.isGame(this, fg))
+    }
+
+    /** Cada pocos segundos: quita la isla si entró a un juego y la devuelve (modo permanente) al salir. */
+    private val watch = object : Runnable {
+        override fun run() {
+            try {
+                if (Prefs.islandOn(this@NotifListener)) {
+                    val hide = hiddenNow()
+                    if (hide && attached) removeNow()
+                    else if (!hide && !attached && Prefs.permanent(this@NotifListener)) showIdle()
+                }
+            } catch (e: Exception) {}
+            main.postDelayed(this, 2500)
+        }
+    }
+
     private fun px(v: Int) = (v * resources.displayMetrics.density).toInt()
     private fun px(v: Float) = (v * resources.displayMetrics.density).toInt()
 
@@ -97,10 +122,12 @@ class NotifListener : NotificationListenerService() {
         wm = getSystemService(WINDOW_SERVICE) as WindowManager
         main.post { if (Prefs.islandOn(this) && Prefs.permanent(this)) showIdle() }
         registerSystemReceivers()
+        main.removeCallbacks(watch); main.postDelayed(watch, 2500)
         if (Prefs.hideHeadsUp(this)) Thread { Shell.setHeadsUp(this, false) }.start()
     }
 
     override fun onListenerDisconnected() {
+        main.removeCallbacks(watch)
         try { unregisterReceiver(sysReceiver) } catch (e: Exception) {}
         main.post { removeNow() }
         restoreHeadsUp()
@@ -108,6 +135,7 @@ class NotifListener : NotificationListenerService() {
     }
 
     override fun onDestroy() {
+        main.removeCallbacks(watch)
         try { unregisterReceiver(sysReceiver) } catch (e: Exception) {}
         anim?.cancel()
         removeNow()
@@ -153,13 +181,13 @@ class NotifListener : NotificationListenerService() {
         if (Prefs.keepHistory(this) && !sbn.isOngoing) {
             Prefs.addHist(this, sbn.packageName, title?.toString() ?: "", text?.toString() ?: "",
                 saveBitmap(mediaBmp, mediaKind), mediaKind)
+            Backup.maybeUpload(this)
         }
 
         // 2) Filtros de la isla
         if (!Prefs.islandOn(this)) return
         if (sbn.packageName in Prefs.blocked(this)) return
-        if (!Prefs.lockScreen(this) &&
-            (getSystemService(KEYGUARD_SERVICE) as android.app.KeyguardManager).isKeyguardLocked) return
+        if (hiddenNow()) return          // la notificación del sistema se queda intacta
         if (sbn.isOngoing) return
 
         // 3) Solo la isla muestra la notificación: se quita la del sistema
@@ -447,6 +475,7 @@ class NotifListener : NotificationListenerService() {
             gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL
             y = yPx
             x = px(Prefs.xOffsetDp(this@NotifListener))
+            if (Prefs.lockScreen(this@NotifListener)) flags = flags or WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED
             if (Build.VERSION.SDK_INT >= 31 && Prefs.idleBlur(this@NotifListener)) {
                 flags = flags or WindowManager.LayoutParams.FLAG_BLUR_BEHIND
                 blurBehindRadius = px(22)
@@ -511,6 +540,7 @@ class NotifListener : NotificationListenerService() {
 
     private fun showIdle() {
         if (!::wm.isInitialized || !Settings.canDrawOverlays(this)) return
+        if (hiddenNow()) return
         buildIsland()
         val v = island ?: return
         val params = lp ?: return
@@ -535,6 +565,7 @@ class NotifListener : NotificationListenerService() {
     ) {
         main.post {
             if (!::wm.isInitialized || !Settings.canDrawOverlays(this)) return@post
+            if (hiddenNow()) return@post
             buildIsland()
             val v = island ?: return@post
             val params = lp ?: return@post

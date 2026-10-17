@@ -101,6 +101,7 @@ object FloatingWindow {
                     dump = taskDump(c, pkg); free = isFreeTask(dump, id)
                 }
                 log.append("\nVerificación final (¿flotante?): ${if (free) "SÍ" else "NO"}\n")
+                if (id != null && Prefs.fwFrame(c)) { FloatFrame.show(c, id, b); log.append("Asas de Ryx: mostradas (mover y cambiar tamaño)\n") }
                 if (!free) log.append("\nSi no aparece: en Opciones de desarrollador activa «Permitir ventanas de forma libre» " +
                     "y «Forzar que las actividades sean redimensionables», deja apagado «Forzar modo escritorio» y reinicia una vez.")
                 return save(c, log)       // ya se lanzó con privilegios; no se abre una segunda vez
@@ -113,15 +114,20 @@ object FloatingWindow {
         // 2) Sin privilegios: solo opciones de Android para cualquier app (depende de la ROM)
         try {
             unlockHiddenApi(log)
-            val (inn, out) = anim(c)
-            val opts = ActivityOptions.makeCustomAnimation(c, inn, out)
+            // Modo 0: igual que el menú «Formato libre» del lanzador (opciones básicas, sin animación propia).
+            // Modo 1: con la animación de apertura de Ryx.
+            val launcherLike = Prefs.fwMode(c) == 0
+            val opts = if (launcherLike) ActivityOptions.makeBasic() else {
+                val (inn, out) = anim(c); ActivityOptions.makeCustomAnimation(c, inn, out)
+            }
+            log.append("Apertura: ${if (launcherLike) "como el lanzador" else "con animación de Ryx"}\n")
             try { opts.setLaunchDisplayId(0) } catch (e: Throwable) {}
             var modeAsked = false
             try {
                 ActivityOptions::class.java.getMethod("setLaunchWindowingMode", Int::class.javaPrimitiveType).invoke(opts, 5)
                 modeAsked = true
             } catch (e: Throwable) { log.append("Modo libre: no accesible (${e.javaClass.simpleName}).\n") }
-            opts.setLaunchBounds(b)
+            if (Prefs.fwOwnBounds(c)) opts.setLaunchBounds(b) else log.append("Tamaño y posición: los elige Android.\n")
             if (Prefs.forceNew(c)) launch.addFlags(Intent.FLAG_ACTIVITY_MULTIPLE_TASK)
             c.startActivity(launch, opts.toBundle())
             log.append("\nLanzada sin privilegios · modo libre pedido: ${if (modeAsked) "sí" else "no"}\n" +
@@ -132,6 +138,12 @@ object FloatingWindow {
         // 3) Apertura normal
         try { c.startActivity(launch); log.append("\nSe abrió en pantalla completa.") } catch (e: Exception) {}
         return save(c, log)
+    }
+
+    /** Mueve/redimensiona una tarea ya abierta (solo con Shizuku o root). */
+    fun resizeTask(c: Context, id: String, r: Rect) {
+        Shell.run(c, "cmd activity task resize $id ${r.left} ${r.top} ${r.right} ${r.bottom}; " +
+            "am task resize $id ${r.left} ${r.top} ${r.right} ${r.bottom}")
     }
 
     /** Quita la restricción de APIs internas solo para poder pedir el modo ventana libre. */
