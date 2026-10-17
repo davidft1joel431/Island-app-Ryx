@@ -7,6 +7,12 @@ import android.app.ActivityOptions
 import android.app.Notification
 import android.content.BroadcastReceiver
 import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.view.MotionEvent
+import android.view.ViewConfiguration
+import java.io.File
+import java.io.FileOutputStream
+import kotlin.math.abs
 import android.graphics.PorterDuff
 import android.graphics.PorterDuffColorFilter
 import android.content.Context
@@ -61,7 +67,16 @@ class NotifListener : NotificationListenerService() {
     private var attached = false
     private var expanded = false
     private var anim: ValueAnimator? = null
-    private var currentPkg: String? = null
+    private var badgeView: LinearLayout? = null
+
+    /** Una tarjeta acumulada en la isla. */
+    private class Card(
+        val key: String, val pkg: String, val title: CharSequence?, val body: CharSequence?,
+        val icon: Drawable?, val accent: Int?, val ephemeral: Boolean, val time: Long = System.currentTimeMillis()
+    )
+    private val cards = ArrayList<Card>()
+    private var cardIndex = 0
+    private val currentPkg: String? get() = cards.getOrNull(cardIndex)?.pkg
 
     private fun px(v: Int) = (v * resources.displayMetrics.density).toInt()
     private fun px(v: Float) = (v * resources.displayMetrics.density).toInt()
@@ -73,7 +88,7 @@ class NotifListener : NotificationListenerService() {
         wm = getSystemService(WINDOW_SERVICE) as WindowManager
         main.post { if (Prefs.islandOn(this) && Prefs.permanent(this)) showIdle() }
         registerSystemReceivers()
-        if (Prefs.hideHeadsUp(this)) Thread { Root.setHeadsUp(false) }.start()
+        if (Prefs.hideHeadsUp(this)) Thread { Shell.setHeadsUp(this, false) }.start()
     }
 
     override fun onListenerDisconnected() {
@@ -94,7 +109,7 @@ class NotifListener : NotificationListenerService() {
 
     // Si la isla deja de funcionar, se devuelven los avisos del sistema para no perder notificaciones
     private fun restoreHeadsUp() {
-        if (Prefs.hideHeadsUp(this)) Thread { Root.setHeadsUp(true) }.start()
+        if (Prefs.hideHeadsUp(this)) Thread { Shell.setHeadsUp(this, true) }.start()
     }
 
     /** Se llama desde la pantalla de ajustes cuando cambia estilo, posicion o modo permanente. */
@@ -125,7 +140,8 @@ class NotifListener : NotificationListenerService() {
 
         // 1) La isla REGISTRA todo en el historial, por aplicación
         if (Prefs.keepHistory(this) && !sbn.isOngoing) {
-            Prefs.addHist(this, sbn.packageName, title?.toString() ?: "", text?.toString() ?: "")
+            val media = saveMedia(n)
+            Prefs.addHist(this, sbn.packageName, title?.toString() ?: "", text?.toString() ?: "", media.first, media.second)
         }
 
         // 2) Filtros de la isla
@@ -141,7 +157,7 @@ class NotifListener : NotificationListenerService() {
         }
 
         val large: Drawable? = try { n.getLargeIcon()?.loadDrawable(this) } catch (e: Exception) { null }
-        show(sbn.packageName, title, text, large)
+        show(sbn.packageName, title, text, large, true, true, sbn.key, false)
     }
 
     /** Llamadas, multimedia y navegación se quedan en el sistema para no romper sus controles. */
@@ -216,11 +232,30 @@ class NotifListener : NotificationListenerService() {
         showCard(ev, force)
     }
 
-    fun clearDemo() { main.post { main.removeCallbacks(hideTask); collapse() } }
+    fun clearDemo() {
+        main.post {
+            main.removeCallbacks(hideTask)
+            cards.removeAll { it.pkg == packageName }
+            cardIndex = 0
+            if (expanded) collapse()
+            else if (cards.none { !it.ephemeral } && !Prefs.permanent(this)) removeNow() else updateBadge()
+        }
+    }
+
+    /** Demo de acumulación: llegan varias notificaciones y se apilan a la derecha. */
+    fun demoStack() {
+        val items = listOf(Triple("Ana", "¿Vamos hoy?", "message"), Triple("Banco", "Compra aprobada", "bell"),
+            Triple("Correo", "Reunión a las 4", "bell"), Triple("Mamá", "Llámame cuando puedas", "phone"))
+        items.forEachIndexed { i, t ->
+            main.postDelayed({
+                show(packageName, t.first, t.second, eventIcon(t.third), i == items.size - 1, true, "demo$i", false)
+            }, i * 800L)
+        }
+    }
 
     private fun showCard(ev: IslandEvent, force: Boolean) {
         val shouldExpand = !force || Prefs.demoExpanded(this)
-        show(packageName, ev.title, ev.body, eventIcon(ev.symbol), ev.short, shouldExpand && Prefs.eventExpand(this, ev.id))
+        show(packageName, ev.title, ev.body, eventIcon(ev.symbol), ev.short, shouldExpand && Prefs.eventExpand(this, ev.id), "ev:${ev.id}", ev.short)
     }
 
     /** Icono vectorial del evento sobre un círculo de cristal. */
@@ -294,6 +329,10 @@ class NotifListener : NotificationListenerService() {
             addView(title)
             addView(body)
         }
+        val badge = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; visibility = View.GONE
+        }
+        badgeView = badge
         val row = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
@@ -306,15 +345,9 @@ class NotifListener : NotificationListenerService() {
             addView(col, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
                 marginStart = px(10)
             })
-            setOnClickListener { if (expanded && Prefs.tapOpens(this@NotifListener)) openCurrent() }
-            setOnLongClickListener {
-                if (expanded) {
-                    collapse()
-                    true
-                } else {
-                    false
-                }
-            }
+            addView(badge, LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT).apply { marginStart = px(8) })
+            setOnTouchListener(IslandTouch())
         }
         island = row
         iconView = icon
@@ -363,6 +396,8 @@ class NotifListener : NotificationListenerService() {
         iconView?.visibility = View.GONE
         textCol?.visibility = View.GONE
         setContentAlpha(1f)
+        island?.gravity = Gravity.END or Gravity.CENTER_VERTICAL
+        updateBadge()
     }
 
     // ---------- Estados: oculta / reposo (permanente) / expandida ----------
@@ -385,16 +420,15 @@ class NotifListener : NotificationListenerService() {
         expanded = false
     }
 
-    private fun show(pkg: String, t: CharSequence?, b: CharSequence?, large: Drawable?, autoHide: Boolean = true, expand: Boolean = true) {
+    private fun show(
+        pkg: String, t: CharSequence?, b: CharSequence?, large: Drawable?, autoHide: Boolean = true,
+        expand: Boolean = true, key: String = "$pkg|$t", ephemeral: Boolean = false
+    ) {
         main.post {
             if (!::wm.isInitialized || !Settings.canDrawOverlays(this)) return@post
             buildIsland()
             val v = island ?: return@post
             val params = lp ?: return@post
-            currentPkg = pkg
-            appView?.text = appLabel(pkg)
-            titleView?.text = t
-            bodyView?.text = b
             val appIcon: Drawable? = try { packageManager.getApplicationIcon(pkg) } catch (e: Exception) { null }
             val shown: Drawable? = when {
                 pkg == packageName && large != null -> large                      // iconos de eventos
@@ -403,10 +437,17 @@ class NotifListener : NotificationListenerService() {
                     it.colorFilter = PorterDuffColorFilter(Color.WHITE, PorterDuff.Mode.SRC_IN) } // monocromo
                 else -> appIcon                                                   // el del sistema
             }
-            iconView?.setImageDrawable(shown)
-            (iconView as? ShapedImageView)?.shape = Prefs.iconShape(this)
             val accent = if (Prefs.smartColor(this) && pkg != packageName) dominantColor(appIcon) else null
-            v.background = buildBackground(style, accent)
+
+            // Acumulación: la nueva queda al frente y las anteriores esperan a la derecha
+            cards.removeAll { it.key == key }
+            cards.add(0, Card(key, pkg, t, b, shown, accent, ephemeral))
+            val limit = System.currentTimeMillis() - 15 * 60_000L
+            cards.removeAll { it.time < limit }
+            while (cards.size > 8) cards.removeAt(cards.size - 1)
+            cardIndex = 0
+            bindCard(cards[0])
+
             main.removeCallbacks(hideTask)
             if (!attached) {
                 params.width = idleWidth()
@@ -419,19 +460,217 @@ class NotifListener : NotificationListenerService() {
                 attached = true
             }
             if (!expand && !expanded) {
-                pulse()
+                updateBadge(); pulse()
             } else if (!expanded) {
-                expanded = true
-                iconView?.visibility = View.VISIBLE
-                textCol?.visibility = View.VISIBLE
-                setContentAlpha(0f)
-                morph(true, null)
+                expandNow()
             } else {
-                pulse()
+                updateBadge(); pulse()
             }
             if (autoHide) main.postDelayed(hideTask, Prefs.durationMs(this))
             if (Prefs.vibrate(this)) buzz()
         }
+    }
+
+    private fun expandNow() {
+        expanded = true
+        island?.gravity = Gravity.CENTER_VERTICAL
+        iconView?.visibility = View.VISIBLE
+        textCol?.visibility = View.VISIBLE
+        setContentAlpha(0f)
+        updateBadge()
+        morph(true, null)
+    }
+
+    /** Pone el contenido de una tarjeta en la isla. */
+    private fun bindCard(c: Card) {
+        appView?.text = appLabel(c.pkg)
+        titleView?.text = c.title
+        bodyView?.text = c.body
+        iconView?.setImageDrawable(c.icon?.constantState?.newDrawable()?.mutate() ?: c.icon)
+        (iconView as? ShapedImageView)?.shape = Prefs.iconShape(this)
+        island?.background = buildBackground(style, c.accent)
+    }
+
+    /** Acumulación a la derecha: iconos apilados al expandir, contador al reposo. */
+    private fun updateBadge() {
+        val b = badgeView ?: return
+        b.removeAllViews()
+        val others: List<Card> = if (expanded) cards.filterIndexed { i, _ -> i != cardIndex } else cards.filter { !it.ephemeral }
+        if (others.isEmpty()) { b.visibility = View.GONE; return }
+        b.visibility = View.VISIBLE
+        if (expanded) {
+            others.take(3).forEachIndexed { i, c ->
+                b.addView(ShapedImageView(this).apply {
+                    shape = Prefs.iconShape(this@NotifListener); scaleType = ImageView.ScaleType.CENTER_CROP
+                    setImageDrawable(c.icon?.constantState?.newDrawable()?.mutate() ?: c.icon)
+                    alpha = 1f - 0.18f * i
+                }, LinearLayout.LayoutParams(px(20), px(20)).apply { if (i > 0) marginStart = -px(8) })
+            }
+            if (others.size > 3) b.addView(TextView(this).apply {
+                text = "+${others.size - 3}"; setTextColor(Color.WHITE); textSize = 11f
+                setTypeface(typeface, Typeface.BOLD)
+            }, LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT)
+                .apply { marginStart = px(4) })
+        } else {
+            b.addView(TextView(this).apply {
+                text = "${others.size}"; setTextColor(Color.BLACK); textSize = 11f; gravity = Gravity.CENTER
+                setTypeface(typeface, Typeface.BOLD)
+                background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(0xFFFF8A4C.toInt()) }
+            }, LinearLayout.LayoutParams(px(20), px(20)))
+        }
+    }
+
+    // ---------- Gestos ----------
+
+    private inner class IslandTouch : View.OnTouchListener {
+        private var x0 = 0f
+        private var y0 = 0f
+        private var down = false
+        private var longFired = false
+        private val slop = ViewConfiguration.get(this@NotifListener).scaledTouchSlop
+        private val longRun = Runnable {
+            if (down) { longFired = true; doAction(Prefs.gLong(this@NotifListener)) }
+        }
+
+        override fun onTouch(v: View, e: MotionEvent): Boolean {
+            when (e.actionMasked) {
+                MotionEvent.ACTION_DOWN -> {
+                    x0 = e.rawX; y0 = e.rawY; down = true; longFired = false
+                    main.removeCallbacks(hideTask)
+                    main.postDelayed(longRun, 450)
+                }
+                MotionEvent.ACTION_MOVE -> {
+                    if (!down) return true
+                    val dx = e.rawX - x0; val dy = e.rawY - y0
+                    if (abs(dx) > slop || abs(dy) > slop) main.removeCallbacks(longRun)
+                    // la isla sigue al dedo con resistencia, como en HyperOS
+                    v.translationY = (dy * 0.55f).coerceIn(-px(30).toFloat(), px(70).toFloat())
+                    v.translationX = dx * 0.4f
+                }
+                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                    main.removeCallbacks(longRun)
+                    val wasDown = down; down = false
+                    val dx = e.rawX - x0; val dy = e.rawY - y0
+                    val th = px(Prefs.swipeDp(this@NotifListener)).toFloat()
+                    v.animate().translationX(0f).translationY(0f)
+                        .setDuration((380 * Motion.factor(this@NotifListener)).toLong())
+                        .setInterpolator(Motion.spring()).start()
+                    if (expanded && cards.isNotEmpty() && Prefs.autoHideAfterTouch(this@NotifListener))
+                        main.postDelayed(hideTask, Prefs.durationMs(this@NotifListener))
+                    if (!wasDown || longFired || e.actionMasked == MotionEvent.ACTION_CANCEL) return true
+                    when {
+                        dy > th && dy > abs(dx) -> doAction(Prefs.gDown(this@NotifListener))
+                        dy < -th && -dy > abs(dx) -> doAction(Prefs.gUp(this@NotifListener))
+                        dx > th && dx > abs(dy) -> doAction(Prefs.gRight(this@NotifListener))
+                        dx < -th && -dx > abs(dy) -> doAction(Prefs.gLeft(this@NotifListener))
+                        abs(dx) < slop && abs(dy) < slop -> doAction(Prefs.gTap(this@NotifListener))
+                    }
+                }
+            }
+            return true
+        }
+    }
+
+    private fun doAction(a: Int) {
+        if (a == 0) return
+        if (!expanded) {                       // con la isla en reposo, cualquier gesto abre las acumuladas
+            if (cards.any { !it.ephemeral }) expandPending()
+            return
+        }
+        when (a) {
+            1 -> openCurrent(false)
+            2 -> openCurrent(true)
+            3 -> dismissCurrent()
+            4 -> page(1)
+            5 -> page(-1)
+            6 -> collapse()
+        }
+    }
+
+    private fun expandPending() {
+        val i = cards.indexOfFirst { !it.ephemeral }
+        if (i < 0) return
+        cardIndex = i
+        bindCard(cards[i])
+        main.removeCallbacks(hideTask)
+        expandNow()
+        main.postDelayed(hideTask, Prefs.durationMs(this))
+    }
+
+    private fun page(d: Int) {
+        if (cards.size <= 1) { pulse(); return }
+        cardIndex = (cardIndex + d + cards.size) % cards.size
+        bindCard(cards[cardIndex])
+        updateBadge()
+        textCol?.translationX = px(28).toFloat() * d
+        textCol?.animate()?.translationX(0f)?.setDuration((380 * Motion.factor(this)).toLong())
+            ?.setInterpolator(Motion.spring())?.start()
+        main.removeCallbacks(hideTask); main.postDelayed(hideTask, Prefs.durationMs(this))
+    }
+
+    private fun dismissCurrent() {
+        if (cardIndex in cards.indices) cards.removeAt(cardIndex)
+        if (cards.isEmpty()) { collapse(); return }
+        cardIndex = cardIndex.coerceAtMost(cards.size - 1)
+        bindCard(cards[cardIndex]); updateBadge(); pulse()
+        main.removeCallbacks(hideTask); main.postDelayed(hideTask, Prefs.durationMs(this))
+    }
+
+    // ---------- Medios para el historial ----------
+
+    /** Guarda la imagen o sticker de la notificación (si hay) y devuelve (archivo, tipo). */
+    @Suppress("DEPRECATION")
+    private fun saveMedia(n: Notification): Pair<String, String> {
+        try {
+            val ex = n.extras
+            var bmp: Bitmap? = ex.getParcelable<Bitmap>(Notification.EXTRA_PICTURE)
+            var kind = if (bmp != null) "Imagen" else ""
+            if (bmp == null && Build.VERSION.SDK_INT >= 31) {
+                bmp = ex.getParcelable<android.graphics.drawable.Icon>(Notification.EXTRA_PICTURE_ICON)
+                    ?.loadDrawable(this)?.let { toBitmap(it) }
+                if (bmp != null) kind = "Imagen"
+            }
+            // Mensajes con adjunto (fotos, stickers, audio, video)
+            val msgs = ex.getParcelableArray(Notification.EXTRA_MESSAGES)
+            val last = msgs?.lastOrNull() as? android.os.Bundle
+            val mime = last?.getString("type") ?: ""
+            val uri = last?.getString("uri")
+            if (bmp == null && uri != null && mime.startsWith("image/")) {
+                try {
+                    contentResolver.openInputStream(android.net.Uri.parse(uri))?.use { bmp = BitmapFactory.decodeStream(it) }
+                    kind = if (mime.contains("webp") || mime.contains("png")) "Sticker" else "Imagen"
+                } catch (e: Exception) {}
+            }
+            if (kind.isEmpty()) kind = when {
+                mime.startsWith("audio/") -> "Audio"
+                mime.startsWith("video/") -> "Video"
+                else -> ""
+            }
+            val b = bmp ?: return Pair("", kind)
+            val scaled = scaleDown(b, 640)
+            val name = "${System.currentTimeMillis()}_${(Math.random() * 99999).toInt()}.img"
+            FileOutputStream(File(Prefs.histDir(this), name)).use {
+                if (kind == "Sticker") scaled.compress(Bitmap.CompressFormat.PNG, 100, it)
+                else scaled.compress(Bitmap.CompressFormat.JPEG, 82, it)
+            }
+            return Pair(name, kind)
+        } catch (e: Throwable) {
+            return Pair("", "")
+        }
+    }
+
+    private fun toBitmap(d: Drawable): Bitmap {
+        val w = d.intrinsicWidth.coerceAtLeast(1); val h = d.intrinsicHeight.coerceAtLeast(1)
+        val bmp = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+        val cv = android.graphics.Canvas(bmp); d.setBounds(0, 0, w, h); d.draw(cv)
+        return bmp
+    }
+
+    private fun scaleDown(b: Bitmap, max: Int): Bitmap {
+        val m = maxOf(b.width, b.height)
+        if (m <= max) return b
+        val f = max.toFloat() / m
+        return Bitmap.createScaledBitmap(b, (b.width * f).toInt().coerceAtLeast(1), (b.height * f).toInt().coerceAtLeast(1), true)
     }
 
     @Suppress("DEPRECATION")
@@ -446,9 +685,12 @@ class NotifListener : NotificationListenerService() {
         main.removeCallbacks(hideTask)
         val params = lp ?: return
         if (!attached || !expanded) return
+        // los eventos cortos se descartan al cerrarse; las notificaciones quedan acumuladas
+        cards.getOrNull(cardIndex)?.let { if (it.ephemeral) cards.remove(it) }
+        cardIndex = 0
         expanded = false
         morph(false) {
-            if (Prefs.permanent(this)) setIdleContent() else removeNow()
+            if (Prefs.permanent(this) || cards.any { !it.ephemeral }) setIdleContent() else removeNow()
         }
     }
 
@@ -462,6 +704,8 @@ class NotifListener : NotificationListenerService() {
         }
         attached = false
         expanded = false
+        cards.clear()
+        cardIndex = 0
     }
 
     /** Color más vivo del icono (para el borde de la isla). */
@@ -545,12 +789,11 @@ class NotifListener : NotificationListenerService() {
 
     // ---------- Abrir app ----------
 
-    private fun openCurrent() {
+    private fun openCurrent(floating: Boolean) {
         val pkg = currentPkg ?: return
-        val freeform = Prefs.freeform(this)
-        // Primero se lanza la app (con la isla aun visible) y luego se cierra la isla
-        Thread { openApp(pkg, freeform) }.start()
-        collapse()
+        // Primero se lanza la app (con la isla aún visible) y luego se descarta la tarjeta
+        Thread { openApp(pkg, floating) }.start()
+        dismissCurrent()
     }
 
     private fun openApp(pkg: String, freeform: Boolean) {

@@ -38,29 +38,32 @@ object FloatingWindow {
         val b = bounds(c)
         log.append("Ventana: ${b.left},${b.top} → ${b.right},${b.bottom}\n")
 
-        // 1) Con root: modo ventana libre + tamaño exacto, y se verifica con dumpsys
+        // 1) Con Shizuku o root: modo ventana libre + tamaño exacto, y se verifica con dumpsys
         val comp = launch.component?.flattenToShortString()
         if (comp != null) {
             val extra = if (Prefs.forceNew(c)) "--activity-new-task --activity-multiple-task" else ""
             val prep = "settings put global enable_freeform_support 1; " +
                 "settings put global force_resizable_activities 1; " +
                 "settings put global freeform_window_management 1; "
-            val res = Root.run(prep + "am start --user 0 --display 0 --windowingMode 5 $extra -n $comp")
-            log.append("\nRoot: código ${res.first} ${res.second.trim()}\n")
+            val res = Shell.run(c, prep + "am start --user 0 --display 0 --windowingMode 5 $extra -n $comp")
+            log.append("\n${Shell.label(c)}: código ${res.first} ${res.second.trim()}\n")
+            if (res.first != 0 && !Shell.shizukuGranted())
+                log.append("\nNo hay Shizuku con permiso ni root. Abre la pestaña Ventana → Forzar apertura, " +
+                    "inicia Shizuku y dale permiso a Ryx Island.\n")
             if (res.first == 0 && !res.second.contains("Error", ignoreCase = true)) {
                 Thread.sleep(700)
-                var dump = taskDump(pkg)
+                var dump = taskDump(c, pkg)
                 val id = Regex("#(\\d+) type=|taskId=(\\d+)").find(dump)
                     ?.groupValues?.drop(1)?.firstOrNull { it.isNotEmpty() }
                 var free = isFree(dump)
                 log.append("Tarea: ${id ?: "no encontrada"} · flotante al abrir: ${if (free) "SÍ" else "NO"}\n")
                 if (id != null) {
-                    if (!free) log.append("Forzar modo libre: " + Root.run("cmd activity task set-windowing-mode $id 5").second.trim() + "\n")
-                    val rz = Root.run("cmd activity task resize $id ${b.left} ${b.top} ${b.right} ${b.bottom}; " +
+                    if (!free) log.append("Forzar modo libre: " + Shell.run(c, "cmd activity task set-windowing-mode $id 5").second.trim() + "\n")
+                    val rz = Shell.run(c, "cmd activity task resize $id ${b.left} ${b.top} ${b.right} ${b.bottom}; " +
                         "am task resize $id ${b.left} ${b.top} ${b.right} ${b.bottom}")
                     log.append("Tamaño: código ${rz.first} ${rz.second.trim()}\n")
                     Thread.sleep(300)
-                    dump = taskDump(pkg); free = isFree(dump)
+                    dump = taskDump(c, pkg); free = isFree(dump)
                 }
                 log.append("\nVerificación final (¿flotante?): ${if (free) "SÍ" else "NO"}\n")
                 if (!free) log.append("\nSi no aparece: en Opciones de desarrollador desactiva «Forzar modo escritorio» y " +
@@ -87,8 +90,8 @@ object FloatingWindow {
         return save(c, log)
     }
 
-    private fun taskDump(pkg: String): String =
-        Root.run("dumpsys activity activities | grep -i -B2 -A10 \"$pkg\" | head -80").second
+    private fun taskDump(c: Context, pkg: String): String =
+        Shell.run(c, "dumpsys activity activities | grep -i -B2 -A10 \"$pkg\" | head -80").second
 
     private fun isFree(dump: String) =
         dump.contains("freeform", ignoreCase = true) ||

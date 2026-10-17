@@ -33,6 +33,8 @@ import android.widget.ScrollView
 import android.widget.SeekBar
 import android.widget.TextView
 import android.widget.Toast
+import android.graphics.BitmapFactory
+import rikka.shizuku.Shizuku
 
 class MainActivity : Activity() {
 
@@ -49,6 +51,12 @@ class MainActivity : Activity() {
     private var windowPreview: WindowPreview? = null
     private var previewOpen = false
     private var appQuery = ""
+    private var rootStatus = "Sin comprobar"
+    private val actionNames = listOf("Nada", "Abrir app", "Ventana flotante", "Descartar tarjeta",
+        "Siguiente tarjeta", "Tarjeta anterior", "Contraer isla")
+    private val permListener = Shizuku.OnRequestPermissionResultListener { _, _ -> runOnUiThread { render() } }
+    private val binderListener = Shizuku.OnBinderReceivedListener { runOnUiThread { render() } }
+    private val deadListener = Shizuku.OnBinderDeadListener { runOnUiThread { render() } }
     private var appsBox: LinearLayout? = null
     private val iconCache = HashMap<String, Drawable?>()
     private val appList: List<Pair<String, String>> by lazy {
@@ -113,9 +121,23 @@ class MainActivity : Activity() {
         })
         setContentView(rootView)
         render()
+        try {
+            Shizuku.addRequestPermissionResultListener(permListener)
+            Shizuku.addBinderReceivedListener(binderListener)
+            Shizuku.addBinderDeadListener(deadListener)
+        } catch (e: Throwable) {}
     }
 
-    override fun onResume() { super.onResume(); updatePill() }
+    override fun onDestroy() {
+        try {
+            Shizuku.removeRequestPermissionResultListener(permListener)
+            Shizuku.removeBinderReceivedListener(binderListener)
+            Shizuku.removeBinderDeadListener(deadListener)
+        } catch (e: Throwable) {}
+        super.onDestroy()
+    }
+
+    override fun onResume() { super.onResume(); updatePill(); if (tab == 3 || subPage == "perms") render() }
 
     @Suppress("DEPRECATION")
     override fun onBackPressed() {
@@ -336,7 +358,10 @@ class MainActivity : Activity() {
                 c.addView(r, lp(2))
             }
         }
-        c.addView(button("Quitar tarjeta", true) { svc()?.clearDemo() }, lp(12))
+        c.addView(button("▶ Simular acumulación (4 notificaciones)", false) {
+            val sv = svc(); if (sv == null) toast("Activa el acceso a notificaciones") else sv.demoStack()
+        }, lp(12))
+        c.addView(button("Quitar tarjetas", true) { svc()?.clearDemo() }, lp(8))
     }
 
     // ---------------- DISEÑO ----------------
@@ -380,8 +405,29 @@ class MainActivity : Activity() {
         val co = titled(p, "Comportamiento")
         co.addView(rowWithSwitch("Isla siempre visible", "Se queda en reposo junto a la cámara", Prefs.permanent(this)) { v ->
             Prefs.setPermanent(this, v); applyAll() })
-        co.addView(rowWithSwitch("Tocar abre la app", "", Prefs.tapOpens(this)) { Prefs.setTapOpens(this, it) })
         co.addView(rowWithSwitch("Vibrar al mostrar", "", Prefs.vibrate(this)) { Prefs.setVibrate(this, it) })
+
+        val ge = titled(p, "Gestos", "Con la isla abierta. Si hay varias notificaciones, se acumulan a la derecha.")
+        gestureRow(ge, "Tocar", Prefs.gTap(this)) { Prefs.setGTap(this, it) }
+        gestureRow(ge, "Deslizar hacia abajo", Prefs.gDown(this)) { Prefs.setGDown(this, it) }
+        gestureRow(ge, "Deslizar hacia arriba", Prefs.gUp(this)) { Prefs.setGUp(this, it) }
+        gestureRow(ge, "Deslizar a la izquierda", Prefs.gLeft(this)) { Prefs.setGLeft(this, it) }
+        gestureRow(ge, "Deslizar a la derecha", Prefs.gRight(this)) { Prefs.setGRight(this, it) }
+        gestureRow(ge, "Mantener pulsado", Prefs.gLong(this)) { Prefs.setGLong(this, it) }
+        seekRow(ge, "Distancia para deslizar", "dp", 20, 80, Prefs.swipeDp(this)) { Prefs.setSwipeDp(this, it) }
+        ge.addView(label("Con la isla en reposo y notificaciones acumuladas, cualquier gesto las abre. " +
+            "Prueba con «Simular acumulación» en la pestaña Isla.", 12f, R.color.muted), lp(8))
+    }
+
+    private fun gestureRow(parent: LinearLayout, title: String, current: Int, set: (Int) -> Unit) {
+        val r = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
+        r.addView(label(title, 15f, R.color.text, true), LinearLayout.LayoutParams(0, WRAP, 1f))
+        r.addView(button(actionNames[current.coerceIn(0, actionNames.size - 1)], false) {
+            glass(AlertDialog.Builder(this).setTitle(title)
+                .setSingleChoiceItems(actionNames.toTypedArray(), current) { d, i -> set(i); d.dismiss(); render() }
+                .setNegativeButton("Cancelar", null).show())
+        })
+        parent.addView(r, lp(8))
     }
 
     // ---------------- PUENTE ----------------
@@ -390,9 +436,9 @@ class MainActivity : Activity() {
         val only = titled(p, "Solo la isla", "La isla registra y muestra; el sistema se calla")
         only.addView(rowWithSwitch("Bloquear notificaciones del sistema", "Quita la del panel cuando la isla la muestra",
             Prefs.blockSystem(this)) { Prefs.setBlockSystem(this, it) })
-        only.addView(rowWithSwitch("Ocultar avisos emergentes (root)", "Evita el aviso que baja desde arriba",
+        only.addView(rowWithSwitch("Ocultar avisos emergentes (Shizuku/root)", "Evita el aviso que baja desde arriba",
             Prefs.hideHeadsUp(this)) { v ->
-            Thread { val r = Root.setHeadsUp(!v); runOnUiThread {
+            Thread { val r = Shell.setHeadsUp(this, !v); runOnUiThread {
                 if (r.first == 0) Prefs.setHideHeadsUp(this, v) else { toast("No se pudo (¿root denegado?)"); render() } } }.start()
         })
         only.addView(rowWithSwitch("Mostrar con el teléfono bloqueado", "", Prefs.lockScreen(this)) { Prefs.setLockScreen(this, it) })
@@ -472,8 +518,35 @@ class MainActivity : Activity() {
     // ---------------- VENTANA FLOTANTE ----------------
 
     private fun buildWindow(p: LinearLayout) {
-        val g = titled(p, "Ventana flotante", "Al tocar la isla, la app se abre en una ventana")
-        g.addView(rowWithSwitch("Abrir en ventana flotante", "", Prefs.freeform(this)) { Prefs.setFreeform(this, it) })
+        val fz = titled(p, "Forzar apertura", "Para abrir apps en ventana flotante hace falta Shizuku o root")
+        val shz = Shell.shizukuStatus(this)
+        statusRow(fz, "Shizuku", shz, shz == "Listo")
+        statusRow(fz, "Root", rootStatus, rootStatus.startsWith("Disponible"))
+        fz.addView(label("Método", 13f, R.color.muted, true), lp(12))
+        fz.addView(segmented(listOf("Auto", "Shizuku", "Root"), Prefs.shellMethod(this), true) { Prefs.setShellMethod(this, it) }, lp(6))
+        when {
+            !Shell.shizukuInstalled(this) -> fz.addView(button("Descargar Shizuku", true) {
+                startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://shizuku.rikka.app/download/")))
+            }, lp(10))
+            !Shell.shizukuRunning() -> {
+                fz.addView(button("Abrir Shizuku para iniciarlo", true) {
+                    packageManager.getLaunchIntentForPackage(Shell.SHIZUKU_PKG)?.let { startActivity(it) }
+                }, lp(10))
+                fz.addView(label("Sin root, se inicia con «Depuración inalámbrica» (Opciones de desarrollador → Shizuku → " +
+                    "Iniciar mediante depuración inalámbrica). Hay que repetirlo tras reiniciar el teléfono.", 12f, R.color.muted), lp(8))
+            }
+            !Shell.shizukuGranted() -> fz.addView(button("Dar permiso a Ryx Island", true) {
+                Shell.requestShizuku()
+            }, lp(10))
+        }
+        fz.addView(button("Comprobar root", false) {
+            rootStatus = "Comprobando…"; render()
+            Thread {
+                val r = Root.run("id")
+                runOnUiThread { rootStatus = if (r.first == 0) "Disponible" else "No disponible"; render() }
+            }.start()
+        }, lp(8))
+        val g = titled(p, "Ventana flotante", "Se abre con el gesto «Ventana flotante» (por defecto, deslizar hacia abajo)")
         g.addView(rowWithSwitch("Forzar ventana nueva", "Aunque la app ya esté abierta", Prefs.forceNew(this)) { Prefs.setForceNew(this, it) })
 
         val sz = titled(p, "Tamaño y posición")
@@ -505,6 +578,13 @@ class MainActivity : Activity() {
         }
     }
 
+    private fun statusRow(parent: LinearLayout, name: String, value: String, ok: Boolean) {
+        val r = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
+        r.addView(label(name, 15f, R.color.text, true), LinearLayout.LayoutParams(0, WRAP, 1f))
+        r.addView(label(value, 13f, if (ok) R.color.green else R.color.gold, true))
+        parent.addView(r, lp(10))
+    }
+
     private fun pickOneApp(onPick: (String) -> Unit) {
         val names = appList.map { it.second }.toTypedArray()
         glass(AlertDialog.Builder(this).setTitle("Elegir app")
@@ -521,7 +601,7 @@ class MainActivity : Activity() {
         item(p, "backup", 0xFF3F7BEA.toInt(), "Copia de seguridad", "Exporta o importa todos los ajustes", "") { backupDialog() }
         item(p, "code", 0xFF5F6B80.toInt(), "Opciones de desarrollador", "Registro de la ventana flotante", "") { devDialog() }
         item(p, "info", 0xFF5F6B80.toInt(), "Acerca de", "Versión y créditos", "") {
-            dialog("Acerca de Ryx Island", "Ryx Island v0.7\nCreador: David Joel\n\nLa interfaz está inspirada en Smart Island, " +
+            dialog("Acerca de Ryx Island", "Ryx Island v0.8\nCreador: David Joel\n\nLa interfaz está inspirada en Smart Island, " +
                 "de Animesh Gupta (licencia GPL-3.0): github.com/agupta07505/SmartIsland, y en Hyper Bridge.\n\n" +
                 "Este código es propio y no copia el de esos proyectos. Si en el futuro se incorpora código ajeno, " +
                 "hay que conservar su aviso de copyright y respetar su licencia.")
@@ -559,12 +639,41 @@ class MainActivity : Activity() {
                 val r = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(px(54), px(10), 0, 0) }
                 if (h2.title.isNotEmpty()) r.addView(label(h2.title, 14f, R.color.text, true).apply { maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END })
                 if (h2.text.isNotEmpty()) r.addView(label(h2.text, 13f, R.color.muted).apply { maxLines = 2; ellipsize = android.text.TextUtils.TruncateAt.END })
+                if (h2.img.isNotEmpty()) {
+                    val f = java.io.File(Prefs.histDir(this), h2.img)
+                    val bmp = if (f.exists()) BitmapFactory.decodeFile(f.absolutePath, BitmapFactory.Options().apply { inSampleSize = 2 }) else null
+                    if (bmp != null) {
+                        val iv = ImageView(this).apply {
+                            setImageBitmap(bmp); scaleType = ImageView.ScaleType.CENTER_CROP
+                            outlineProvider = object : ViewOutlineProvider() {
+                                override fun getOutline(view: View, o: Outline) { o.setRoundRect(0, 0, view.width, view.height, px(14).toFloat()) }
+                            }
+                            clipToOutline = true
+                            setOnClickListener { showImage(f.absolutePath) }
+                        }
+                        r.addView(iv, LinearLayout.LayoutParams(px(if (h2.kind == "Sticker") 110 else 190), px(if (h2.kind == "Sticker") 110 else 130)).apply { topMargin = px(6) })
+                    }
+                }
+                if (h2.kind.isNotEmpty()) r.addView(label(h2.kind, 11f, R.color.gold, true))
                 r.addView(label(android.text.format.DateUtils.getRelativeTimeSpanString(h2.ts, System.currentTimeMillis(),
                     android.text.format.DateUtils.MINUTE_IN_MILLIS).toString(), 11f, R.color.gold))
                 c.addView(r)
             }
             p.addView(c, lp(10))
         }
+    }
+
+    private fun showImage(path: String) {
+        val bmp = BitmapFactory.decodeFile(path) ?: return
+        val dlg = Dialog(this)
+        dlg.requestWindowFeature(Window.FEATURE_NO_TITLE)
+        dlg.setContentView(ImageView(this).apply {
+            setImageBitmap(bmp); adjustViewBounds = true; setPadding(px(8), px(8), px(8), px(8))
+            background = Glass.card(this@MainActivity, 24f, true)
+            setOnClickListener { dlg.dismiss() }
+        })
+        dlg.window?.apply { setBackgroundDrawable(ColorDrawable(0)); setDimAmount(0.7f) }
+        dlg.show()
     }
 
     private fun buildPerms(p: LinearLayout) {
@@ -574,6 +683,14 @@ class MainActivity : Activity() {
     }
 
     private fun permsContent(b: LinearLayout) {
+        permRow(b, "Shizuku (forzar ventana flotante)", "Estado: ${Shell.shizukuStatus(this)}. Sin root se inicia por depuración inalámbrica.",
+            Shell.shizukuGranted()) {
+            when {
+                !Shell.shizukuInstalled(this) -> startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://shizuku.rikka.app/download/")))
+                !Shell.shizukuRunning() -> packageManager.getLaunchIntentForPackage(Shell.SHIZUKU_PKG)?.let { startActivity(it) }
+                else -> Shell.requestShizuku()
+            }
+        }
         permRow(b, "Mostrar sobre otras apps", "Permite que la isla flote sobre la barra de estado y la cámara",
             Settings.canDrawOverlays(this)) {
             startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:$packageName")))
