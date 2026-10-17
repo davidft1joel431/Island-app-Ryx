@@ -188,4 +188,20 @@ object Prefs {
     fun autoHideAfterTouch(c: Context): Boolean = true
     fun appTheme(c: Context): String = sp(c).getString("app_theme", "ryx") ?: "ryx"
     fun setAppTheme(c: Context, v: String) = sp(c).edit().putString("app_theme", v).apply()
+
+    // ---- Aspecto: isla en reposo y tarjeta (cristal / color / transparencia) ----
+    fun idleMode(c: Context): Int = sp(c).getInt("idle_mode", 0)       // 0 negro, 1 cristal, 2 color, 3 acento
+    fun setIdleMode(c: Context, v: Int) = sp(c).edit().putInt("idle_mode", v).apply()
+    fun idleColor(c: Context): Int = sp(c).getInt("idle_color", 0)     // 0 = automático
+    fun setIdleColor(c: Context, v: Int) = sp(c).edit().putInt("idle_color", v).apply()
+    fun idleOpacity(c: Context): Int = sp(c).getInt("idle_op", 100)
+    fun setIdleOpacity(c: Context, v: Int) = sp(c).edit().putInt("idle_op", v).apply()
+    fun idleBorder(c: Context): Int = sp(c).getInt("idle_border", -1)   // -1 = según el modo
+    fun setIdleBorder(c: Context, v: Int) = sp(c).edit().putInt("idle_border", v).apply()
+    fun idleBlur(c: Context): Boolean = sp(c).getBoolean("idle_blur", false)
+    fun setIdleBlur(c: Context, v: Boolean) = sp(c).edit().putBoolean("idle_blur", v).apply()
+    fun cardGlass(c: Context): Boolean = sp(c).getBoolean("card_glass", false)
+    fun setCardGlass(c: Context, v: Boolean) = sp(c).edit().putBoolean("card_glass", v).apply()
+    fun cardColor(c: Context): Int = sp(c).getInt("card_color", 0)     // 0 = el del estilo
+    fun setCardColor(c: Context, v: Int) = sp(c).edit().putInt("card_color", v).apply()
 }

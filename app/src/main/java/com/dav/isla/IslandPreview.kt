@@ -65,6 +65,29 @@ class IslandPreview(c: Context) : View(c) {
 
     private fun lerp(a: Float, b: Float, t: Float) = a + (b - a) * t
 
+    /** Dibuja el fondo de la isla (degradado, brillo y borde) con una opacidad k. */
+    private fun drawLook(cv: Canvas, sp: IslandLook.Spec, rad: Float, k: Float, s: Float) {
+        if (k <= 0.01f) return
+        p.style = Paint.Style.FILL
+        p.shader = LinearGradient(0f, rect.top, 0f, rect.bottom, sp.top, sp.bottom, Shader.TileMode.CLAMP)
+        p.alpha = (255 * k).toInt()
+        cv.drawRoundRect(rect, rad, rad, p)
+        if (sp.shine != 0) {
+            p.shader = LinearGradient(0f, rect.top, 0f, rect.bottom, sp.shine, 0x00FFFFFF, Shader.TileMode.CLAMP)
+            p.alpha = (255 * k).toInt()
+            val i = dens * s
+            cv.drawRoundRect(rect.left + i, rect.top + i, rect.right - i, rect.bottom - i, rad, rad, p)
+        }
+        p.shader = null
+        if (sp.rimDp > 0f) {
+            p.style = Paint.Style.STROKE; p.strokeWidth = maxOf(1f, sp.rimDp * dens * s)
+            p.color = sp.rim; p.alpha = ((sp.rim ushr 24) * k).toInt()
+            cv.drawRoundRect(rect, rad, rad, p)
+            p.style = Paint.Style.FILL
+        }
+        p.alpha = 255
+    }
+
     override fun onDraw(cv: Canvas) {
         val s = scale
         val w = width.toFloat(); val h = height.toFloat()
@@ -111,18 +134,14 @@ class IslandPreview(c: Context) : View(c) {
         val cd = Prefs.cornerDp(ctx)
         val cornerDp = if (cd >= 0) cd.toFloat() else st.cornerDp
         val cr2 = u(minOf(cornerDp, hdp / 2f))
-        val a = (Prefs.opacity(ctx) / 100f * 255).toInt()
+        val idleSpec = IslandLook.idle(ctx)
+        val cardSpec = IslandLook.card(ctx, st)
+        val k = progress.coerceIn(0f, 1f)
 
         if (Prefs.shadow(ctx)) { p.setShadowLayer(u(10f), 0f, u(4f), 0x99000000.toInt()) }
-        p.style = Paint.Style.FILL
-        p.shader = LinearGradient(0f, rect.top, 0f, rect.bottom, st.bgTop, st.bgBottom, Shader.TileMode.CLAMP)
-        p.alpha = a
-        cv.drawRoundRect(rect, cr2, cr2, p)
-        p.clearShadowLayer(); p.shader = null
-        if (st.strokeDp > 0f) {
-            p.style = Paint.Style.STROKE; p.strokeWidth = maxOf(1f, u(st.strokeDp)); p.color = st.strokeColor
-            cv.drawRoundRect(rect, cr2, cr2, p); p.style = Paint.Style.FILL
-        }
+        drawLook(cv, idleSpec, cr2, 1f - k, s)
+        p.clearShadowLayer()
+        drawLook(cv, cardSpec, cr2, k, s)
 
         // Contenido de ejemplo al abrir
         if (progress > 0.35f) {

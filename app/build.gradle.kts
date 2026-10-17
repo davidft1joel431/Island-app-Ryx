@@ -9,10 +9,10 @@ android {
 
     defaultConfig {
         applicationId = "com.dav.isla"
-        minSdk = 26
+        minSdk = 29
         targetSdk = 36
-        versionCode = 11
-        versionName = "0.9.2"
+        versionCode = 12
+        versionName = "0.9.3"
     }
 
     compileOptions {
@@ -28,4 +28,6 @@ dependencies {
     // Shizuku: permite ejecutar los comandos de la ventana flotante con permisos de shell
     implementation("dev.rikka.shizuku:api:13.1.5")
     implementation("dev.rikka.shizuku:provider:13.1.5")
+    // Permite usar las opciones de ventana libre de Android sin Shizuku ni root
+    implementation("org.lsposed.hiddenapibypass:hiddenapibypass:6.1")
 }

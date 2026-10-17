@@ -390,6 +390,29 @@ class MainActivity : Activity() {
             st.addView(r, lp(8))
         }
 
+        val ir = titled(p, "Isla en reposo (contraída)", "Cómo se ve cuando no hay nada abierto")
+        val mode = Prefs.idleMode(this)
+        ir.addView(segmented(listOf("Negro", "Cristal", "Color", "Acento"), mode, true) {
+            Prefs.setIdleMode(this, it); applyAll(); svc()?.showTest()
+        }, lp(10))
+        if (mode != 0) {
+            ir.addView(label(if (mode == 1) "Tinte del cristal" else "Color", 13f, R.color.muted, true), lp(12))
+            colorRow(ir, Prefs.idleColor(this)) { Prefs.setIdleColor(this, it); applyAll(); svc()?.showTest(); render() }
+            hexRow(ir) { Prefs.setIdleColor(this, it); applyAll(); svc()?.showTest(); previewView?.refresh() }
+        }
+        seekRow(ir, if (mode == 1) "Transparencia del cristal" else "Opacidad", "%", 15, 100, Prefs.idleOpacity(this)) { Prefs.setIdleOpacity(this, it) }
+        seekRow(ir, "Borde", "dp", 0, 4, Prefs.idleBorder(this).let { if (it >= 0) it else if (mode == 1) 1 else 0 }) { Prefs.setIdleBorder(this, it) }
+        ir.addView(rowWithSwitch("Desenfoque del fondo (experimental)", "Android 12+. Puede verse un rectángulo desenfocado detrás de la isla.",
+            Prefs.idleBlur(this)) { v -> Prefs.setIdleBlur(this, v); applyAll(); svc()?.showTest() })
+
+        val cr = titled(p, "Tarjeta expandida", "Cristal, color y transparencia")
+        cr.addView(rowWithSwitch("Efecto cristal (Liquid Glass)", "Translúcida, con brillo arriba y borde de luz", Prefs.cardGlass(this)) { v ->
+            Prefs.setCardGlass(this, v); applyAll(); svc()?.showTest(); previewView?.refresh() })
+        cr.addView(label("Color de la tarjeta", 13f, R.color.muted, true), lp(12))
+        colorRow(cr, Prefs.cardColor(this)) { Prefs.setCardColor(this, it); applyAll(); svc()?.showTest(); render() }
+        hexRow(cr) { Prefs.setCardColor(this, it); applyAll(); svc()?.showTest(); previewView?.refresh() }
+        seekRow(cr, "Transparencia", "%", 15, 100, Prefs.opacity(this)) { Prefs.setOpacity(this, it) }
+
         val sz = titled(p, "Tamaño y posición", "Mira el cambio arriba, en la vista previa")
         seekRow(sz, "Ancho en reposo", "dp", 60, 220, Prefs.idleWidthDp(this)) { Prefs.setIdleWidthDp(this, it) }
         seekRow(sz, "Alto", "dp", 20, 60, Prefs.heightDp(this)) { Prefs.setHeightDp(this, it) }
@@ -406,7 +429,6 @@ class MainActivity : Activity() {
         }, lp(12))
 
         val ap = titled(p, "Apariencia")
-        seekRow(ap, "Opacidad", "%", 30, 100, Prefs.opacity(this)) { Prefs.setOpacity(this, it) }
         ap.addView(rowWithSwitch("Sombra bajo la isla", "", Prefs.shadow(this)) { v ->
             Prefs.setShadow(this, v); applyAll(); svc()?.showTest(); previewView?.refresh() })
 
@@ -430,6 +452,39 @@ class MainActivity : Activity() {
         ge.addView(label("Con la isla contraída: tocar o jalar hacia abajo la despliega. " +
             "En la vista de detalle: tocar abre la app, jalar hacia abajo usa el gesto de arriba y hacia arriba vuelve. " +
             "Prueba con «Simular acumulación» en la pestaña Isla.", 12f, R.color.muted), lp(8))
+    }
+
+    private val swatchColors = listOf(0xFFFFFFFF.toInt(), 0xFF000000.toInt(), 0xFF2A2E38.toInt(), 0xFFFF8A4C.toInt(),
+        0xFFFF5A5F.toInt(), 0xFFFF6B9A.toInt(), 0xFFB388FF.toInt(), 0xFF4DA3FF.toInt(), 0xFF22E5FF.toInt(),
+        0xFF4ADE80.toInt(), 0xFFFFC857.toInt())
+
+    /** Fila de colores: «Auto» (0) y una paleta para tocar. */
+    private fun colorRow(parent: LinearLayout, current: Int, onPick: (Int) -> Unit) {
+        val sv = android.widget.HorizontalScrollView(this).apply { isHorizontalScrollBarEnabled = false }
+        val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(0, px(4), 0, px(4)) }
+        (listOf(0) + swatchColors).forEach { c ->
+            val on = current == c
+            row.addView(TextView(this).apply {
+                gravity = Gravity.CENTER; textSize = 11f; setTextColor(Glass.TEXT)
+                if (c == 0) text = "Auto"
+                background = android.graphics.drawable.GradientDrawable().apply {
+                    shape = android.graphics.drawable.GradientDrawable.OVAL
+                    setColor(if (c == 0) 0x22FFFFFF else c)
+                    setStroke(px(if (on) 3 else 1), if (on) Glass.ACCENT else 0x55FFFFFF)
+                }
+                setOnClickListener { onPick(c) }
+            }, LinearLayout.LayoutParams(px(42), px(42)).apply { marginEnd = px(8) })
+        }
+        sv.addView(row)
+        parent.addView(sv, lp(6))
+    }
+
+    /** Color propio escrito como #RRGGBB (se aplica al terminar de escribirlo). */
+    private fun hexRow(parent: LinearLayout, onColor: (Int) -> Unit) {
+        parent.addView(editText("Color propio: #RRGGBB", "") { t ->
+            val h = t.trim().let { if (it.startsWith("#")) it else "#$it" }
+            if (h.length == 7) try { onColor(Color.parseColor(h) or 0xFF000000.toInt()) } catch (e: Exception) {}
+        }, lp(8))
     }
 
     private fun styleCell(sty: IslandStyle): View {
@@ -552,43 +607,64 @@ class MainActivity : Activity() {
     // ---------------- VENTANA FLOTANTE ----------------
 
     private fun buildWindow(p: LinearLayout) {
-        val fz = titled(p, "Forzar apertura", "Para abrir apps en ventana flotante hace falta Shizuku o root")
-        val shz = Shell.shizukuStatus(this)
-        statusRow(fz, "Shizuku", shz, shz == "Listo")
-        statusRow(fz, "Root", rootStatus, rootStatus.startsWith("Disponible"))
-        fz.addView(label("Método", 13f, R.color.muted, true), lp(12))
-        fz.addView(segmented(listOf("Auto", "Shizuku", "Root"), Prefs.shellMethod(this), true) { Prefs.setShellMethod(this, it) }, lp(6))
-        when {
-            !Shell.shizukuInstalled(this) -> fz.addView(button("Descargar Shizuku", true) {
-                startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://shizuku.rikka.app/download/")))
-            }, lp(10))
-            !Shell.shizukuRunning() -> {
-                fz.addView(button("Abrir Shizuku para iniciarlo", true) {
-                    packageManager.getLaunchIntentForPackage(Shell.SHIZUKU_PKG)?.let { startActivity(it) }
+        val fz = titled(p, "Cómo abrir la ventana flotante", "Sin root. Shizuku no es root.")
+        val order = intArrayOf(0, 1, 3, 2)               // posición del botón → método guardado
+        val mth = Prefs.shellMethod(this)
+        fz.addView(segmented(listOf("Auto", "Shizuku", "Sin privilegios", "Root"),
+            order.indexOf(mth).coerceAtLeast(0), true) { Prefs.setShellMethod(this, order[it]) }, lp(10))
+        fz.addView(label(when (mth) {
+            0 -> "Auto: usa Shizuku si está activo y, si no, abre con las opciones de Android para cualquier app. Nunca usa root."
+            1 -> "Solo Shizuku. Si no está activo, la ventana no se podrá forzar."
+            3 -> "Sin privilegios: no necesita Shizuku ni root. Usa solo opciones de Android disponibles para cualquier app; " +
+                "depende de la ROM, y Ryx no puede comprobar si quedó flotante: míralo en pantalla."
+            else -> "Root: solo se usa si lo eliges aquí. Deja el teléfono más expuesto, por eso nunca se usa por su cuenta."
+        }, 12f, R.color.muted), lp(8))
+        if (mth == 0 || mth == 1) {
+            val shz = Shell.shizukuStatus(this)
+            statusRow(fz, "Shizuku", shz, shz == "Listo")
+            when {
+                !Shell.shizukuInstalled(this) -> fz.addView(button("Descargar Shizuku", true) {
+                    startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://shizuku.rikka.app/download/")))
                 }, lp(10))
-                fz.addView(label("Sin root, se inicia con «Depuración inalámbrica» (Opciones de desarrollador → Shizuku → " +
-                    "Iniciar mediante depuración inalámbrica). Hay que repetirlo tras reiniciar el teléfono.", 12f, R.color.muted), lp(8))
+                !Shell.shizukuRunning() -> {
+                    fz.addView(button("Abrir Shizuku para iniciarlo", true) {
+                        packageManager.getLaunchIntentForPackage(Shell.SHIZUKU_PKG)?.let { startActivity(it) }
+                    }, lp(10))
+                    fz.addView(label("Sin root, se inicia con «Depuración inalámbrica» (dentro de Shizuku → Iniciar mediante " +
+                        "depuración inalámbrica). Hay que repetirlo tras reiniciar el teléfono.", 12f, R.color.muted), lp(8))
+                }
+                !Shell.shizukuGranted() -> fz.addView(button("Dar permiso a Ryx Island", true) {
+                    Shell.requestShizuku()
+                }, lp(10))
             }
-            !Shell.shizukuGranted() -> fz.addView(button("Dar permiso a Ryx Island", true) {
-                Shell.requestShizuku()
-            }, lp(10))
+            fz.addView(label("Shizuku no da superusuario: Ryx solo puede ejecutar comandos de shell (como adb) mientras Shizuku " +
+                "esté activo y tú lo hayas autorizado. Se apaga al reiniciar y puedes revocar el permiso desde la app Shizuku.",
+                12f, R.color.muted), lp(8))
         }
-        fz.addView(button("Comprobar root", false) {
-            rootStatus = "Comprobando…"; render()
-            Thread {
-                val r = Root.run("id")
-                runOnUiThread { rootStatus = if (r.first == 0) "Disponible" else "No disponible"; render() }
-            }.start()
-        }, lp(8))
+        if (mth == 2) {
+            statusRow(fz, "Root", rootStatus, rootStatus.startsWith("Disponible"))
+            fz.addView(button("Comprobar root", false) {
+                rootStatus = "Comprobando…"; render()
+                Thread {
+                    val r = Root.run("id")
+                    runOnUiThread { rootStatus = if (r.first == 0) "Disponible" else "No disponible"; render() }
+                }.start()
+            }, lp(8))
+        }
         val cp = titled(p, "Compatibilidad de la ROM", "${Build.DISPLAY} · Android ${Build.VERSION.RELEASE}")
         cp.addView(label("Las ventanas libres necesitan «Permitir ventanas de forma libre» en Opciones de desarrollador y un reinicio. " +
             "«Forzar que las actividades sean redimensionables» ayuda con apps que no se dejan; «Forzar modo escritorio» déjalo apagado.",
             12f, R.color.muted), lp(8))
         cp.addView(button("Comprobar soporte", false) {
             toast("Comprobando…")
-            Thread { val t = FloatingWindow.support(this); runOnUiThread { dialog("Soporte de ventanas libres", t) } }.start()
+            dialog("Soporte de ventanas libres", FloatingWindow.support(this))
         }, lp(10))
         cp.addView(button("Activar y reiniciar el teléfono", false) {
+            if (!Shell.privileged(this)) {
+                dialog("Sin privilegios", "Sin Shizuku ni root no se puede cambiar ese ajuste desde la app. " +
+                    "Actívalo a mano en Opciones de desarrollador («Habilitar ventanas libres» o «Permitir ventanas de forma libre») y reinicia.")
+                return@button
+            }
             glass(AlertDialog.Builder(this).setTitle("Reiniciar teléfono")
                 .setMessage("Se activarán las ventanas libres y el teléfono se reiniciará ahora. Guarda lo que estés haciendo.")
                 .setPositiveButton("Reiniciar") { _, _ ->
@@ -651,7 +727,7 @@ class MainActivity : Activity() {
         item(p, "backup", 0xFF3F7BEA.toInt(), "Copia de seguridad", "Exporta o importa todos los ajustes", "") { backupDialog() }
         item(p, "code", 0xFF5F6B80.toInt(), "Opciones de desarrollador", "Registro de la ventana flotante", "") { devDialog() }
         item(p, "info", 0xFF5F6B80.toInt(), "Acerca de", "Versión y créditos", "") {
-            dialog("Acerca de Ryx Island", "Ryx Island v0.9.2\nCreador: David Joel\n\nLa interfaz está inspirada en Smart Island, " +
+            dialog("Acerca de Ryx Island", "Ryx Island v0.9.3\nCreador: David Joel\n\nLa interfaz está inspirada en Smart Island, " +
                 "de Animesh Gupta (licencia GPL-3.0): github.com/agupta07505/SmartIsland, y en Hyper Bridge.\n\n" +
                 "Este código es propio y no copia el de esos proyectos. Si en el futuro se incorpora código ajeno, " +
                 "hay que conservar su aviso de copyright y respetar su licencia.")

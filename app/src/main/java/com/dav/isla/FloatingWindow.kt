@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.Intent
 import android.graphics.Rect
 import android.os.Build
+import android.provider.Settings
 
 /** Abre una app en ventana flotante con el tamaño, la posición y la animación elegidos. */
 object FloatingWindow {
@@ -36,42 +37,38 @@ object FloatingWindow {
     const val PREP = "settings put global enable_freeform_support 1; " +
         "settings put global force_resizable_activities 1; settings put global freeform_window_management 1"
 
-    /** ¿Esta ROM acepta ventanas libres? Se consulta con Shizuku o root. */
+    /** ¿Esta ROM acepta ventanas libres? Se lee con APIs públicas: no hace falta Shizuku ni root. */
     fun support(c: Context): String {
         val sb = StringBuilder("ROM: ${Build.DISPLAY}\nAndroid ${Build.VERSION.RELEASE} (API ${Build.VERSION.SDK_INT})\n")
-        val r = Shell.run(c, "pm list features | grep -i freeform; echo ---; " +
-            "settings get global enable_freeform_support; settings get global force_resizable_activities; " +
-            "settings get global freeform_window_management")
-        if (r.first == -1) { sb.append("\nNo hay Shizuku con permiso ni root para consultar."); return sb.toString() }
-        val parts = r.second.split("---")
-        val feat = parts.getOrElse(0) { "" }
-        val vals = parts.getOrElse(1) { "" }.trim().lines().map { it.trim() }
-        val has = feat.contains("freeform_window_management")
+        val has = c.packageManager.hasSystemFeature("android.software.freeform_window_management")
+        fun g(k: String): String = try { Settings.Global.getString(c.contentResolver, k) ?: "sin definir" } catch (e: Exception) { "?" }
+        val f1 = g("enable_freeform_support")
         sb.append("\nLa ROM declara ventanas libres: ${if (has) "SÍ" else "NO"}\n")
-        sb.append("enable_freeform_support = ${vals.getOrElse(0) { "?" }}\n")
-        sb.append("force_resizable_activities = ${vals.getOrElse(1) { "?" }}\n")
-        sb.append("freeform_window_management = ${vals.getOrElse(2) { "?" }}\n")
-        if (!has && vals.getOrElse(0) { "" } != "1")
-            sb.append("\nActiva «Permitir ventanas de forma libre» en Opciones de desarrollador, o usa «Activar y reiniciar».")
+        sb.append("enable_freeform_support = $f1\n")
+        sb.append("force_resizable_activities = ${g("force_resizable_activities")}\n")
+        sb.append("freeform_window_management = ${g("freeform_window_management")}\n")
+        sb.append("\nMétodo actual: ${Shell.label(c)}\n")
+        if (!has && f1 != "1")
+            sb.append("\nActiva «Permitir ventanas de forma libre» en Opciones de desarrollador y reinicia.")
         else if (!has)
-            sb.append("\nLa ROM no declara la función, pero el ajuste enable_freeform_support = 1 la habilita. " +
-                "Lo que cuenta es la verificación de la prueba (¿flotante? SÍ/NO).")
+            sb.append("\nLa ROM no declara la función, pero enable_freeform_support = 1 la habilita. " +
+                "Lo que cuenta es la prueba real de apertura.")
         else sb.append("\nSi acabas de cambiar estos valores, el sistema necesita un reinicio para aplicarlos.")
         return sb.toString()
     }
 
     /** Devuelve el registro de lo ocurrido (también se guarda para Opciones de desarrollador). */
     fun open(c: Context, pkg: String): String {
-        val log = StringBuilder("Aplicación: $pkg\n")
+        val log = StringBuilder("Aplicación: $pkg\nMétodo: ${Shell.label(c)}\n")
         val launch = c.packageManager.getLaunchIntentForPackage(pkg)
         if (launch == null) { log.append("No se encontró la actividad principal."); return save(c, log) }
         launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         val b = bounds(c)
         log.append("Ventana: ${b.left},${b.top} → ${b.right},${b.bottom}\n")
 
-        // 1) Con Shizuku o root: modo ventana libre + tamaño exacto, verificado con dumpsys
+        // 1) Con Shizuku (o root, solo si el usuario lo eligió): modo libre + tamaño exacto, verificado con dumpsys
         val comp = launch.component?.flattenToShortString()
-        if (comp != null) {
+        if (comp != null && Shell.privileged(c)) {
             // NEW_TASK = 0x10000000, MULTIPLE_TASK = 0x08000000 (am start no acepta --activity-new-task)
             val flags = if (Prefs.forceNew(c)) "-f 0x18000000" else "-f 0x10000000"
             val prep = Shell.run(c, PREP)
@@ -88,8 +85,6 @@ object FloatingWindow {
                 log.append("\nIntento ${i + 1}: código ${r.first}\n${r.second.take(260)}\n")
                 if (!failed(r)) { started = true; break }
             }
-            if (!started && !Shell.shizukuGranted())
-                log.append("\nNo hay Shizuku con permiso ni root que respondan. Abre Ventana → Forzar apertura.\n")
             if (started) {
                 Thread.sleep(700)
                 var dump = taskDump(c, pkg)
@@ -110,30 +105,49 @@ object FloatingWindow {
                     "y «Forzar que las actividades sean redimensionables», deja apagado «Forzar modo escritorio» y reinicia una vez.")
                 return save(c, log)       // ya se lanzó con privilegios; no se abre una segunda vez
             }
-        } else log.append("Sin componente de arranque.\n")
+            log.append("\nLos comandos fallaron; se prueba sin privilegios.\n")
+        } else if (Shell.method(c) != 3) {
+            log.append("Sin Shizuku activo; se abre sin privilegios (nunca se usa root si no lo eliges).\n")
+        }
 
-        // 2) Sin privilegios: opciones de actividad con tamaño y animación propia (depende de la ROM)
+        // 2) Sin privilegios: solo opciones de Android para cualquier app (depende de la ROM)
         try {
+            unlockHiddenApi(log)
             val (inn, out) = anim(c)
             val opts = ActivityOptions.makeCustomAnimation(c, inn, out)
+            try { opts.setLaunchDisplayId(0) } catch (e: Throwable) {}
+            var modeAsked = false
             try {
                 ActivityOptions::class.java.getMethod("setLaunchWindowingMode", Int::class.javaPrimitiveType).invoke(opts, 5)
-            } catch (e: Throwable) { log.append("Sin acceso al modo libre (API oculta bloqueada).\n") }
+                modeAsked = true
+            } catch (e: Throwable) { log.append("Modo libre: no accesible (${e.javaClass.simpleName}).\n") }
             opts.setLaunchBounds(b)
+            if (Prefs.forceNew(c)) launch.addFlags(Intent.FLAG_ACTIVITY_MULTIPLE_TASK)
             c.startActivity(launch, opts.toBundle())
-            log.append("\nLanzada con ActivityOptions (animación propia).")
+            log.append("\nLanzada sin privilegios · modo libre pedido: ${if (modeAsked) "sí" else "no"}\n" +
+                "Ryx no puede comprobar el resultado sin permisos: mira si la ventana quedó flotante.")
             return save(c, log)
-        } catch (e: Exception) { log.append("\nFalló ActivityOptions: ${e.message}") }
+        } catch (e: Exception) { log.append("\nFalló la apertura sin privilegios: ${e.message}") }
 
         // 3) Apertura normal
         try { c.startActivity(launch); log.append("\nSe abrió en pantalla completa.") } catch (e: Exception) {}
         return save(c, log)
     }
 
+    /** Quita la restricción de APIs internas solo para poder pedir el modo ventana libre. */
+    private fun unlockHiddenApi(log: StringBuilder) {
+        try {
+            org.lsposed.hiddenapibypass.HiddenApiBypass.addHiddenApiExemptions("L")
+            log.append("APIs internas: desbloqueadas\n")
+        } catch (e: Throwable) {
+            log.append("APIs internas: no se pudo (${e.javaClass.simpleName})\n")
+        }
+    }
+
     private fun taskDump(c: Context, pkg: String): String =
         Shell.run(c, "dumpsys activity activities | grep -i -B2 -A10 \"$pkg\" | head -80").second
 
-    /** Mira solo la línea de ESA tarea (Task{… #id … mode=freeform), no todo el volcado. */
+    /** Mira solo la línea de ESA tarea (Task con #id y mode=freeform), no todo el volcado. */
     private fun isFreeTask(dump: String, id: String?): Boolean {
         if (id == null) return isFree(dump)
         val lines = dump.lines().filter { it.contains("#$id ") }
