@@ -171,7 +171,7 @@ object Prefs {
     fun setShellMethod(c: Context, v: Int) = sp(c).edit().putInt("shell_m", v).apply()
 
     // ---- Gestos: 0 nada, 1 abrir app, 2 ventana flotante, 3 descartar, 4 siguiente, 5 anterior, 6 contraer ----
-    fun gTap(c: Context): Int = sp(c).getInt("g_tap", 1)
+    fun gTap(c: Context): Int = sp(c).getInt("g_tap", 7)
     fun setGTap(c: Context, v: Int) = sp(c).edit().putInt("g_tap", v).apply()
     fun gDown(c: Context): Int = sp(c).getInt("g_down", 2)
     fun setGDown(c: Context, v: Int) = sp(c).edit().putInt("g_down", v).apply()
@@ -186,4 +186,6 @@ object Prefs {
     fun swipeDp(c: Context): Int = sp(c).getInt("swipe_dp", 36)
     fun setSwipeDp(c: Context, v: Int) = sp(c).edit().putInt("swipe_dp", v).apply()
     fun autoHideAfterTouch(c: Context): Boolean = true
+    fun appTheme(c: Context): String = sp(c).getString("app_theme", "ryx") ?: "ryx"
+    fun setAppTheme(c: Context, v: String) = sp(c).edit().putString("app_theme", v).apply()
 }

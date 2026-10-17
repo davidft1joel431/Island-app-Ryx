@@ -68,11 +68,15 @@ class NotifListener : NotificationListenerService() {
     private var expanded = false
     private var anim: ValueAnimator? = null
     private var badgeView: LinearLayout? = null
+    private var detailImg: ImageView? = null
+    private var actionsRow: LinearLayout? = null
+    private var detail = false
 
     /** Una tarjeta acumulada en la isla. */
     private class Card(
         val key: String, val pkg: String, val title: CharSequence?, val body: CharSequence?,
-        val icon: Drawable?, val accent: Int?, val ephemeral: Boolean, val time: Long = System.currentTimeMillis()
+        val icon: Drawable?, val accent: Int?, val ephemeral: Boolean,
+        val detail: CharSequence? = null, val media: Bitmap? = null, val time: Long = System.currentTimeMillis()
     )
     private val cards = ArrayList<Card>()
     private var cardIndex = 0
@@ -85,6 +89,7 @@ class NotifListener : NotificationListenerService() {
 
     override fun onListenerConnected() {
         instance = this
+        Glass.applyTheme(this)
         wm = getSystemService(WINDOW_SERVICE) as WindowManager
         main.post { if (Prefs.islandOn(this) && Prefs.permanent(this)) showIdle() }
         registerSystemReceivers()
@@ -138,10 +143,12 @@ class NotifListener : NotificationListenerService() {
             if (words.any { all.contains(it) }) { title = appLabel(sbn.packageName); text = "Contenido oculto" }
         }
 
+        val (mediaBmp, mediaKind) = extractMedia(n)
+
         // 1) La isla REGISTRA todo en el historial, por aplicación
         if (Prefs.keepHistory(this) && !sbn.isOngoing) {
-            val media = saveMedia(n)
-            Prefs.addHist(this, sbn.packageName, title?.toString() ?: "", text?.toString() ?: "", media.first, media.second)
+            Prefs.addHist(this, sbn.packageName, title?.toString() ?: "", text?.toString() ?: "",
+                saveBitmap(mediaBmp, mediaKind), mediaKind)
         }
 
         // 2) Filtros de la isla
@@ -157,7 +164,24 @@ class NotifListener : NotificationListenerService() {
         }
 
         val large: Drawable? = try { n.getLargeIcon()?.loadDrawable(this) } catch (e: Exception) { null }
-        show(sbn.packageName, title, text, large, true, true, sbn.key, false)
+        val small: Drawable? = try {
+            n.smallIcon?.loadDrawable(createPackageContext(sbn.packageName, 0))
+        } catch (e: Exception) { null }
+        // Texto completo para la vista de detalle: texto largo, o los últimos mensajes de la conversación
+        var full: CharSequence? = n.extras.getCharSequence(Notification.EXTRA_BIG_TEXT)
+        if (full == null) {
+            @Suppress("DEPRECATION")
+            val lines = n.extras.getParcelableArray(Notification.EXTRA_MESSAGES)
+                ?.mapNotNull { it as? android.os.Bundle }?.takeLast(5)?.mapNotNull { m ->
+                    val t = m.getCharSequence("text") ?: return@mapNotNull null
+                    val who = m.getCharSequence("sender")
+                    if (who != null) "$who: $t" else t.toString()
+                }
+            if (!lines.isNullOrEmpty()) full = lines.joinToString("\n")
+        }
+        if (words.isNotEmpty() && text == "Contenido oculto") full = text
+        show(sbn.packageName, title, text, large, true, true, sbn.key, false,
+            fallback = small, media = mediaBmp, detailText = full ?: text)
     }
 
     /** Llamadas, multimedia y navegación se quedan en el sistema para no romper sus controles. */
@@ -261,7 +285,7 @@ class NotifListener : NotificationListenerService() {
     /** Icono vectorial del evento sobre un círculo de cristal. */
     private fun eventIcon(name: String): Drawable? {
         val ic = Glass.icon(this, name, Color.WHITE) ?: return null
-        val bg = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(0x33FF8A4C) }
+        val bg = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(Glass.accentA(0x33)) }
         return LayerDrawable(arrayOf(bg, ic)).apply { val i = px(8); setLayerInset(1, i, i, i, i) }
     }
 
@@ -304,30 +328,47 @@ class NotifListener : NotificationListenerService() {
             shape = Prefs.iconShape(this@NotifListener)
         }
         val app = TextView(this).apply {
-            setTextColor(getColor(R.color.gold))
+            setTextColor(Glass.ACCENT)
             textSize = 10f
             maxLines = 1
             ellipsize = TextUtils.TruncateAt.END
             visibility = if (s.showAppName) View.VISIBLE else View.GONE
         }
         val title = TextView(this).apply {
-            setTextColor(Color.WHITE)
+            setTextColor(s.textColor)
             textSize = s.titleSp
             maxLines = 1
             ellipsize = TextUtils.TruncateAt.END
             setTypeface(typeface, if (Prefs.fontBold(this@NotifListener)) Typeface.BOLD else Typeface.NORMAL)
         }
         val body = TextView(this).apply {
-            setTextColor(0xCCFFFFFF.toInt())
+            setTextColor(s.subColor)
             textSize = s.bodySp
             maxLines = 1
             ellipsize = TextUtils.TruncateAt.END
         }
+        val dImg = ImageView(this).apply {
+            visibility = View.GONE; scaleType = ImageView.ScaleType.CENTER_CROP
+            outlineProvider = object : android.view.ViewOutlineProvider() {
+                override fun getOutline(view: View, o: android.graphics.Outline) { o.setRoundRect(0, 0, view.width, view.height, px(14).toFloat()) }
+            }
+            clipToOutline = true
+        }
+        val acts = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL; visibility = View.GONE
+            addView(actionChip("Abrir", true, s) { openCurrent(false) }, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply { marginEnd = px(4) })
+            addView(actionChip("Ventana", false, s) { openCurrent(true) }, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply { marginStart = px(4); marginEnd = px(4) })
+            addView(actionChip("Descartar", false, s) { dismissCurrent() }, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply { marginStart = px(4) })
+        }
+        detailImg = dImg
+        actionsRow = acts
         val col = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             addView(app)
             addView(title)
             addView(body)
+            addView(dImg, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, px(130)).apply { topMargin = px(8) })
+            addView(acts, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { topMargin = px(10) })
         }
         val badge = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; visibility = View.GONE
@@ -379,6 +420,18 @@ class NotifListener : NotificationListenerService() {
         }
     }
 
+    private fun actionChip(text: String, primary: Boolean, s: IslandStyle, onClick: () -> Unit) = TextView(this).apply {
+        this.text = text; gravity = Gravity.CENTER; textSize = 12.5f
+        setTypeface(typeface, Typeface.BOLD)
+        setTextColor(if (primary) 0xFF1B0B02.toInt() else s.textColor)
+        setPadding(px(6), px(9), px(6), px(9))
+        background = GradientDrawable().apply {
+            cornerRadius = px(16).toFloat()
+            setColor(if (primary) Glass.ACCENT else if (s.textColor == 0xFFFFFFFF.toInt()) 0x30FFFFFF else 0x22000000)
+        }
+        setOnClickListener { onClick() }
+    }
+
     private fun idleWidth(): Int = px(Prefs.idleWidthDp(this))
 
     private fun expandedWidth(): Int =
@@ -422,14 +475,17 @@ class NotifListener : NotificationListenerService() {
 
     private fun show(
         pkg: String, t: CharSequence?, b: CharSequence?, large: Drawable?, autoHide: Boolean = true,
-        expand: Boolean = true, key: String = "$pkg|$t", ephemeral: Boolean = false
+        expand: Boolean = true, key: String = "$pkg|$t", ephemeral: Boolean = false,
+        fallback: Drawable? = null, media: Bitmap? = null, detailText: CharSequence? = null
     ) {
         main.post {
             if (!::wm.isInitialized || !Settings.canDrawOverlays(this)) return@post
             buildIsland()
             val v = island ?: return@post
             val params = lp ?: return@post
-            val appIcon: Drawable? = try { packageManager.getApplicationIcon(pkg) } catch (e: Exception) { null }
+            val sysIcon: Drawable? = try { packageManager.getApplicationIcon(pkg) } catch (e: Exception) { null }
+            // Si el sistema no deja leer el icono de la app (HyperOS sin permiso), se usa el de la notificación
+            val appIcon: Drawable? = sysIcon ?: large ?: fallback?.let { badgeOf(it) }
             val shown: Drawable? = when {
                 pkg == packageName && large != null -> large                      // iconos de eventos
                 Prefs.iconMode(this) == 1 -> large ?: appIcon                     // el de la notificación
@@ -438,10 +494,11 @@ class NotifListener : NotificationListenerService() {
                 else -> appIcon                                                   // el del sistema
             }
             val accent = if (Prefs.smartColor(this) && pkg != packageName) dominantColor(appIcon) else null
+            if (detail) resetDetail()
 
             // Acumulación: la nueva queda al frente y las anteriores esperan a la derecha
             cards.removeAll { it.key == key }
-            cards.add(0, Card(key, pkg, t, b, shown, accent, ephemeral))
+            cards.add(0, Card(key, pkg, t, b, shown, accent, ephemeral, detailText, media))
             val limit = System.currentTimeMillis() - 15 * 60_000L
             cards.removeAll { it.time < limit }
             while (cards.size > 8) cards.removeAt(cards.size - 1)
@@ -481,14 +538,27 @@ class NotifListener : NotificationListenerService() {
         morph(true, null)
     }
 
+    /** Icono pequeño (monocromo) de la notificación sobre un disco de color. */
+    private fun badgeOf(d: Drawable): Drawable {
+        val bg = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(0xFF3A3F4A.toInt()) }
+        val ic = d.constantState?.newDrawable()?.mutate() ?: d
+        ic.setTint(Color.WHITE)
+        return LayerDrawable(arrayOf(bg, ic)).apply { val i = px(8); setLayerInset(1, i, i, i, i) }
+    }
+
     /** Pone el contenido de una tarjeta en la isla. */
     private fun bindCard(c: Card) {
         appView?.text = appLabel(c.pkg)
         titleView?.text = c.title
         bodyView?.text = c.body
-        iconView?.setImageDrawable(c.icon?.constantState?.newDrawable()?.mutate() ?: c.icon)
+        iconView?.setImageDrawable(c.icon?.constantState?.newDrawable()?.mutate() ?: c.icon
+            ?: getDrawable(R.drawable.logo))
         (iconView as? ShapedImageView)?.shape = Prefs.iconShape(this)
         island?.background = buildBackground(style, c.accent)
+        if (detail) {
+            bodyView?.text = c.detail ?: c.body
+            detailImg?.let { if (c.media != null) { it.setImageBitmap(c.media); it.visibility = View.VISIBLE } else it.visibility = View.GONE }
+        }
     }
 
     /** Acumulación a la derecha: iconos apilados al expandir, contador al reposo. */
@@ -498,26 +568,19 @@ class NotifListener : NotificationListenerService() {
         val others: List<Card> = if (expanded) cards.filterIndexed { i, _ -> i != cardIndex } else cards.filter { !it.ephemeral }
         if (others.isEmpty()) { b.visibility = View.GONE; return }
         b.visibility = View.VISIBLE
-        if (expanded) {
-            others.take(3).forEachIndexed { i, c ->
-                b.addView(ShapedImageView(this).apply {
-                    shape = Prefs.iconShape(this@NotifListener); scaleType = ImageView.ScaleType.CENTER_CROP
-                    setImageDrawable(c.icon?.constantState?.newDrawable()?.mutate() ?: c.icon)
-                    alpha = 1f - 0.18f * i
-                }, LinearLayout.LayoutParams(px(20), px(20)).apply { if (i > 0) marginStart = -px(8) })
-            }
-            if (others.size > 3) b.addView(TextView(this).apply {
-                text = "+${others.size - 3}"; setTextColor(Color.WHITE); textSize = 11f
-                setTypeface(typeface, Typeface.BOLD)
-            }, LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT)
-                .apply { marginStart = px(4) })
-        } else {
-            b.addView(TextView(this).apply {
-                text = "${others.size}"; setTextColor(Color.BLACK); textSize = 11f; gravity = Gravity.CENTER
-                setTypeface(typeface, Typeface.BOLD)
-                background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(0xFFFF8A4C.toInt()) }
-            }, LinearLayout.LayoutParams(px(20), px(20)))
+        val size = if (expanded) 20 else 18
+        others.take(3).forEachIndexed { i, c ->
+            b.addView(ShapedImageView(this).apply {
+                shape = Prefs.iconShape(this@NotifListener); scaleType = ImageView.ScaleType.CENTER_CROP
+                setImageDrawable(c.icon?.constantState?.newDrawable()?.mutate() ?: c.icon ?: getDrawable(R.drawable.logo))
+                alpha = 1f - 0.18f * i
+            }, LinearLayout.LayoutParams(px(size), px(size)).apply { if (i > 0) marginStart = -px(8) })
         }
+        if (others.size > 3) b.addView(TextView(this).apply {
+            text = "+${others.size - 3}"; setTextColor(Color.WHITE); textSize = 11f
+            setTypeface(typeface, Typeface.BOLD)
+        }, LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT)
+            .apply { marginStart = px(4) })
     }
 
     // ---------- Gestos ----------
@@ -527,15 +590,19 @@ class NotifListener : NotificationListenerService() {
         private var y0 = 0f
         private var down = false
         private var longFired = false
+        private var baseX = 0
+        private var baseY = 0
         private val slop = ViewConfiguration.get(this@NotifListener).scaledTouchSlop
         private val longRun = Runnable {
-            if (down) { longFired = true; doAction(Prefs.gLong(this@NotifListener)) }
+            if (down) { longFired = true; onGesture(5) }
         }
 
         override fun onTouch(v: View, e: MotionEvent): Boolean {
+            val params = lp ?: return false
             when (e.actionMasked) {
                 MotionEvent.ACTION_DOWN -> {
                     x0 = e.rawX; y0 = e.rawY; down = true; longFired = false
+                    baseX = px(Prefs.xOffsetDp(this@NotifListener)); baseY = px(Prefs.yOffsetDp(this@NotifListener))
                     main.removeCallbacks(hideTask)
                     main.postDelayed(longRun, 450)
                 }
@@ -543,27 +610,25 @@ class NotifListener : NotificationListenerService() {
                     if (!down) return true
                     val dx = e.rawX - x0; val dy = e.rawY - y0
                     if (abs(dx) > slop || abs(dy) > slop) main.removeCallbacks(longRun)
-                    // la isla sigue al dedo con resistencia, como en HyperOS
-                    v.translationY = (dy * 0.55f).coerceIn(-px(30).toFloat(), px(70).toFloat())
-                    v.translationX = dx * 0.4f
+                    // la isla sigue al dedo con resistencia (se mueve la ventana, no la vista)
+                    params.x = baseX + (dx * 0.35f).toInt()
+                    params.y = baseY + (dy * 0.5f).coerceIn(-px(24).toFloat(), px(60).toFloat()).toInt()
+                    try { wm.updateViewLayout(v, params) } catch (e: Exception) {}
                 }
                 MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
                     main.removeCallbacks(longRun)
                     val wasDown = down; down = false
                     val dx = e.rawX - x0; val dy = e.rawY - y0
                     val th = px(Prefs.swipeDp(this@NotifListener)).toFloat()
-                    v.animate().translationX(0f).translationY(0f)
-                        .setDuration((380 * Motion.factor(this@NotifListener)).toLong())
-                        .setInterpolator(Motion.spring()).start()
-                    if (expanded && cards.isNotEmpty() && Prefs.autoHideAfterTouch(this@NotifListener))
-                        main.postDelayed(hideTask, Prefs.durationMs(this@NotifListener))
+                    springBack(v)
+                    if (expanded && !detail) main.postDelayed(hideTask, Prefs.durationMs(this@NotifListener))
                     if (!wasDown || longFired || e.actionMasked == MotionEvent.ACTION_CANCEL) return true
                     when {
-                        dy > th && dy > abs(dx) -> doAction(Prefs.gDown(this@NotifListener))
-                        dy < -th && -dy > abs(dx) -> doAction(Prefs.gUp(this@NotifListener))
-                        dx > th && dx > abs(dy) -> doAction(Prefs.gRight(this@NotifListener))
-                        dx < -th && -dx > abs(dy) -> doAction(Prefs.gLeft(this@NotifListener))
-                        abs(dx) < slop && abs(dy) < slop -> doAction(Prefs.gTap(this@NotifListener))
+                        dy > th && dy > abs(dx) -> onGesture(1)
+                        dy < -th && -dy > abs(dx) -> onGesture(2)
+                        dx > th && dx > abs(dy) -> onGesture(4)
+                        dx < -th && -dx > abs(dy) -> onGesture(3)
+                        abs(dx) < slop && abs(dy) < slop -> onGesture(0)
                     }
                 }
             }
@@ -571,12 +636,53 @@ class NotifListener : NotificationListenerService() {
         }
     }
 
-    private fun doAction(a: Int) {
-        if (a == 0) return
-        if (!expanded) {                       // con la isla en reposo, cualquier gesto abre las acumuladas
-            if (cards.any { !it.ephemeral }) expandPending()
+    /** La isla vuelve a su sitio con un resorte después de arrastrarla. */
+    private fun springBack(v: View) {
+        val params = lp ?: return
+        val bx = px(Prefs.xOffsetDp(this)); val by = px(Prefs.yOffsetDp(this))
+        val fx = params.x; val fy = params.y
+        ValueAnimator.ofFloat(0f, 1f).apply {
+            duration = (420 * Motion.factor(this@NotifListener)).toLong()
+            interpolator = Motion.spring()
+            addUpdateListener {
+                val t = it.animatedValue as Float
+                params.x = lerp(fx.toFloat(), bx.toFloat(), t).toInt()
+                params.y = lerp(fy.toFloat(), by.toFloat(), t).toInt()
+                if (attached) try { wm.updateViewLayout(v, params) } catch (e: Exception) {}
+            }
+            start()
+        }
+    }
+
+    /** kind: 0 toque, 1 abajo, 2 arriba, 3 izquierda, 4 derecha, 5 mantener. */
+    private fun onGesture(kind: Int) {
+        if (!expanded) {
+            // Contraída: tocar o jalar hacia abajo despliega las notificaciones acumuladas
+            if (kind == 0 || kind == 1 || kind == 5) expandPending()
             return
         }
+        if (detail) {
+            when (kind) {
+                0 -> openCurrent(false)
+                1 -> doAction(Prefs.gDown(this))
+                2 -> exitDetail()
+                3 -> page(1)
+                4 -> page(-1)
+                else -> collapse()
+            }
+            return
+        }
+        doAction(when (kind) {
+            0 -> Prefs.gTap(this)
+            1 -> Prefs.gDown(this)
+            2 -> Prefs.gUp(this)
+            3 -> Prefs.gLeft(this)
+            4 -> Prefs.gRight(this)
+            else -> Prefs.gLong(this)
+        })
+    }
+
+    private fun doAction(a: Int) {
         when (a) {
             1 -> openCurrent(false)
             2 -> openCurrent(true)
@@ -584,7 +690,66 @@ class NotifListener : NotificationListenerService() {
             4 -> page(1)
             5 -> page(-1)
             6 -> collapse()
+            7 -> enterDetail()
         }
+    }
+
+    // ---------- Vista de detalle ----------
+
+    private fun resetDetail() {
+        detail = false
+        detailImg?.visibility = View.GONE
+        actionsRow?.visibility = View.GONE
+        bodyView?.maxLines = 1
+        cards.getOrNull(cardIndex)?.let { bodyView?.text = it.body }
+        island?.minimumHeight = px(maxOf(style.iconDp + 2 * style.padV, 64))
+    }
+
+    private fun enterDetail() {
+        val c = cards.getOrNull(cardIndex) ?: return
+        if (detail) return
+        detail = true
+        main.removeCallbacks(hideTask)
+        bodyView?.maxLines = 8
+        bodyView?.text = c.detail ?: c.body
+        detailImg?.let { if (c.media != null) { it.setImageBitmap(c.media); it.visibility = View.VISIBLE } else it.visibility = View.GONE }
+        actionsRow?.visibility = View.VISIBLE
+        animateDetail(true)
+    }
+
+    private fun exitDetail() {
+        if (!detail) return
+        animateDetail(false)
+        main.postDelayed(hideTask, Prefs.durationMs(this))
+    }
+
+    /** Crece o se encoge la tarjeta con resorte y aparece el contenido extra. */
+    private fun animateDetail(open: Boolean) {
+        val row = island ?: return
+        val params = lp ?: return
+        row.measure(View.MeasureSpec.makeMeasureSpec(params.width, View.MeasureSpec.EXACTLY),
+            View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED))
+        val compact = px(maxOf(style.iconDp + 2 * style.padV, 64))
+        val target = if (open) maxOf(row.measuredHeight, compact) else compact
+        val from = if (row.height > 0) row.height else compact
+        anim?.cancel()
+        val a = ValueAnimator.ofFloat(0f, 1f)
+        a.duration = if (open) Motion.expandMs(this) else Motion.collapseMs(this)
+        a.interpolator = if (open) Motion.spring() else Motion.smooth()
+        a.addUpdateListener { va ->
+            val t = va.animatedValue as Float
+            row.minimumHeight = lerp(from.toFloat(), target.toFloat(), t).toInt().coerceAtLeast(compact)
+            val k = if (open) t.coerceIn(0f, 1f) else (1f - t).coerceIn(0f, 1f)
+            detailImg?.alpha = k; actionsRow?.alpha = k
+            if (attached) try { wm.updateViewLayout(row, params) } catch (e: Exception) {}
+        }
+        a.addListener(object : AnimatorListenerAdapter() {
+            override fun onAnimationEnd(animation: Animator) {
+                if (!open) resetDetail()
+            }
+        })
+        anim = a
+        a.start()
     }
 
     private fun expandPending() {
@@ -602,25 +767,29 @@ class NotifListener : NotificationListenerService() {
         cardIndex = (cardIndex + d + cards.size) % cards.size
         bindCard(cards[cardIndex])
         updateBadge()
+        if (detail) animateDetail(true)
         textCol?.translationX = px(28).toFloat() * d
         textCol?.animate()?.translationX(0f)?.setDuration((380 * Motion.factor(this)).toLong())
             ?.setInterpolator(Motion.spring())?.start()
-        main.removeCallbacks(hideTask); main.postDelayed(hideTask, Prefs.durationMs(this))
+        main.removeCallbacks(hideTask)
+        if (!detail) main.postDelayed(hideTask, Prefs.durationMs(this))
     }
 
     private fun dismissCurrent() {
         if (cardIndex in cards.indices) cards.removeAt(cardIndex)
         if (cards.isEmpty()) { collapse(); return }
         cardIndex = cardIndex.coerceAtMost(cards.size - 1)
-        bindCard(cards[cardIndex]); updateBadge(); pulse()
-        main.removeCallbacks(hideTask); main.postDelayed(hideTask, Prefs.durationMs(this))
+        bindCard(cards[cardIndex]); updateBadge()
+        if (detail) animateDetail(true) else pulse()
+        main.removeCallbacks(hideTask)
+        if (!detail) main.postDelayed(hideTask, Prefs.durationMs(this))
     }
 
     // ---------- Medios para el historial ----------
 
-    /** Guarda la imagen o sticker de la notificación (si hay) y devuelve (archivo, tipo). */
+    /** Imagen o sticker de la notificación (si hay) y su tipo. */
     @Suppress("DEPRECATION")
-    private fun saveMedia(n: Notification): Pair<String, String> {
+    private fun extractMedia(n: Notification): Pair<Bitmap?, String> {
         try {
             val ex = n.extras
             var bmp: Bitmap? = ex.getParcelable<Bitmap>(Notification.EXTRA_PICTURE)
@@ -646,17 +815,22 @@ class NotifListener : NotificationListenerService() {
                 mime.startsWith("video/") -> "Video"
                 else -> ""
             }
-            val b = bmp ?: return Pair("", kind)
-            val scaled = scaleDown(b, 640)
+            return Pair(bmp?.let { scaleDown(it, 640) }, kind)
+        } catch (e: Throwable) {
+            return Pair(null, "")
+        }
+    }
+
+    private fun saveBitmap(bmp: Bitmap?, kind: String): String {
+        if (bmp == null) return ""
+        return try {
             val name = "${System.currentTimeMillis()}_${(Math.random() * 99999).toInt()}.img"
             FileOutputStream(File(Prefs.histDir(this), name)).use {
-                if (kind == "Sticker") scaled.compress(Bitmap.CompressFormat.PNG, 100, it)
-                else scaled.compress(Bitmap.CompressFormat.JPEG, 82, it)
+                if (kind == "Sticker") bmp.compress(Bitmap.CompressFormat.PNG, 100, it)
+                else bmp.compress(Bitmap.CompressFormat.JPEG, 82, it)
             }
-            return Pair(name, kind)
-        } catch (e: Throwable) {
-            return Pair("", "")
-        }
+            name
+        } catch (e: Throwable) { "" }
     }
 
     private fun toBitmap(d: Drawable): Bitmap {
@@ -685,6 +859,7 @@ class NotifListener : NotificationListenerService() {
         main.removeCallbacks(hideTask)
         val params = lp ?: return
         if (!attached || !expanded) return
+        if (detail) resetDetail()
         // los eventos cortos se descartan al cerrarse; las notificaciones quedan acumuladas
         cards.getOrNull(cardIndex)?.let { if (it.ephemeral) cards.remove(it) }
         cardIndex = 0
@@ -784,7 +959,7 @@ class NotifListener : NotificationListenerService() {
     private fun appLabel(pkg: String): String = try {
         packageManager.getApplicationLabel(packageManager.getApplicationInfo(pkg, 0)).toString()
     } catch (e: Exception) {
-        pkg
+        pkg.substringAfterLast('.').replaceFirstChar { it.uppercase() }
     }
 
     // ---------- Abrir app ----------

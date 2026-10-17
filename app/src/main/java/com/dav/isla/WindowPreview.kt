@@ -18,7 +18,7 @@ class WindowPreview(c: Context) : View(c) {
     private val dens = c.resources.displayMetrics.density
     private val p = Paint(Paint.ANTI_ALIAS_FLAG)
     private val r = RectF()
-    private val heightDp = 250f
+    private val heightDp = 330f
 
     fun refresh() = invalidate()
 
@@ -50,7 +50,7 @@ class WindowPreview(c: Context) : View(c) {
         p.shader = LinearGradient(x0, 0f, x0 + pw, height.toFloat(),
             intArrayOf(0xFF3B5A7A.toInt(), 0xFF2A2F4A.toInt(), 0xFF4A2F3E.toInt()), null, Shader.TileMode.CLAMP)
         cv.drawRoundRect(r, u(34f), u(34f), p)
-        p.shader = RadialGradient(x0 + pw * 0.8f, height * 0.85f, pw, 0x55FF8A4C, 0x00FF8A4C, Shader.TileMode.CLAMP)
+        p.shader = RadialGradient(x0 + pw * 0.8f, height * 0.85f, pw, Glass.accentA(0x55), Glass.accentA(0), Shader.TileMode.CLAMP)
         cv.drawRoundRect(r, u(34f), u(34f), p); p.shader = null
         p.style = Paint.Style.STROKE; p.strokeWidth = u(2.5f); p.color = 0x66FFFFFF
         cv.drawRoundRect(r, u(34f), u(34f), p); p.style = Paint.Style.FILL

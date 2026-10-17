@@ -131,10 +131,10 @@ class IslandPreview(c: Context) : View(c) {
             val ix = rect.left + u(st.padH.toFloat() + 2f); val iy = rect.top + (rect.height() - ic) / 2f
             p.color = Glass.ACCENT; p.alpha = (255 * k).toInt()
             val ir = RectF(ix, iy, ix + ic, iy + ic); cv.drawRoundRect(ir, u(st.iconCornerDp), u(st.iconCornerDp), p)
-            p.color = 0xFFFFFFFF.toInt(); p.alpha = (255 * k).toInt(); p.typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+            p.color = st.textColor; p.alpha = (255 * k).toInt(); p.typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
             p.textSize = u(st.titleSp)
             cv.drawText("Ryx Island", ix + ic + u(10f), rect.centerY() - u(1f), p)
-            p.typeface = Typeface.DEFAULT; p.textSize = u(st.bodySp); p.alpha = (200 * k).toInt()
+            p.color = st.subColor; p.typeface = Typeface.DEFAULT; p.textSize = u(st.bodySp); p.alpha = (200 * k).toInt()
             cv.drawText("Vista previa", ix + ic + u(10f), rect.centerY() + u(st.bodySp + 1f), p)
         }
         p.alpha = 255
@@ -144,7 +144,7 @@ class IslandPreview(c: Context) : View(c) {
             val k = ((progress - 0.35f) / 0.65f).coerceIn(0f, 1f)
             val bx = rect.right - u(st.padH.toFloat() + 12f)
             for (i in 2 downTo 0) {
-                p.color = intArrayOf(0xFF8AB4FF.toInt(), 0xFFFFC857.toInt(), 0xFFFF8A4C.toInt())[i]
+                p.color = intArrayOf(0xFF8AB4FF.toInt(), 0xFFFFC857.toInt(), Glass.ACCENT)[i]
                 p.alpha = (255 * k).toInt()
                 cv.drawCircle(bx - u(11f) * i, rect.centerY(), u(9f), p)
             }

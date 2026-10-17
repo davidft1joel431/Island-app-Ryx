@@ -6,6 +6,7 @@ import android.app.Dialog
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.content.res.ColorStateList
 import android.graphics.Color
 import android.graphics.Outline
@@ -53,19 +54,24 @@ class MainActivity : Activity() {
     private var appQuery = ""
     private var rootStatus = "Sin comprobar"
     private val actionNames = listOf("Nada", "Abrir app", "Ventana flotante", "Descartar tarjeta",
-        "Siguiente tarjeta", "Tarjeta anterior", "Contraer isla")
+        "Siguiente tarjeta", "Tarjeta anterior", "Contraer isla", "Ver detalle")
     private val permListener = Shizuku.OnRequestPermissionResultListener { _, _ -> runOnUiThread { render() } }
     private val binderListener = Shizuku.OnBinderReceivedListener { runOnUiThread { render() } }
     private val deadListener = Shizuku.OnBinderDeadListener { runOnUiThread { render() } }
     private var appsBox: LinearLayout? = null
     private val iconCache = HashMap<String, Drawable?>()
-    private val appList: List<Pair<String, String>> by lazy {
+    private var appListCache: List<Pair<String, String>>? = null
+    private val appList: List<Pair<String, String>> get() = appListCache ?: run {
         val pm = packageManager
         pm.queryIntentActivities(Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER), 0)
             .map { it.activityInfo.packageName to it.loadLabel(pm).toString() }
             .filter { it.first != packageName }
             .distinctBy { it.first }.sortedBy { it.second.lowercase() }
-    }
+    }.also { appListCache = it }
+    private val appsPerm = "com.android.permission.GET_INSTALLED_APPS"
+    /** Solo HyperOS/MIUI definen este permiso; en ROMs AOSP no existe y no se pide. */
+    private fun hasAppsPerm() = try { packageManager.getPermissionInfo(appsPerm, 0); true } catch (e: Exception) { false }
+    private fun appsPermOk() = !hasAppsPerm() || checkSelfPermission(appsPerm) == PackageManager.PERMISSION_GRANTED
 
     private fun px(v: Int) = (v * resources.displayMetrics.density).toInt()
     private fun col(id: Int) = getColor(id)
@@ -74,6 +80,7 @@ class MainActivity : Activity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        Glass.applyTheme(this)
         window.setBackgroundDrawable(Glass.page(this))
         val rootView = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         rootView.setOnApplyWindowInsetsListener { v, insets ->
@@ -121,11 +128,17 @@ class MainActivity : Activity() {
         })
         setContentView(rootView)
         render()
+        if (!appsPermOk()) try { requestPermissions(arrayOf(appsPerm), 5) } catch (e: Throwable) {}
         try {
             Shizuku.addRequestPermissionResultListener(permListener)
             Shizuku.addBinderReceivedListener(binderListener)
             Shizuku.addBinderDeadListener(deadListener)
         } catch (e: Throwable) {}
+    }
+
+    override fun onRequestPermissionsResult(code: Int, perms: Array<out String>, res: IntArray) {
+        super.onRequestPermissionsResult(code, perms, res)
+        appListCache = null; iconCache.clear(); render()
     }
 
     override fun onDestroy() {
@@ -165,11 +178,11 @@ class MainActivity : Activity() {
             val b = LinearLayout(this).apply {
                 orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER
                 setPadding(0, px(8), 0, px(8))
-                if (sel) background = Glass.pill(this@MainActivity, 0x33FF8A4C, 0, 26f)
+                if (sel) background = Glass.pill(this@MainActivity, Glass.accentA(0x33), 0, 26f)
                 setOnClickListener { tab = i; subPage = null; render() }
             }
             b.addView(icon(ic, 22, colr))
-            b.addView(label(name, 11f, R.color.text, true).apply { setTextColor(colr) })
+            b.addView(label(name, 11f, R.color.text, true).apply { setTextColor(colr); gravity = Gravity.CENTER })
             tabBar.addView(b, LinearLayout.LayoutParams(0, WRAP, 1f).apply { marginStart = px(2); marginEnd = px(2) })
         }
         content.removeAllViews()
@@ -307,7 +320,7 @@ class MainActivity : Activity() {
                     val ex = Prefs.eventExpand(this, ev.id)
                     val chip = FrameLayout(this).apply {
                         background = Glass.pill(this@MainActivity,
-                            if (isOn) 0x40FF8A4C else 0x14FFFFFF, if (isOn) Glass.ACCENT else 0x33FFFFFF, 20f)
+                            if (isOn) Glass.accentA(0x40) else 0x14FFFFFF, if (isOn) Glass.ACCENT else 0x33FFFFFF, 20f)
                         val col2 = LinearLayout(this@MainActivity).apply {
                             orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER
                             setPadding(px(6), px(18), px(6), px(16))
@@ -367,15 +380,14 @@ class MainActivity : Activity() {
     // ---------------- DISEÑO ----------------
 
     private fun buildLayout(p: LinearLayout) {
-        val st = titled(p, "Estilo de la isla", "Elige cómo se ve")
+        val st = titled(p, "Estilo de la isla", "Toca uno para verlo arriba y en la isla real")
         Styles.ALL.chunked(2).forEach { pair ->
             val r = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
-            pair.forEach { s ->
-                val on = Prefs.style(this) == s.id
-                r.addView(button(s.label, on) { Prefs.setStyle(this, s.id); applyAll(); svc()?.showTest(); render() },
-                    LinearLayout.LayoutParams(0, WRAP, 1f).apply { marginStart = px(3); marginEnd = px(3) })
+            pair.forEach { sty ->
+                r.addView(styleCell(sty), LinearLayout.LayoutParams(0, WRAP, 1f).apply { marginStart = px(3); marginEnd = px(3) })
             }
-            st.addView(r, lp(6))
+            if (pair.size == 1) r.addView(View(this), LinearLayout.LayoutParams(0, 1, 1f))
+            st.addView(r, lp(8))
         }
 
         val sz = titled(p, "Tamaño y posición", "Mira el cambio arriba, en la vista previa")
@@ -415,8 +427,30 @@ class MainActivity : Activity() {
         gestureRow(ge, "Deslizar a la derecha", Prefs.gRight(this)) { Prefs.setGRight(this, it) }
         gestureRow(ge, "Mantener pulsado", Prefs.gLong(this)) { Prefs.setGLong(this, it) }
         seekRow(ge, "Distancia para deslizar", "dp", 20, 80, Prefs.swipeDp(this)) { Prefs.setSwipeDp(this, it) }
-        ge.addView(label("Con la isla en reposo y notificaciones acumuladas, cualquier gesto las abre. " +
+        ge.addView(label("Con la isla contraída: tocar o jalar hacia abajo la despliega. " +
+            "En la vista de detalle: tocar abre la app, jalar hacia abajo usa el gesto de arriba y hacia arriba vuelve. " +
             "Prueba con «Simular acumulación» en la pestaña Isla.", 12f, R.color.muted), lp(8))
+    }
+
+    private fun styleCell(sty: IslandStyle): View {
+        val on = Prefs.style(this) == sty.id
+        val cell = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER
+            setPadding(px(8), px(12), px(8), px(10))
+            background = Glass.pill(this@MainActivity, if (on) Glass.accentA(0x26) else 0x10FFFFFF,
+                if (on) Glass.ACCENT else 0x22FFFFFF, 18f)
+            setOnClickListener { Prefs.setStyle(this@MainActivity, sty.id); applyAll(); svc()?.showTest(); render() }
+        }
+        val sw = View(this).apply {
+            background = android.graphics.drawable.GradientDrawable(
+                android.graphics.drawable.GradientDrawable.Orientation.TOP_BOTTOM, intArrayOf(sty.bgTop, sty.bgBottom)).apply {
+                cornerRadius = px(15).toFloat()
+                if (sty.strokeDp > 0f) setStroke(px(1), sty.strokeColor)
+            }
+        }
+        cell.addView(sw, LinearLayout.LayoutParams(px(110), px(30)))
+        cell.addView(label(sty.label, 12f, R.color.text, true).apply { gravity = Gravity.CENTER }, lp(8))
+        return cell
     }
 
     private fun gestureRow(parent: LinearLayout, title: String, current: Int, set: (Int) -> Unit) {
@@ -454,14 +488,14 @@ class MainActivity : Activity() {
             val cell = LinearLayout(this).apply {
                 orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER
                 setPadding(px(4), px(10), px(4), px(8))
-                background = Glass.pill(this@MainActivity, if (on) 0x33FF8A4C else 0x14FFFFFF,
+                background = Glass.pill(this@MainActivity, if (on) Glass.accentA(0x33) else 0x14FFFFFF,
                     if (on) Glass.ACCENT else 0x22FFFFFF, 18f)
                 setOnClickListener { Prefs.setIconShape(this@MainActivity, i); applyAll(); svc()?.showTest(); render() }
             }
             cell.addView(ShapedImageView(this).apply {
                 shape = i; setImageResource(R.drawable.logo); scaleType = ImageView.ScaleType.CENTER_CROP
             }, LinearLayout.LayoutParams(px(40), px(40)))
-            cell.addView(label(n, 11f, R.color.text, true), lp(6))
+            cell.addView(label(n, 11f, R.color.text, true).apply { gravity = Gravity.CENTER }, lp(6))
             shapes.addView(cell, LinearLayout.LayoutParams(0, WRAP, 1f).apply { marginStart = px(3); marginEnd = px(3) })
         }
         ic.addView(shapes, lp(6))
@@ -546,6 +580,21 @@ class MainActivity : Activity() {
                 runOnUiThread { rootStatus = if (r.first == 0) "Disponible" else "No disponible"; render() }
             }.start()
         }, lp(8))
+        val cp = titled(p, "Compatibilidad de la ROM", "${Build.DISPLAY} · Android ${Build.VERSION.RELEASE}")
+        cp.addView(label("Las ventanas libres necesitan «Permitir ventanas de forma libre» en Opciones de desarrollador y un reinicio. " +
+            "«Forzar que las actividades sean redimensionables» ayuda con apps que no se dejan; «Forzar modo escritorio» déjalo apagado.",
+            12f, R.color.muted), lp(8))
+        cp.addView(button("Comprobar soporte", false) {
+            toast("Comprobando…")
+            Thread { val t = FloatingWindow.support(this); runOnUiThread { dialog("Soporte de ventanas libres", t) } }.start()
+        }, lp(10))
+        cp.addView(button("Activar y reiniciar el teléfono", false) {
+            glass(AlertDialog.Builder(this).setTitle("Reiniciar teléfono")
+                .setMessage("Se activarán las ventanas libres y el teléfono se reiniciará ahora. Guarda lo que estés haciendo.")
+                .setPositiveButton("Reiniciar") { _, _ ->
+                    Thread { Shell.run(this, FloatingWindow.PREP); Shell.run(this, "svc power reboot") }.start()
+                }.setNegativeButton("Cancelar", null).show())
+        }, lp(8))
         val g = titled(p, "Ventana flotante", "Se abre con el gesto «Ventana flotante» (por defecto, deslizar hacia abajo)")
         g.addView(rowWithSwitch("Forzar ventana nueva", "Aunque la app ya esté abierta", Prefs.forceNew(this)) { Prefs.setForceNew(this, it) })
 
@@ -596,12 +645,13 @@ class MainActivity : Activity() {
 
     private fun buildSettings(p: LinearLayout) {
         val n = Prefs.histAll(this).size
+        item(p, "palette", 0xFF7B5CE0.toInt(), "Tema de la app", "Color de acento de la aplicación", Glass.theme.label) { themeDialog() }
         item(p, "history", 0xFF6A62E8.toInt(), "Historial de notificaciones", "Ordenado por aplicación, con su icono", "$n") { subPage = "history"; render() }
         item(p, "shield", 0xFF2DAA55.toInt(), "Permisos", "Superposición, acceso a notificaciones, batería", "") { subPage = "perms"; render() }
         item(p, "backup", 0xFF3F7BEA.toInt(), "Copia de seguridad", "Exporta o importa todos los ajustes", "") { backupDialog() }
         item(p, "code", 0xFF5F6B80.toInt(), "Opciones de desarrollador", "Registro de la ventana flotante", "") { devDialog() }
         item(p, "info", 0xFF5F6B80.toInt(), "Acerca de", "Versión y créditos", "") {
-            dialog("Acerca de Ryx Island", "Ryx Island v0.8\nCreador: David Joel\n\nLa interfaz está inspirada en Smart Island, " +
+            dialog("Acerca de Ryx Island", "Ryx Island v0.9.1\nCreador: David Joel\n\nLa interfaz está inspirada en Smart Island, " +
                 "de Animesh Gupta (licencia GPL-3.0): github.com/agupta07505/SmartIsland, y en Hyper Bridge.\n\n" +
                 "Este código es propio y no copia el de esos proyectos. Si en el futuro se incorpora código ajeno, " +
                 "hay que conservar su aviso de copyright y respetar su licencia.")
@@ -691,6 +741,12 @@ class MainActivity : Activity() {
                 else -> Shell.requestShizuku()
             }
         }
+        if (hasAppsPerm()) permRow(b, "Lista de apps (HyperOS)", "Sin esto no se ven los iconos ni los nombres de las apps",
+            appsPermOk()) {
+            try { requestPermissions(arrayOf(appsPerm), 5) } catch (e: Throwable) {
+                startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:$packageName")))
+            }
+        }
         permRow(b, "Mostrar sobre otras apps", "Permite que la isla flote sobre la barra de estado y la cámara",
             Settings.canDrawOverlays(this)) {
             startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:$packageName")))
@@ -703,11 +759,28 @@ class MainActivity : Activity() {
             if (Build.VERSION.SDK_INT >= 31) requestPermissions(arrayOf("android.permission.BLUETOOTH_CONNECT"), 1)
         }
         val ignoring = (getSystemService(POWER_SERVICE) as PowerManager).isIgnoringBatteryOptimizations(packageName)
-        permRow(b, "Sin optimización de batería", "Evita que HyperOS cierre la isla en segundo plano", ignoring) {
+        permRow(b, "Sin optimización de batería", "Evita que el sistema cierre la isla en segundo plano", ignoring) {
             startActivity(Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, Uri.parse("package:$packageName")))
         }
-        permRow(b, "Info de la app", "Si Android bloquea un permiso: ⋮ → «Permitir ajustes restringidos». En HyperOS activa también Autoinicio.", false) {
+        permRow(b, "Info de la app", "Si Android bloquea un permiso: ⋮ → «Permitir ajustes restringidos». Si tu ROM tiene «Autoinicio», actívalo.", false) {
             startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:$packageName")))
+        }
+    }
+
+    private fun themeDialog() = sheet("Tema de la app") { b ->
+        Glass.THEMES.forEach { t ->
+            val on = Prefs.appTheme(this) == t.id
+            val r = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
+                setPadding(px(12), px(12), px(12), px(12))
+                background = Glass.pill(this@MainActivity, if (on) 0x22FFFFFF else 0, if (on) t.accent else 0, 18f)
+                setOnClickListener { Prefs.setAppTheme(this@MainActivity, t.id); Glass.applyTheme(this@MainActivity); recreate() }
+            }
+            r.addView(View(this).apply {
+                background = android.graphics.drawable.GradientDrawable().apply { shape = android.graphics.drawable.GradientDrawable.OVAL; setColor(t.accent) }
+            }, LinearLayout.LayoutParams(px(28), px(28)).apply { marginEnd = px(14) })
+            r.addView(label(t.label, 16f, R.color.text, true))
+            b.addView(r, lp(6))
         }
     }
 
@@ -726,6 +799,18 @@ class MainActivity : Activity() {
     private fun devDialog() = sheet("Opciones de desarrollador") { b ->
         b.addView(label("Registro de la última apertura en ventana flotante:", 13f, R.color.muted))
         b.addView(label(Prefs.lastLog(this).ifEmpty { "Todavía no hay registro. Haz una prueba en la pestaña Ventana." }, 12f, R.color.text), lp(8))
+        b.addView(button("Probar iconos de apps", false) {
+            val pm = packageManager; val sb = StringBuilder()
+            val n = pm.queryIntentActivities(Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER), 0).size
+            sb.append("Apps visibles para Ryx: $n\nAcceso a notificaciones: ${if (notifEnabled()) "sí" else "no"}\n\n")
+            val pkgs = (Prefs.histAll(this).map { it.pkg }.distinct().take(4) + listOf("com.android.settings", packageName)).distinct()
+            pkgs.forEach { pkg ->
+                sb.append(try {
+                    val d = pm.getApplicationIcon(pkg); "$pkg\n  OK ${d.javaClass.simpleName} ${d.intrinsicWidth}x${d.intrinsicHeight}"
+                } catch (e: Exception) { "$pkg\n  ERROR ${e.javaClass.simpleName}" }).append("\n")
+            }
+            dialog("Prueba de iconos", sb.toString())
+        }, lp(10))
         b.addView(button("Probar la isla", true) { svc()?.showTest() ?: toast("Activa el acceso a notificaciones") }, lp(10))
     }
 
@@ -887,7 +972,7 @@ class MainActivity : Activity() {
     private fun lp(top: Int) = LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = px(top) }
 
     private fun label(t: String, size: Float, color: Int, bold: Boolean = false) = TextView(this).apply {
-        text = t; textSize = size; setTextColor(col(color))
+        text = t; textSize = size; setTextColor(if (color == R.color.gold) Glass.ACCENT else col(color))
         typeface = if (bold) Typeface.create("sans-serif-medium", Typeface.BOLD) else Typeface.create("sans-serif", Typeface.NORMAL)
     }
 
@@ -907,7 +992,7 @@ class MainActivity : Activity() {
         typeface = Typeface.create("sans-serif-medium", Typeface.BOLD); setPadding(px(18), px(10), px(18), px(10))
         setTextColor(if (filled) 0xFF2B1608.toInt() else Glass.ACCENT)
         background = if (filled) Glass.pill(this@MainActivity, Glass.ACCENT, 0, 22f)
-            else Glass.pill(this@MainActivity, 0x14FFFFFF, 0x88FF8A4C.toInt(), 22f)
+            else Glass.pill(this@MainActivity, 0x14FFFFFF, Glass.accentA(0x88), 22f)
         setOnClickListener { onClick() }
     }
 }
