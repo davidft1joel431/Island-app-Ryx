@@ -130,24 +130,60 @@ object Prefs {
     fun fwTestPkg(c: Context): String = sp(c).getString("fw_test", "") ?: ""
     fun setFwTestPkg(c: Context, v: String) = sp(c).edit().putString("fw_test", v).apply()
 
-    // ---- Historial por app (JSON) ----
-    data class HistItem(val pkg: String, val title: String, val text: String, val ts: Long)
+    // ---- Historial por app (JSON) con imágenes ----
+    data class HistItem(val pkg: String, val title: String, val text: String, val ts: Long,
+                        val img: String = "", val kind: String = "")
 
-    fun addHist(c: Context, pkg: String, title: String, text: String) {
+    fun histDir(c: Context): java.io.File = java.io.File(c.filesDir, "hist").also { it.mkdirs() }
+
+    fun addHist(c: Context, pkg: String, title: String, text: String, img: String = "", kind: String = "") {
         val old = try { org.json.JSONArray(sp(c).getString("hist2", "[]")) } catch (e: Exception) { org.json.JSONArray() }
         val first = old.optJSONObject(0)
         val now = System.currentTimeMillis()
         if (first != null && first.optString("p") == pkg && first.optString("t") == title &&
-            first.optString("x") == text && now - first.optLong("ts") < 3000) return
+            first.optString("x") == text && now - first.optLong("ts") < 3000) {
+            if (img.isNotEmpty()) java.io.File(histDir(c), img).delete()
+            return
+        }
         val out = org.json.JSONArray()
-        out.put(org.json.JSONObject().put("p", pkg).put("t", title).put("x", text).put("ts", now))
+        out.put(org.json.JSONObject().put("p", pkg).put("t", title).put("x", text).put("ts", now)
+            .put("i", img).put("k", kind))
         for (i in 0 until minOf(old.length(), 599)) out.put(old.get(i))
+        // las entradas que se caen de la lista se llevan su imagen
+        for (i in 599 until old.length()) {
+            val n = old.optJSONObject(i)?.optString("i") ?: ""
+            if (n.isNotEmpty()) java.io.File(histDir(c), n).delete()
+        }
         sp(c).edit().putString("hist2", out.toString()).apply()
     }
     fun histAll(c: Context): List<HistItem> = try {
         val a = org.json.JSONArray(sp(c).getString("hist2", "[]"))
         (0 until a.length()).map { val o = a.getJSONObject(it)
-            HistItem(o.optString("p"), o.optString("t"), o.optString("x"), o.optLong("ts")) }
+            HistItem(o.optString("p"), o.optString("t"), o.optString("x"), o.optLong("ts"), o.optString("i"), o.optString("k")) }
     } catch (e: Exception) { emptyList() }
-    fun clearHist(c: Context) = sp(c).edit().remove("hist2").apply()
+    fun clearHist(c: Context) {
+        sp(c).edit().remove("hist2").apply()
+        histDir(c).listFiles()?.forEach { it.delete() }
+    }
+
+    // ---- Método con privilegios ----
+    fun shellMethod(c: Context): Int = sp(c).getInt("shell_m", 0)      // 0 auto, 1 Shizuku, 2 root
+    fun setShellMethod(c: Context, v: Int) = sp(c).edit().putInt("shell_m", v).apply()
+
+    // ---- Gestos: 0 nada, 1 abrir app, 2 ventana flotante, 3 descartar, 4 siguiente, 5 anterior, 6 contraer ----
+    fun gTap(c: Context): Int = sp(c).getInt("g_tap", 1)
+    fun setGTap(c: Context, v: Int) = sp(c).edit().putInt("g_tap", v).apply()
+    fun gDown(c: Context): Int = sp(c).getInt("g_down", 2)
+    fun setGDown(c: Context, v: Int) = sp(c).edit().putInt("g_down", v).apply()
+    fun gUp(c: Context): Int = sp(c).getInt("g_up", 3)
+    fun setGUp(c: Context, v: Int) = sp(c).edit().putInt("g_up", v).apply()
+    fun gLeft(c: Context): Int = sp(c).getInt("g_left", 4)
+    fun setGLeft(c: Context, v: Int) = sp(c).edit().putInt("g_left", v).apply()
+    fun gRight(c: Context): Int = sp(c).getInt("g_right", 5)
+    fun setGRight(c: Context, v: Int) = sp(c).edit().putInt("g_right", v).apply()
+    fun gLong(c: Context): Int = sp(c).getInt("g_long", 6)
+    fun setGLong(c: Context, v: Int) = sp(c).edit().putInt("g_long", v).apply()
+    fun swipeDp(c: Context): Int = sp(c).getInt("swipe_dp", 36)
+    fun setSwipeDp(c: Context, v: Int) = sp(c).edit().putInt("swipe_dp", v).apply()
+    fun autoHideAfterTouch(c: Context): Boolean = true
 }

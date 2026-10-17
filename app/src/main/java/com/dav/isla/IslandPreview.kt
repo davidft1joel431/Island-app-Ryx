@@ -139,6 +139,23 @@ class IslandPreview(c: Context) : View(c) {
         }
         p.alpha = 255
 
+        // Acumulación a la derecha: iconos apilados al abrir, contador al reposo
+        if (progress > 0.35f) {
+            val k = ((progress - 0.35f) / 0.65f).coerceIn(0f, 1f)
+            val bx = rect.right - u(st.padH.toFloat() + 12f)
+            for (i in 2 downTo 0) {
+                p.color = intArrayOf(0xFF8AB4FF.toInt(), 0xFFFFC857.toInt(), 0xFFFF8A4C.toInt())[i]
+                p.alpha = (255 * k).toInt()
+                cv.drawCircle(bx - u(11f) * i, rect.centerY(), u(9f), p)
+            }
+        } else {
+            p.color = Glass.ACCENT; p.alpha = 255
+            cv.drawCircle(rect.right - u(14f), rect.centerY(), u(8f), p)
+            p.color = 0xFF000000.toInt(); p.textSize = u(10f); p.textAlign = Paint.Align.CENTER
+            cv.drawText("3", rect.right - u(14f), rect.centerY() + u(3.5f), p); p.textAlign = Paint.Align.LEFT
+        }
+        p.alpha = 255
+
         // Cotas
         p.color = Glass.ACCENT; p.textSize = u(11f); p.typeface = Typeface.DEFAULT; p.textAlign = Paint.Align.CENTER
         cv.drawText("${wdp.toInt()} × ${hdp.toInt()} dp", rect.centerX(), rect.bottom + u(16f), p)
