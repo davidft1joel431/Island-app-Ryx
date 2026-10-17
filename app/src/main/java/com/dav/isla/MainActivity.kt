@@ -651,7 +651,7 @@ class MainActivity : Activity() {
         item(p, "backup", 0xFF3F7BEA.toInt(), "Copia de seguridad", "Exporta o importa todos los ajustes", "") { backupDialog() }
         item(p, "code", 0xFF5F6B80.toInt(), "Opciones de desarrollador", "Registro de la ventana flotante", "") { devDialog() }
         item(p, "info", 0xFF5F6B80.toInt(), "Acerca de", "Versión y créditos", "") {
-            dialog("Acerca de Ryx Island", "Ryx Island v0.9.1\nCreador: David Joel\n\nLa interfaz está inspirada en Smart Island, " +
+            dialog("Acerca de Ryx Island", "Ryx Island v0.9.2\nCreador: David Joel\n\nLa interfaz está inspirada en Smart Island, " +
                 "de Animesh Gupta (licencia GPL-3.0): github.com/agupta07505/SmartIsland, y en Hyper Bridge.\n\n" +
                 "Este código es propio y no copia el de esos proyectos. Si en el futuro se incorpora código ajeno, " +
                 "hay que conservar su aviso de copyright y respetar su licencia.")
@@ -820,7 +820,7 @@ class MainActivity : Activity() {
     private fun toast(t: String) = Toast.makeText(this, t, Toast.LENGTH_SHORT).show()
 
     private fun glass(d: AlertDialog): AlertDialog {
-        d.window?.setBackgroundDrawable(Glass.card(this, 28f, true)); return d
+        d.window?.setBackgroundDrawable(Glass.solid(this, 28f)); return d
     }
 
     private fun dialog(title: String, msg: String) =
@@ -830,7 +830,7 @@ class MainActivity : Activity() {
         val dlg = Dialog(this)
         dlg.requestWindowFeature(Window.FEATURE_NO_TITLE)
         val box = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL; background = Glass.card(this@MainActivity, 30f, true)
+            orientation = LinearLayout.VERTICAL; background = Glass.solid(this@MainActivity, 30f)
             setPadding(px(22), px(20), px(22), px(16))
         }
         box.addView(label(title, 20f, R.color.text, true))

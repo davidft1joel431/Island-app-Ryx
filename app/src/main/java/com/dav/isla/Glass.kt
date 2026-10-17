@@ -75,6 +75,17 @@ object Glass {
         return l
     }
 
+    /** Fondo casi opaco para diálogos y hojas: el contenido de atrás no se mezcla con el texto. */
+    fun solid(c: Context, radiusDp: Float = 28f): Drawable {
+        val r = dp(c, radiusDp)
+        val body = GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM,
+            intArrayOf(0xFF2B303C.toInt(), 0xFF1A1D25.toInt())).apply { cornerRadius = r }
+        val rim = GradientDrawable().apply {
+            cornerRadius = r; setColor(0); setStroke(maxOf(1, dp(c, 1.1f).toInt()), 0x44FFFFFF)
+        }
+        return LayerDrawable(arrayOf(body, rim))
+    }
+
     fun tile(c: Context, color: Int = 0xFF2A2E38.toInt(), radiusDp: Float = 14f): Drawable =
         GradientDrawable().apply { cornerRadius = dp(c, radiusDp); setColor(color) }
 

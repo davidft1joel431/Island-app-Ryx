@@ -42,6 +42,7 @@ import android.view.View
 import android.view.ViewOutlineProvider
 import android.view.WindowManager
 import android.view.animation.DecelerateInterpolator
+import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
@@ -68,6 +69,7 @@ class NotifListener : NotificationListenerService() {
     private var expanded = false
     private var anim: ValueAnimator? = null
     private var badgeView: LinearLayout? = null
+    private var countView: TextView? = null
     private var detailImg: ImageView? = null
     private var actionsRow: LinearLayout? = null
     private var detail = false
@@ -76,7 +78,9 @@ class NotifListener : NotificationListenerService() {
     private class Card(
         val key: String, val pkg: String, val title: CharSequence?, val body: CharSequence?,
         val icon: Drawable?, val accent: Int?, val ephemeral: Boolean,
-        val detail: CharSequence? = null, val media: Bitmap? = null, val time: Long = System.currentTimeMillis()
+        val detail: CharSequence? = null, val media: Bitmap? = null,
+        val count: Int = 1, val lines: List<String> = emptyList(), val sig: String = "",
+        val time: Long = System.currentTimeMillis()
     )
     private val cards = ArrayList<Card>()
     private var cardIndex = 0
@@ -180,8 +184,9 @@ class NotifListener : NotificationListenerService() {
             if (!lines.isNullOrEmpty()) full = lines.joinToString("\n")
         }
         if (words.isNotEmpty() && text == "Contenido oculto") full = text
-        show(sbn.packageName, title, text, large, true, true, sbn.key, false,
-            fallback = small, media = mediaBmp, detailText = full ?: text)
+        show(sbn.packageName, title, text, large, true, true, "app:${sbn.packageName}", false,
+            fallback = small, media = mediaBmp, detailText = full ?: text,
+            sig = "${sbn.key}|$title|$text")
     }
 
     /** Llamadas, multimedia y navegación se quedan en el sistema para no romper sus controles. */
@@ -370,6 +375,19 @@ class NotifListener : NotificationListenerService() {
             addView(dImg, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, px(130)).apply { topMargin = px(8) })
             addView(acts, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { topMargin = px(10) })
         }
+        val cnt = TextView(this).apply {
+            visibility = View.GONE; textSize = 10.5f; gravity = Gravity.CENTER
+            setTextColor(0xFF1B0B02.toInt()); setTypeface(typeface, Typeface.BOLD)
+            minWidth = px(18); setPadding(px(5), 0, px(5), 0)
+            background = GradientDrawable().apply { cornerRadius = px(9).toFloat(); setColor(Glass.ACCENT) }
+        }
+        countView = cnt
+        val iconBox = FrameLayout(this).apply {
+            clipChildren = false; clipToPadding = false
+            addView(icon, FrameLayout.LayoutParams(px(s.iconDp), px(s.iconDp)))
+            addView(cnt, FrameLayout.LayoutParams(FrameLayout.LayoutParams.WRAP_CONTENT, px(18), Gravity.TOP or Gravity.END)
+                .apply { topMargin = -px(6); marginEnd = -px(6) })
+        }
         val badge = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; visibility = View.GONE
         }
@@ -382,7 +400,7 @@ class NotifListener : NotificationListenerService() {
             alpha = Prefs.opacity(this@NotifListener) / 100f
             if (Prefs.shadow(this@NotifListener)) elevation = px(10).toFloat()
             setPadding(px(s.padH), px(s.padV), px(s.padH + 4), px(s.padV))
-            addView(icon, LinearLayout.LayoutParams(px(s.iconDp), px(s.iconDp)))
+            addView(iconBox, LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT))
             addView(col, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
                 marginStart = px(10)
             })
@@ -441,6 +459,16 @@ class NotifListener : NotificationListenerService() {
     private fun setContentAlpha(a: Float) {
         iconView?.alpha = a
         textCol?.alpha = a
+        countView?.alpha = a
+    }
+
+    /** La cantidad de notificaciones de la app aparece arriba, junto al icono. */
+    private fun updateCount() {
+        val v = countView ?: return
+        val c = cards.getOrNull(cardIndex)
+        if (expanded && c != null && c.count > 1) {
+            v.text = if (c.count > 99) "99+" else c.count.toString(); v.visibility = View.VISIBLE
+        } else v.visibility = View.GONE
     }
 
     private fun setIdleContent() {
@@ -451,6 +479,7 @@ class NotifListener : NotificationListenerService() {
         setContentAlpha(1f)
         island?.gravity = Gravity.END or Gravity.CENTER_VERTICAL
         updateBadge()
+        updateCount()
     }
 
     // ---------- Estados: oculta / reposo (permanente) / expandida ----------
@@ -476,7 +505,8 @@ class NotifListener : NotificationListenerService() {
     private fun show(
         pkg: String, t: CharSequence?, b: CharSequence?, large: Drawable?, autoHide: Boolean = true,
         expand: Boolean = true, key: String = "$pkg|$t", ephemeral: Boolean = false,
-        fallback: Drawable? = null, media: Bitmap? = null, detailText: CharSequence? = null
+        fallback: Drawable? = null, media: Bitmap? = null, detailText: CharSequence? = null,
+        sig: String = ""
     ) {
         main.post {
             if (!::wm.isInitialized || !Settings.canDrawOverlays(this)) return@post
@@ -497,8 +527,24 @@ class NotifListener : NotificationListenerService() {
             if (detail) resetDetail()
 
             // Acumulación: la nueva queda al frente y las anteriores esperan a la derecha
+            // Misma app = una sola tarjeta: queda la última notificación y se cuenta cuántas llegaron
+            val prev = cards.firstOrNull { it.key == key }
+            val grouped = key.startsWith("app:")
+            val sameAsPrev = prev != null && sig.isNotEmpty() && sig == prev.sig
+            val newLine = listOf(t, b).mapNotNull { it?.toString()?.trim()?.takeIf { s -> s.isNotEmpty() } }.joinToString(": ")
+            val count = when {
+                !grouped || prev == null -> 1
+                sameAsPrev -> prev.count
+                else -> prev.count + 1
+            }
+            val lines: List<String> = when {
+                !grouped || prev == null -> listOf(newLine)
+                sameAsPrev -> prev.lines
+                else -> (listOf(newLine) + prev.lines).take(6)
+            }
+            val fullText: CharSequence? = if (lines.size > 1) lines.filter { it.isNotEmpty() }.joinToString("\n") else detailText
             cards.removeAll { it.key == key }
-            cards.add(0, Card(key, pkg, t, b, shown, accent, ephemeral, detailText, media))
+            cards.add(0, Card(key, pkg, t, b, shown, accent, ephemeral, fullText, media, count, lines, sig))
             val limit = System.currentTimeMillis() - 15 * 60_000L
             cards.removeAll { it.time < limit }
             while (cards.size > 8) cards.removeAt(cards.size - 1)
@@ -531,6 +577,7 @@ class NotifListener : NotificationListenerService() {
     private fun expandNow() {
         expanded = true
         island?.gravity = Gravity.CENTER_VERTICAL
+        updateCount()
         iconView?.visibility = View.VISIBLE
         textCol?.visibility = View.VISIBLE
         setContentAlpha(0f)
@@ -548,13 +595,14 @@ class NotifListener : NotificationListenerService() {
 
     /** Pone el contenido de una tarjeta en la isla. */
     private fun bindCard(c: Card) {
-        appView?.text = appLabel(c.pkg)
+        appView?.text = appLabel(c.pkg) + if (c.count > 1) " · ${c.count}" else ""
         titleView?.text = c.title
         bodyView?.text = c.body
         iconView?.setImageDrawable(c.icon?.constantState?.newDrawable()?.mutate() ?: c.icon
             ?: getDrawable(R.drawable.logo))
         (iconView as? ShapedImageView)?.shape = Prefs.iconShape(this)
         island?.background = buildBackground(style, c.accent)
+        updateCount()
         if (detail) {
             bodyView?.text = c.detail ?: c.body
             detailImg?.let { if (c.media != null) { it.setImageBitmap(c.media); it.visibility = View.VISIBLE } else it.visibility = View.GONE }
@@ -701,7 +749,11 @@ class NotifListener : NotificationListenerService() {
         detailImg?.visibility = View.GONE
         actionsRow?.visibility = View.GONE
         bodyView?.maxLines = 1
-        cards.getOrNull(cardIndex)?.let { bodyView?.text = it.body }
+        appView?.visibility = if (style.showAppName) View.VISIBLE else View.GONE
+        cards.getOrNull(cardIndex)?.let {
+            bodyView?.text = it.body
+            appView?.text = appLabel(it.pkg) + if (it.count > 1) " · ${it.count}" else ""
+        }
         island?.minimumHeight = px(maxOf(style.iconDp + 2 * style.padV, 64))
     }
 
@@ -712,6 +764,8 @@ class NotifListener : NotificationListenerService() {
         main.removeCallbacks(hideTask)
         bodyView?.maxLines = 8
         bodyView?.text = c.detail ?: c.body
+        appView?.visibility = View.VISIBLE
+        appView?.text = appLabel(c.pkg) + if (c.count > 1) " · ${c.count} notificaciones" else ""
         detailImg?.let { if (c.media != null) { it.setImageBitmap(c.media); it.visibility = View.VISIBLE } else it.visibility = View.GONE }
         actionsRow?.visibility = View.VISIBLE
         animateDetail(true)

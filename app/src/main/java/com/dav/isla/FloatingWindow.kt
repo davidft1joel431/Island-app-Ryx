@@ -53,6 +53,9 @@ object FloatingWindow {
         sb.append("freeform_window_management = ${vals.getOrElse(2) { "?" }}\n")
         if (!has && vals.getOrElse(0) { "" } != "1")
             sb.append("\nActiva «Permitir ventanas de forma libre» en Opciones de desarrollador, o usa «Activar y reiniciar».")
+        else if (!has)
+            sb.append("\nLa ROM no declara la función, pero el ajuste enable_freeform_support = 1 la habilita. " +
+                "Lo que cuenta es la verificación de la prueba (¿flotante? SÍ/NO).")
         else sb.append("\nSi acabas de cambiar estos valores, el sistema necesita un reinicio para aplicarlos.")
         return sb.toString()
     }
@@ -92,7 +95,7 @@ object FloatingWindow {
                 var dump = taskDump(c, pkg)
                 val id = Regex("Task\\{[^}]*#(\\d+)|taskId=(\\d+)").find(dump)
                     ?.groupValues?.drop(1)?.firstOrNull { it.isNotEmpty() }
-                var free = isFree(dump)
+                var free = isFreeTask(dump, id)
                 log.append("\nTarea: ${id ?: "no encontrada"} · flotante al abrir: ${if (free) "SÍ" else "NO"}\n")
                 if (id != null) {
                     if (!free) log.append("Forzar modo libre: " + Shell.run(c, "cmd activity task set-windowing-mode $id 5").second.trim() + "\n")
@@ -100,7 +103,7 @@ object FloatingWindow {
                         "am task resize $id ${b.left} ${b.top} ${b.right} ${b.bottom}")
                     log.append("Tamaño: código ${rz.first} ${rz.second.trim().take(160)}\n")
                     Thread.sleep(300)
-                    dump = taskDump(c, pkg); free = isFree(dump)
+                    dump = taskDump(c, pkg); free = isFreeTask(dump, id)
                 }
                 log.append("\nVerificación final (¿flotante?): ${if (free) "SÍ" else "NO"}\n")
                 if (!free) log.append("\nSi no aparece: en Opciones de desarrollador activa «Permitir ventanas de forma libre» " +
@@ -129,6 +132,13 @@ object FloatingWindow {
 
     private fun taskDump(c: Context, pkg: String): String =
         Shell.run(c, "dumpsys activity activities | grep -i -B2 -A10 \"$pkg\" | head -80").second
+
+    /** Mira solo la línea de ESA tarea (Task{… #id … mode=freeform), no todo el volcado. */
+    private fun isFreeTask(dump: String, id: String?): Boolean {
+        if (id == null) return isFree(dump)
+        val lines = dump.lines().filter { it.contains("#$id ") }
+        return if (lines.isEmpty()) isFree(dump) else lines.any { it.contains("freeform", ignoreCase = true) }
+    }
 
     private fun isFree(dump: String) =
         dump.contains("freeform", ignoreCase = true) ||
