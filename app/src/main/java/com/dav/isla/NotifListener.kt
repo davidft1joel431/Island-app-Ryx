@@ -300,27 +300,47 @@ class NotifListener : NotificationListenerService() {
 
     // ---------- Construccion de la isla ----------
 
-    private var bgShape: GradientDrawable? = null
+    private val cornerTargets = ArrayList<GradientDrawable>()
+    private var bgCard: Drawable? = null
+    private var bgIdle: Drawable? = null
+    private var blend = 0f
 
-    private fun buildBackground(s: IslandStyle, accent: Int? = null): Drawable {
-        val cd = Prefs.cornerDp(this)
-        val r = px(if (cd >= 0) cd.toFloat() else s.cornerDp).toFloat()
-        val base = GradientDrawable(
-            GradientDrawable.Orientation.TOP_BOTTOM, intArrayOf(s.bgTop, s.bgBottom)
-        ).apply {
+    private fun setCorners(r: Float) { cornerTargets.forEach { it.cornerRadius = r } }
+
+    /** 0 = aspecto de reposo, 1 = tarjeta; se mezclan al abrir y cerrar. */
+    private fun setBlend(b: Float) {
+        blend = b
+        bgCard?.setAlpha((255 * b).toInt().coerceIn(0, 255))
+        bgIdle?.setAlpha((255 * (1f - b)).toInt().coerceIn(0, 255))
+    }
+
+    private fun lookDrawable(sp: IslandLook.Spec, r: Float, accent: Int?): Drawable {
+        val base = GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, intArrayOf(sp.top, sp.bottom)).apply {
             cornerRadius = r
             if (accent != null) setStroke(maxOf(1, px(1.6f)), (accent and 0x00FFFFFF) or 0xB0000000.toInt())
-            else if (s.strokeDp > 0f) setStroke(maxOf(1, px(s.strokeDp)), s.strokeColor)
+            else if (sp.rimDp > 0f) setStroke(maxOf(1, px(sp.rimDp)), sp.rim)
         }
-        bgShape = base
-        if (s.highlight == 0) return base
-        val glow = GradientDrawable(
-            GradientDrawable.Orientation.TOP_BOTTOM, intArrayOf(s.highlight, 0x00FFFFFF)
-        ).apply { cornerRadius = r }
+        cornerTargets.add(base)
+        if (sp.shine == 0) return base
+        val glow = GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, intArrayOf(sp.shine, 0x00FFFFFF))
+            .apply { cornerRadius = r }
+        cornerTargets.add(glow)
         return LayerDrawable(arrayOf(base, glow)).apply {
             val i = px(1)
             setLayerInset(1, i, i, i, i)
         }
+    }
+
+    private fun buildBackground(s: IslandStyle, accent: Int? = null): Drawable {
+        val cd = Prefs.cornerDp(this)
+        val r = px(if (cd >= 0) cd.toFloat() else s.cornerDp).toFloat()
+        cornerTargets.clear()
+        val card = lookDrawable(IslandLook.card(this, s), r, accent)
+        val idle = lookDrawable(IslandLook.idle(this), r, null)
+        bgCard = card; bgIdle = idle
+        val layers = LayerDrawable(arrayOf(card, idle))
+        setBlend(if (expanded) 1f else 0f)
+        return layers
     }
 
     private fun buildIsland() {
@@ -397,7 +417,6 @@ class NotifListener : NotificationListenerService() {
             gravity = Gravity.CENTER_VERTICAL
             background = buildBackground(s)
             minimumHeight = px(Prefs.heightDp(this@NotifListener))
-            alpha = Prefs.opacity(this@NotifListener) / 100f
             if (Prefs.shadow(this@NotifListener)) elevation = px(10).toFloat()
             setPadding(px(s.padH), px(s.padV), px(s.padH + 4), px(s.padV))
             addView(iconBox, LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT))
@@ -428,6 +447,10 @@ class NotifListener : NotificationListenerService() {
             gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL
             y = yPx
             x = px(Prefs.xOffsetDp(this@NotifListener))
+            if (Build.VERSION.SDK_INT >= 31 && Prefs.idleBlur(this@NotifListener)) {
+                flags = flags or WindowManager.LayoutParams.FLAG_BLUR_BEHIND
+                blurBehindRadius = px(22)
+            }
             if (Build.VERSION.SDK_INT >= 30) {
                 layoutInDisplayCutoutMode =
                     WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS
@@ -478,6 +501,8 @@ class NotifListener : NotificationListenerService() {
         textCol?.visibility = View.GONE
         setContentAlpha(1f)
         island?.gravity = Gravity.END or Gravity.CENTER_VERTICAL
+        setBlend(0f)
+        setCorners(px(Prefs.heightDp(this)) / 2f)
         updateBadge()
         updateCount()
     }
@@ -973,7 +998,9 @@ class NotifListener : NotificationListenerService() {
         val fromH = (row?.minimumHeight ?: idleH); val toH = if (toExpanded) expH else idleH
         val cd = Prefs.cornerDp(this)
         val cornerPx = px(if (cd >= 0) cd.toFloat() else style.cornerDp).toFloat()
-        val fromR = bgShape?.cornerRadius ?: (idleH / 2f)
+        val fromR = cornerTargets.firstOrNull()?.cornerRadius ?: (idleH / 2f)
+        val fromB = blend
+        val toB = if (toExpanded) 1f else 0f
         val toR = if (toExpanded) minOf(cornerPx, toH / 2f + px(4)) else idleH / 2f
         val maxW = resources.displayMetrics.widthPixels
         val a = ValueAnimator.ofFloat(0f, 1f)
@@ -984,7 +1011,8 @@ class NotifListener : NotificationListenerService() {
             val time = va.currentPlayTime.toFloat() / va.duration.toFloat()
             params.width = lerp(fromW.toFloat(), toW.toFloat(), t).toInt().coerceIn(px(40), maxW)
             row?.minimumHeight = lerp(fromH.toFloat(), toH.toFloat(), t).toInt().coerceAtLeast(idleH)
-            bgShape?.cornerRadius = lerp(fromR, toR, t.coerceIn(0f, 1f))
+            setCorners(lerp(fromR, toR, t.coerceIn(0f, 1f)))
+            setBlend(lerp(fromB, toB, t.coerceIn(0f, 1f)))
             val c = if (toExpanded) ((time - 0.22f) / 0.5f).coerceIn(0f, 1f) else (1f - time / 0.45f).coerceIn(0f, 1f)
             setContentAlpha(c)
             iconView?.scaleX = 0.6f + 0.4f * c; iconView?.scaleY = 0.6f + 0.4f * c

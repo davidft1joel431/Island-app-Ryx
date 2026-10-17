@@ -36,22 +36,27 @@ object Shell {
         } catch (e: Throwable) {}
     }
 
-    fun method(c: Context): Int = Prefs.shellMethod(c)   // 0 auto, 1 Shizuku, 2 root
+    /** 0 auto (Shizuku si está activo; nunca root), 1 Shizuku, 2 root (solo si se elige), 3 sin privilegios. */
+    fun method(c: Context): Int = Prefs.shellMethod(c)
 
-    fun run(c: Context, cmd: String): Pair<Int, String> = when (method(c)) {
-        1 -> if (shizukuGranted()) runShizuku(cmd) else Pair(-1, "Shizuku sin permiso o sin iniciar")
-        2 -> Root.run(cmd)
-        else -> if (shizukuGranted()) {
-            val r = runShizuku(cmd)
-            if (r.first == -1) Root.run(cmd) else r
-        } else Root.run(cmd)
+    /** ¿Se pueden ejecutar comandos con privilegios ahora mismo? */
+    fun privileged(c: Context): Boolean = when (method(c)) {
+        2 -> true
+        3 -> false
+        else -> shizukuGranted()
     }
 
-    /** Quién ejecutó el último comando, para el registro. */
+    fun run(c: Context, cmd: String): Pair<Int, String> = when (method(c)) {
+        2 -> Root.run(cmd)
+        3 -> Pair(-1, "Modo sin privilegios")
+        else -> if (shizukuGranted()) runShizuku(cmd) else Pair(-1, "Shizuku sin permiso o sin iniciar")
+    }
+
+    /** Quién ejecuta los comandos, para el registro. */
     fun label(c: Context): String = when (method(c)) {
-        1 -> "Shizuku"
         2 -> "root"
-        else -> if (shizukuGranted()) "Shizuku" else "root"
+        3 -> "sin privilegios"
+        else -> "Shizuku"
     }
 
     /** Shizuku.newProcess es privado desde la API 13, por eso se llama por reflexión. */
