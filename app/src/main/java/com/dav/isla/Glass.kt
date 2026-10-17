@@ -14,29 +14,48 @@ import android.view.animation.DecelerateInterpolator
 import android.animation.ValueAnimator
 
 /** Estilo "Liquid Glass" de HyperOS: fondo oliva con brillo, tarjetas translúcidas y bordes claros. */
+data class AppTheme(val id: String, val label: String, val accent: Int, val glow1: Int, val glow2: Int)
+
 object Glass {
-    const val ACCENT = 0xFFFF8A4C.toInt()      // naranja Ryx (interruptores, seleccionados)
-    const val ACCENT_DARK = 0xFF6B3317.toInt() // pastilla de la pestaña activa
+    val THEMES = listOf(
+        AppTheme("ryx", "Naranja Ryx", 0xFFFF8A4C.toInt(), 0x30FF7A3D, 0x264F7CFF),
+        AppTheme("ocean", "Océano", 0xFF4DA3FF.toInt(), 0x304DA3FF, 0x2600D4C8),
+        AppTheme("forest", "Bosque", 0xFF4ADE80.toInt(), 0x3040D87A, 0x26F2C94C),
+        AppTheme("violet", "Violeta", 0xFFB388FF.toInt(), 0x30B388FF, 0x264DA3FF),
+        AppTheme("rose", "Rosa", 0xFFFF6B9A.toInt(), 0x30FF6B9A, 0x26FFB84D)
+    )
+    var theme: AppTheme = THEMES[0]
+        private set
+    var ACCENT: Int = THEMES[0].accent
+        private set
     const val TEXT = 0xFFF5F6F8.toInt()
     const val MUTED = 0xFFA9AEBB.toInt()
+
+    fun applyTheme(c: Context) {
+        theme = THEMES.firstOrNull { it.id == Prefs.appTheme(c) } ?: THEMES[0]
+        ACCENT = theme.accent
+    }
+
+    /** El acento con una transparencia dada (0-255). */
+    fun accentA(alpha: Int): Int = (ACCENT and 0x00FFFFFF) or (alpha shl 24)
 
     private fun dp(c: Context, v: Float) = v * c.resources.displayMetrics.density
 
     fun page(c: Context): Drawable {
         val d = c.resources.displayMetrics
         val base = GradientDrawable(GradientDrawable.Orientation.TL_BR,
-            intArrayOf(0xFF1D2028.toInt(), 0xFF13151B.toInt(), 0xFF0B0C10.toInt()))
+            intArrayOf(0xFF181B22.toInt(), 0xFF101218.toInt(), 0xFF08090C.toInt()))
         val glow = GradientDrawable().apply {
             gradientType = GradientDrawable.RADIAL_GRADIENT
-            setGradientCenter(0.95f, 0.08f)
+            setGradientCenter(0.95f, 0.0f)
             gradientRadius = d.widthPixels * 0.9f
-            colors = intArrayOf(0x55FF7A3D, 0x00FF7A3D)
+            colors = intArrayOf(theme.glow1, theme.glow1 and 0x00FFFFFF)
         }
         val glow2 = GradientDrawable().apply {
             gradientType = GradientDrawable.RADIAL_GRADIENT
             setGradientCenter(0.05f, 0.95f)
             gradientRadius = d.widthPixels * 0.8f
-            colors = intArrayOf(0x444F7CFF, 0x004F7CFF)
+            colors = intArrayOf(theme.glow2, theme.glow2 and 0x00FFFFFF)
         }
         return LayerDrawable(arrayOf(base, glow, glow2))
     }
