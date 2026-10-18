@@ -885,6 +885,8 @@ class MainActivity : Activity() {
             "(servicio de accesibilidad), así que la ventana trae la barra del sistema para moverla y cambiarle el tamaño. " +
             "Sale con el tamaño que elige el sistema. «Directo» y «Animación» piden la ventana con tu tamaño, pero sin barra en esta ROM.",
             12f, R.color.muted), lp(6))
+        g.addView(rowWithSwitch("Mantener mi app de fondo", "La ventana se abre encima de la app en la que estás, sin ir al inicio (usa Recientes)",
+            Prefs.fwKeepApp(this)) { Prefs.setFwKeepApp(this, it) })
         g.addView(label(if (RyxAccessibility.isEnabled(this)) "Servicio de accesibilidad: activo ✔" else
             "Servicio de accesibilidad: apagado. Actívalo para usar «Launcher».", 12f, R.color.text), lp(8))
         g.addView(button(if (RyxAccessibility.isEnabled(this)) "Ajustes de accesibilidad" else "Activar accesibilidad", !RyxAccessibility.isEnabled(this)) {

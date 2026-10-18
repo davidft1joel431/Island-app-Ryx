@@ -131,7 +131,7 @@ object FloatingWindow {
                     "(Ajustes de Android → Accesibilidad → Ryx Island). Se abre de forma directa.\n")
             } else {
                 log.append("Formato libre del launcher (accesibilidad):\n")
-                val ok = try { svc.launchViaLauncher(pkg, appLabel(c, pkg), log) } catch (e: Throwable) {
+                val ok = try { svc.launchViaLauncher(pkg, appLabel(c, pkg), log, Prefs.fwKeepApp(c)) } catch (e: Throwable) {
                     log.append("Error: ${e.javaClass.simpleName} ${e.message ?: ""}\n"); false }
                 if (ok) {
                     log.append("\nLa ventana la abre el sistema desde el menú de tu launcher, con su barra y su tamaño habitual.\n")
