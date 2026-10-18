@@ -146,6 +146,24 @@ class RyxAccessibility : AccessibilityService() {
         }
     }
 
+    /** ¿Sigue visible alguna ventana de [pkg]? (para quitar la barra de Ryx cuando la ventana se cierra) */
+    fun windowAlive(pkg: String): Boolean = floatingState(pkg) != null
+
+    /**
+     * Mover/redimensionar sin privilegios: vuelve a pedir el modo libre con los nuevos límites SIN «ventana nueva»,
+     * para que Android reutilice la misma tarea en vez de abrir otra. Llamar fuera del hilo principal.
+     */
+    fun relaunchBounds(pkg: String, b: Rect): Boolean = try {
+        val launch = packageManager.getLaunchIntentForPackage(pkg) ?: return false
+        val options = ActivityOptions.makeBasic()
+        options.setLaunchBounds(b)
+        val bundle = options.toBundle() ?: android.os.Bundle()
+        bundle.putInt("android.activity.windowingMode", 5)
+        launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        startActivity(launch, bundle)
+        true
+    } catch (e: Throwable) { false }
+
     /** true = la ventana de [pkg] no ocupa toda la pantalla (flotante); false = pantalla completa; null = no se pudo saber. */
     private fun floatingState(pkg: String): Boolean? {
         val m = resources.displayMetrics

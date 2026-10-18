@@ -879,12 +879,18 @@ class MainActivity : Activity() {
         so.addView(rowWithSwitch("Usar solo este método", "Sin Shizuku, root, Recientes ni el menú del launcher: no te saca de tu app",
             Prefs.fwSolo(this)) { Prefs.setFwSolo(this, it); render() })
         so.addView(label("Ryx lanza la app desde su servicio de accesibilidad con el modo libre (windowingMode 5) y tu tamaño, igual que Smart Island, " +
-            "y en el registro anota las medidas reales de la ventana. Apágalo para volver a los otros métodos de abajo.", 12f, R.color.muted), lp(6))
+            "y en el registro anota las medidas reales de la ventana. Como Android no dibuja la barra del sistema en apps de terceros en el teléfono, " +
+            "Ryx pone su propia barra de título encima (mover, cambiar tamaño). Para la barra del sistema activa «Habilitar funciones de experiencia de escritorio» " +
+            "en Opciones de desarrollador (Android 16 o superior; elige que valga también en el teléfono) y reinicia. Apágalo para volver a los otros métodos de abajo.", 12f, R.color.muted), lp(6))
         so.addView(label(if (RyxAccessibility.isEnabled(this)) "Servicio de accesibilidad: activo ✔" else
             "Servicio de accesibilidad: apagado. Actívalo para usar este método.", 12f, R.color.text), lp(8))
         so.addView(button(if (RyxAccessibility.isEnabled(this)) "Ajustes de accesibilidad" else "Activar accesibilidad", !RyxAccessibility.isEnabled(this)) {
             if (RyxAccessibility.isEnabled(this)) openAccessibility() else askAccessibility()
         }, lp(8))
+        so.addView(button("Abrir Opciones de desarrollador", false) {
+            try { startActivity(Intent(Settings.ACTION_APPLICATION_DEVELOPMENT_SETTINGS)) } catch (e: Exception) { toast("No se pudo abrir") }
+        }, lp(8))
+        so.addView(rowWithSwitch("Barra de Ryx sobre la ventana", "Mover, cambiar tamaño y cerrar la barra", Prefs.fwFrame(this)) { Prefs.setFwFrame(this, it) })
         so.addView(button("▶ Probar solo accesibilidad", true) {
             val pkg = Prefs.fwTestPkg(this)
             if (pkg.isEmpty()) { toast("Elige primero una app en «Probar ventana flotante» (abajo)"); return@button }
