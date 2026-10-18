@@ -123,12 +123,30 @@ object FloatingWindow {
             log.append("Sin Shizuku activo; se abre sin privilegios (nunca se usa root si no lo eliges).\n")
         }
 
-        // 2) Sin privilegios: solo opciones de Android para cualquier app (depende de la ROM)
+        // 2a) «Formato libre» del propio launcher, pulsado por el servicio de accesibilidad de Ryx
+        if (Prefs.fwMode(c) == 2) {
+            val svc = RyxAccessibility.instance
+            if (svc == null) {
+                log.append("Formato libre del launcher: el servicio de accesibilidad de Ryx está apagado " +
+                    "(Ajustes de Android → Accesibilidad → Ryx Island). Se abre de forma directa.\n")
+            } else {
+                log.append("Formato libre del launcher (accesibilidad):\n")
+                val ok = try { svc.launchViaLauncher(pkg, appLabel(c, pkg), log) } catch (e: Throwable) {
+                    log.append("Error: ${e.javaClass.simpleName} ${e.message ?: ""}\n"); false }
+                if (ok) {
+                    log.append("\nLa ventana la abre el sistema desde el menú de tu launcher, con su barra y su tamaño habitual.\n")
+                    return save(c, log)
+                }
+                log.append("No se pudo por ese camino; se abre de forma directa.\n")
+            }
+        }
+
+        // 2b) Sin privilegios: solo opciones de Android para cualquier app (depende de la ROM)
         try {
             unlockHiddenApi(log)
             // Modo 0: igual que el menú «Formato libre» del lanzador (opciones básicas, sin animación propia).
             // Modo 1: con la animación de apertura de Ryx.
-            val launcherLike = Prefs.fwMode(c) == 0
+            val launcherLike = Prefs.fwMode(c) != 1
             val opts = if (launcherLike) ActivityOptions.makeBasic() else {
                 val (inn, out) = anim(c); ActivityOptions.makeCustomAnimation(c, inn, out)
             }
@@ -153,6 +171,11 @@ object FloatingWindow {
         return save(c, log)
     }
 
+    @Suppress("DEPRECATION")
+    private fun appLabel(c: Context, pkg: String): String = try {
+        c.packageManager.getApplicationLabel(c.packageManager.getApplicationInfo(pkg, 0)).toString()
+    } catch (e: Exception) { pkg }
+
     private fun sysBool(name: String): Boolean? = try {
         val r = android.content.res.Resources.getSystem()
         val id = r.getIdentifier(name, "bool", "android")
@@ -170,7 +193,7 @@ object FloatingWindow {
             "force_resizable_activities=${g("force_resizable_activities")}\n")
         sb.append("Escritorio soportado: ${sysBool("config_isDesktopModeSupported") ?: "?"} · " +
             "escritorio en pantalla del teléfono: ${canHost ?: "?"}\n")
-        sb.append("Modo de apertura: ${if (Prefs.fwMode(c) == 0) "como el lanzador" else "con animación Ryx"} · " +
+        sb.append("Modo de apertura: ${when (Prefs.fwMode(c)) { 2 -> "Formato libre del launcher"; 1 -> "con animación Ryx"; else -> "directo" }} · accesibilidad: ${if (RyxAccessibility.isEnabled(c)) "activa" else "apagada"} · " +
             "tamaño propio: ${if (Prefs.fwOwnBounds(c)) "sí" else "no"} · ventana nueva: ${if (Prefs.forceNew(c)) "sí" else "no"}\n")
         sb.append("\nVeredicto: sin privilegios Ryx no puede saber si la ventana quedó flotante ni moverla.\n")
         if (canHost == false) sb.append("Si salió sin barra es porque esta ROM no dibuja la barra de ventana libre en el teléfono " +
