@@ -226,8 +226,8 @@ object Prefs {
     fun setCloudLast(c: Context, v: Long) = sp(c).edit().putLong("cloud_last", v).apply()
     fun updLast(c: Context): Long = sp(c).getLong("upd_last", 0L)
     fun setUpdLast(c: Context, v: Long) = sp(c).edit().putLong("upd_last", v).apply()
-    /** Método de «solo accesibilidad»: 0 = Formato libre REAL del sistema (con cortina), 1 = directo estilo Smart Island (sin barra del sistema). */
-    fun fwSoloMode(c: Context): Int = sp(c).getInt("fw_solo_mode", 0)
+    /** Método de «solo accesibilidad»: 0 = Formato libre REAL del sistema (con cortina, lento), 1 = directo estilo Smart Island (instantáneo). */
+    fun fwSoloMode(c: Context): Int = sp(c).getInt("fw_solo_mode", 1)
     fun setFwSoloMode(c: Context, v: Int) = sp(c).edit().putInt("fw_solo_mode", v).apply()
     /** Camino del launcher que funcionó en esta ROM: 0 sin calibrar, 1 Recientes, 2 pantalla de inicio. */
     fun fwRoute(c: Context): Int = sp(c).getInt("fw_route", 0)

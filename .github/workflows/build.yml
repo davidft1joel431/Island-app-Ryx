@@ -34,6 +34,7 @@ jobs:
           tag_name: v${{ steps.ver.outputs.v }}
           name: Ryx Island v${{ steps.ver.outputs.v }}
           body: |
+            - Barra del sistema en ventanas libres con root/Shizuku (modo escritorio en el teléfono) y apertura «Directo» instantánea por defecto.
             - Isla más sensible: zona táctil ampliada (ya no baja el panel al fallar por poco), toque más tolerante, respuesta inmediata y animaciones más rápidas.
             - Formato libre REAL del sistema por accesibilidad con «cortina» (captura de tu pantalla) para no ver el salto al inicio.
             - Nueva sección «Ventana flotante · solo accesibilidad»: usa únicamente la función de Smart Island y anota las medidas reales de la ventana.
