@@ -226,6 +226,9 @@ object Prefs {
     fun setCloudLast(c: Context, v: Long) = sp(c).edit().putLong("cloud_last", v).apply()
     fun updLast(c: Context): Long = sp(c).getLong("upd_last", 0L)
     fun setUpdLast(c: Context, v: Long) = sp(c).edit().putLong("upd_last", v).apply()
+    /** Sección «Ventana flotante · solo accesibilidad»: usa únicamente el método de Smart Island, sin otros caminos. */
+    fun fwSolo(c: Context): Boolean = sp(c).getBoolean("fw_solo", true)
+    fun setFwSolo(c: Context, v: Boolean) = sp(c).edit().putBoolean("fw_solo", v).apply()
     /** Variante de apertura directa que funcionó en esta ROM (-1 = sin calibrar). */
     fun fwVariant(c: Context): Int = sp(c).getInt("fw_variant", -1)
     fun setFwVariant(c: Context, v: Int) = sp(c).edit().putInt("fw_variant", v).apply()

@@ -875,7 +875,24 @@ class MainActivity : Activity() {
                     Thread { Shell.run(this, FloatingWindow.PREP); Shell.run(this, "svc power reboot") }.start()
                 }.setNegativeButton("Cancelar", null).show())
         }, lp(8))
-        val g = titled(p, "Ventana flotante", "Se abre con el gesto «Ventana flotante» (por defecto, deslizar hacia abajo)")
+        val so = titled(p, "Ventana flotante · solo accesibilidad", "Usa únicamente la función de Smart Island desde el servicio de accesibilidad")
+        so.addView(rowWithSwitch("Usar solo este método", "Sin Shizuku, root, Recientes ni el menú del launcher: no te saca de tu app",
+            Prefs.fwSolo(this)) { Prefs.setFwSolo(this, it); render() })
+        so.addView(label("Ryx lanza la app desde su servicio de accesibilidad con el modo libre (windowingMode 5) y tu tamaño, igual que Smart Island, " +
+            "y en el registro anota las medidas reales de la ventana. Apágalo para volver a los otros métodos de abajo.", 12f, R.color.muted), lp(6))
+        so.addView(label(if (RyxAccessibility.isEnabled(this)) "Servicio de accesibilidad: activo ✔" else
+            "Servicio de accesibilidad: apagado. Actívalo para usar este método.", 12f, R.color.text), lp(8))
+        so.addView(button(if (RyxAccessibility.isEnabled(this)) "Ajustes de accesibilidad" else "Activar accesibilidad", !RyxAccessibility.isEnabled(this)) {
+            if (RyxAccessibility.isEnabled(this)) openAccessibility() else askAccessibility()
+        }, lp(8))
+        so.addView(button("▶ Probar solo accesibilidad", true) {
+            val pkg = Prefs.fwTestPkg(this)
+            if (pkg.isEmpty()) { toast("Elige primero una app en «Probar ventana flotante» (abajo)"); return@button }
+            toast("Abriendo…")
+            Thread { val log = FloatingWindow.openSolo(this, pkg); runOnUiThread { render(); dialog("Resultado de la prueba", log) } }.start()
+        }, lp(8))
+
+        val g = titled(p, "Otros métodos de ventana flotante", "Se abre con el gesto «Ventana flotante» (por defecto, deslizar hacia abajo)")
         g.addView(rowWithSwitch("Forzar ventana nueva", "Aunque la app ya esté abierta", Prefs.forceNew(this)) { Prefs.setForceNew(this, it) })
         g.addView(label("Apertura sin privilegios", 13f, R.color.muted, true), lp(12))
         g.addView(segmented(listOf("Launcher", "Directo", "Animación"), when (Prefs.fwMode(this)) { 2 -> 0; 0 -> 1; else -> 2 }, true) {
