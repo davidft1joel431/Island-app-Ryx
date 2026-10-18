@@ -1,6 +1,7 @@
 package com.dav.isla
 
 import android.app.ActivityOptions
+import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.graphics.Rect
@@ -69,7 +70,7 @@ object FloatingWindow {
     }
 
     /** Devuelve el registro de lo ocurrido (también se guarda para Opciones de desarrollador). */
-    fun open(c: Context, pkg: String): String {
+    fun open(c: Context, pkg: String, pi: PendingIntent? = null): String {
         val log = StringBuilder("Hora: ${java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.getDefault()).format(java.util.Date())}\n" +
             "Aplicación: $pkg\nMétodo: ${Shell.label(c)}\n")
         val launch = c.packageManager.getLaunchIntentForPackage(pkg)
@@ -131,9 +132,16 @@ object FloatingWindow {
                     "(Ajustes de Android → Accesibilidad → Ryx Island). Se abre de forma directa.\n")
             } else {
                 log.append("Formato libre del launcher (accesibilidad):\n")
+                val prev = svc.currentPackage()          // la app en la que estabas, para devolverla al fondo
                 val ok = try { svc.launchViaLauncher(pkg, appLabel(c, pkg), log, Prefs.fwKeepApp(c)) } catch (e: Throwable) {
                     log.append("Error: ${e.javaClass.simpleName} ${e.message ?: ""}\n"); false }
                 if (ok) {
+                    if (pi != null) {
+                        Thread.sleep(900)
+                        log.append(if (sendPending(c, pi, true, null)) "Abrí el destino exacto de la notificación (el chat).\n"
+                                   else "No pude abrir el destino exacto de la notificación.\n")
+                    }
+                    if (Prefs.fwKeepApp(c)) try { svc.keepBehind(prev, pkg, log) } catch (e: Throwable) {}
                     log.append("\nLa ventana la abre el sistema desde el menú de tu launcher, con su barra y su tamaño habitual.\n")
                     return save(c, log)
                 }
@@ -159,7 +167,9 @@ object FloatingWindow {
             } catch (e: Throwable) { log.append("Modo libre: no accesible (${e.javaClass.simpleName}).\n") }
             if (Prefs.fwOwnBounds(c)) opts.setLaunchBounds(b) else log.append("Tamaño y posición: los elige Android.\n")
             if (Prefs.forceNew(c)) launch.addFlags(Intent.FLAG_ACTIVITY_MULTIPLE_TASK)
-            c.startActivity(launch, opts.toBundle())
+            if (pi != null && sendPending(c, pi, true, if (Prefs.fwOwnBounds(c)) b else null)) {
+                log.append("Abrí el destino exacto de la notificación (el chat) en ventana libre.\n")
+            } else c.startActivity(launch, opts.toBundle())
             if (Prefs.fwFrame(c)) { FloatFrame.show(c, "", b, pkg); log.append("Asas de Ryx: mostradas (modo sin privilegios, experimental)\n") }
             log.append("\nLanzada sin privilegios · modo libre pedido: ${if (modeAsked) "sí" else "no"}\n" +
                 "Ryx no puede comprobar el resultado sin permisos: mira si la ventana quedó flotante.\n" + snapshot(c))
@@ -175,6 +185,25 @@ object FloatingWindow {
     private fun appLabel(c: Context, pkg: String): String = try {
         c.packageManager.getApplicationLabel(c.packageManager.getApplicationInfo(pkg, 0)).toString()
     } catch (e: Exception) { pkg }
+
+    /**
+     * Abre el destino exacto de una notificación (por ejemplo, el chat) con su PendingIntent.
+     * Con [freeform] pide ventana libre; si la tarea ya es libre, se reutiliza y se queda como está.
+     */
+    fun sendPending(c: Context, pi: PendingIntent, freeform: Boolean, bounds: Rect?): Boolean = try {
+        if (freeform) unlockHiddenApi(StringBuilder())
+        val opts = ActivityOptions.makeBasic()
+        if (Build.VERSION.SDK_INT >= 34) opts.setPendingIntentBackgroundActivityStartMode(ActivityOptions.MODE_BACKGROUND_ACTIVITY_START_ALLOWED)
+        if (freeform) {
+            try { opts.setLaunchDisplayId(0) } catch (e: Throwable) {}
+            try {
+                ActivityOptions::class.java.getMethod("setLaunchWindowingMode", Int::class.javaPrimitiveType).invoke(opts, 5)
+            } catch (e: Throwable) {}
+            if (bounds != null) opts.setLaunchBounds(bounds)
+        }
+        pi.send(c, 0, null, null, null, null, opts.toBundle())
+        true
+    } catch (e: Exception) { false }
 
     private fun sysBool(name: String): Boolean? = try {
         val r = android.content.res.Resources.getSystem()

@@ -83,6 +83,8 @@ class NotifListener : NotificationListenerService() {
         val time: Long = System.currentTimeMillis()
     )
     private val cards = ArrayList<Card>()
+    /** Último destino (chat) de cada app, para abrirlo exactamente al tocar la tarjeta. */
+    private val intents = HashMap<String, android.app.PendingIntent>()
     private var cardIndex = 0
     private val currentPkg: String? get() = cards.getOrNull(cardIndex)?.pkg
 
@@ -212,6 +214,9 @@ class NotifListener : NotificationListenerService() {
             if (!lines.isNullOrEmpty()) full = lines.joinToString("\n")
         }
         if (words.isNotEmpty() && text == "Contenido oculto") full = text
+        val ci = n.contentIntent
+        if (ci != null && (n.flags and Notification.FLAG_GROUP_SUMMARY) == 0) intents[sbn.packageName] = ci
+        else if (ci != null && !intents.containsKey(sbn.packageName)) intents[sbn.packageName] = ci
         show(sbn.packageName, title, text, large, true, true, "app:${sbn.packageName}", false,
             fallback = small, media = mediaBmp, detailText = full ?: text,
             sig = "${sbn.key}|$title|$text")
@@ -1080,12 +1085,15 @@ class NotifListener : NotificationListenerService() {
     private fun openCurrent(floating: Boolean) {
         val pkg = currentPkg ?: return
         // Primero se lanza la app (con la isla aún visible) y luego se descarta la tarjeta
-        Thread { openApp(pkg, floating) }.start()
+        val pi = intents[pkg]
+        Thread { openApp(pkg, floating, pi) }.start()
         dismissCurrent()
     }
 
-    private fun openApp(pkg: String, freeform: Boolean) {
-        if (freeform) { FloatingWindow.open(this, pkg); return }
+    private fun openApp(pkg: String, freeform: Boolean, pi: android.app.PendingIntent?) {
+        if (freeform) { FloatingWindow.open(this, pkg, pi); return }
+        // Abre la conversación exacta de la notificación; si no hay destino, la pantalla principal de la app
+        if (pi != null && FloatingWindow.sendPending(this, pi, false, null)) return
         val launch = packageManager.getLaunchIntentForPackage(pkg) ?: return
         launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         try { startActivity(launch) } catch (e: Exception) {}
