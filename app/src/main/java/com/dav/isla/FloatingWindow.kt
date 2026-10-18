@@ -35,6 +35,11 @@ object FloatingWindow {
     private fun failed(r: Pair<Int, String>) =
         r.first != 0 || r.second.contains("Exception") || r.second.contains("Error:") || r.second.contains("Unknown option")
 
+    /** Modo escritorio en la pantalla del teléfono: es lo que hace que el sistema dibuje la barra, los iconos y las esquinas en las ventanas libres. */
+    const val DESKTOP_ON = "setprop persist.wm.debug.desktop_experience_devopts 1; " +
+        "setprop persist.wm.debug.desktop_mode_enforce_device_restrictions false"
+    const val DESKTOP_OFF = "setprop persist.wm.debug.desktop_experience_devopts -1; " +
+        "setprop persist.wm.debug.desktop_mode_enforce_device_restrictions true"
     const val PREP = "settings put global enable_freeform_support 1; " +
         "settings put global force_resizable_activities 1; settings put global freeform_window_management 1"
 

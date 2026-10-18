@@ -61,14 +61,14 @@ class RyxAccessibility : AccessibilityService() {
     fun keepBehind(prev: String?, target: String, log: StringBuilder) {
         val skip = setOf(packageName, target, homePackage(), "com.android.systemui")
         if (prev == null || prev in skip) return
-        pause(600)
         val a = packageManager.getLaunchIntentForPackage(prev) ?: return
         a.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         val t = packageManager.getLaunchIntentForPackage(target) ?: return
         t.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         try {
-            startActivity(a); pause(500)       // tu app vuelve al frente
-            startActivity(t); pause(500)         // la ventana libre se sube encima
+            startActivity(a); waitForeground(prev, 700)         // tu app vuelve al frente (sin pausa fija)
+            startActivity(t)                                     // la ventana libre se sube encima
+            waitUntil(800, 60) { windowBounds(target) != null && currentPackage() == target }
             log.append("Devolví «$prev» al fondo y subí la ventana libre encima.\n")
         } catch (e: Exception) { log.append("No pude devolver tu app al fondo: ${e.javaClass.simpleName}\n") }
     }
@@ -265,7 +265,7 @@ class RyxAccessibility : AccessibilityService() {
                 override fun onFailure(errorCode: Int) { latch.countDown() }
             })
         } catch (e: Throwable) { return null }
-        try { latch.await(2500, TimeUnit.MILLISECONDS) } catch (e: InterruptedException) {}
+        try { latch.await(900, TimeUnit.MILLISECONDS) } catch (e: InterruptedException) {}
         return out
     }
 
@@ -283,7 +283,7 @@ class RyxAccessibility : AccessibilityService() {
             if (Build.VERSION.SDK_INT >= 28) lp.layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS
             wm.addView(iv, lp); curtain = iv; curtainLp = lp; ok = true
         }
-        if (ok) ui.postDelayed({ hideCurtain() }, 15000)      // seguro: nunca se queda puesta
+        if (ok) ui.postDelayed({ hideCurtain() }, 8000)      // seguro: nunca se queda puesta
         log.append(if (ok) "Cortina: puesta (tu pantalla se ve congelada mientras se abre la ventana).\n" else "Cortina: no se pudo poner.\n")
         return ok
     }
@@ -309,21 +309,21 @@ class RyxAccessibility : AccessibilityService() {
      * → quita la cortina cuando la ventana ya está abierta. Llamar fuera del hilo principal.
      */
     fun launchSystemFreeform(pkg: String, label: String, keepApp: Boolean, log: StringBuilder): Boolean {
+        val t0 = System.currentTimeMillis()
         val prev = currentPackage()
         val covered = showCurtain(log)
+        log.append("Captura y cortina: ${System.currentTimeMillis() - t0} ms\n")
         try {
             val ok = launchViaLauncher(pkg, label, log, keepApp)
+            log.append("Camino del launcher: ${System.currentTimeMillis() - t0} ms en total\n")
             if (!ok) return false
-            waitUntil(2500) { windowBounds(pkg) != null }
+            waitUntil(2000, 60) { windowBounds(pkg) != null }
             val skip = setOf(packageName, pkg, homePackage(), "com.android.systemui")
-            if (keepApp && prev != null && prev !in skip) {
-                keepBehind(prev, pkg, log)
-                waitUntil(1500) { windowBounds(pkg) != null }
-            }
-            log.append("Ventana del sistema abierta. ${describeWindows(pkg)}\n")
+            if (keepApp && prev != null && prev !in skip) keepBehind(prev, pkg, log)
+            log.append("Ventana del sistema abierta en ${System.currentTimeMillis() - t0} ms. ${describeWindows(pkg)}\n")
             return true
         } finally {
-            if (covered) { pause(150); hideCurtain() }
+            if (covered) hideCurtain()
         }
     }
 
@@ -413,38 +413,42 @@ class RyxAccessibility : AccessibilityService() {
      */
     private fun viaHome(label: String, log: StringBuilder): Boolean {
         log.append("Camino 1 · pantalla de inicio. Launcher: ${homePackage() ?: "?"} · busco el icono de «$label»\n")
-        performGlobalAction(GLOBAL_ACTION_HOME); pause(900)
-        var icon = findLabel(label)
+        performGlobalAction(GLOBAL_ACTION_HOME)
+        var icon: AccessibilityNodeInfo? = null
+        waitUntil(1400, 70) { icon = findLabel(label); icon != null }       // sondeo: sigue en cuanto aparece el icono
         if (icon == null) {
             log.append("No está en la pantalla de inicio; abro el cajón de apps.\n")
-            swipeUp(0.88f, 0.35f); pause(1000)
-            icon = findLabel(label)
+            swipeUp(0.88f, 0.35f)
+            waitUntil(900, 70) { icon = findLabel(label); icon != null }
             var tries = 0
-            while (icon == null && tries < 12) { swipeUp(0.78f, 0.28f); pause(600); icon = findLabel(label); tries++ }
+            while (icon == null && tries < 12) {
+                swipeUp(0.78f, 0.28f)
+                waitUntil(450, 70) { icon = findLabel(label); icon != null }
+                tries++
+            }
         }
-        if (icon == null) {
+        val ic = icon
+        if (ic == null) {
             log.append("No encontré el icono de «$label».\n"); performGlobalAction(GLOBAL_ACTION_HOME); return false
         }
         // Primero con la acción de accesibilidad «mantener pulsado»; si no sale el menú, con un gesto real
-        var cur: AccessibilityNodeInfo? = icon
+        var cur: AccessibilityNodeInfo? = ic
         var k = 0; var done = false
         while (cur != null && k < 4 && !done) {
             if (cur.isLongClickable) done = cur.performAction(AccessibilityNodeInfo.ACTION_LONG_CLICK)
             cur = cur.parent; k++
         }
-        pause(800)
-        var item = findFreeform()
+        var item = waitFreeform(1200, false)
         if (item == null) {
             log.append("El menú no salió; pruebo con un gesto de mantener pulsado.\n")
-            gesture(pointOf(icon), 800); pause(900)
-            item = findFreeform()
+            gesture(pointOf(ic), 650)
+            item = waitFreeform(1200, false)
         }
         if (item == null) {
             log.append("No apareció «Formato libre» en el menú del launcher.\n")
             performGlobalAction(GLOBAL_ACTION_BACK); return false
         }
         val ok = clickNode(item)
-        pause(500)
         log.append(if (ok) "Pulsé «${nodeText(item)}» en el menú del launcher.\n" else "No pude pulsar la opción del menú.\n")
         return ok
     }
@@ -650,7 +654,7 @@ class RyxAccessibility : AccessibilityService() {
     fun launchViaLauncher(pkg: String, label: String, log: StringBuilder, keepApp: Boolean = true): Boolean {
         launchedFirst = false
         // Se recuerda qué camino funcionó en esta ROM para no perder tiempo con el que falla
-        val homeFirst = !keepApp || Prefs.fwRoute(this) == 2
+        val homeFirst = !keepApp || Prefs.fwRoute(this) != 1
         if (homeFirst) {
             if (viaHome(label, log)) { Prefs.setFwRoute(this, 2); return true }
             performGlobalAction(GLOBAL_ACTION_HOME); pause(500)

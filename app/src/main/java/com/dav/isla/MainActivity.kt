@@ -905,6 +905,56 @@ class MainActivity : Activity() {
             Thread { val log = FloatingWindow.openSolo(this, pkg); runOnUiThread { render(); dialog("Resultado de la prueba", log) } }.start()
         }, lp(8))
 
+        val ds = titled(p, "Barra del sistema en ventanas libres", "Con root (Magisk) o Shizuku · una sola vez · instantáneo y sin cortina")
+        ds.addView(label("Android dibuja la barra de título, los iconos y las esquinas redondeadas solo cuando el modo escritorio está activo, y en el teléfono viene apagado. " +
+            "Este botón lo enciende (propiedades del sistema persist.wm.debug.desktop_experience_devopts=1 y desktop_mode_enforce_device_restrictions=false) y reinicia. " +
+            "Después, con el método «Directo», las ventanas se abren al instante, con tu tamaño y con la barra real del sistema: sin captura, sin esperas y sin que accesibilidad pulse tu pantalla. " +
+            "Es experimental y depende de tu ROM; «Quitar» lo deja como estaba.", 12f, R.color.muted), lp(6))
+        ds.addView(button("Activar barra del sistema y reiniciar", true) {
+            Thread {
+                val ok = Shell.probeRoot() || Shell.shizukuGranted()
+                runOnUiThread {
+                    if (!ok) { dialog("Hace falta root o Shizuku", "No encuentro root (Magisk) ni Shizuku con permiso. Concede el permiso de superusuario a Ryx Island en Magisk o inicia Shizuku, y vuelve a intentarlo."); return@runOnUiThread }
+                    glass(AlertDialog.Builder(this).setTitle("Activar y reiniciar")
+                        .setMessage("Se activa el modo escritorio en la pantalla del teléfono y el teléfono se reinicia ahora. Si algo se ve raro, usa «Quitar y reiniciar». Guarda lo que estés haciendo.")
+                        .setPositiveButton("Reiniciar") { _, _ ->
+                            Thread {
+                                Shell.runAdmin(FloatingWindow.DESKTOP_ON)
+                                Prefs.setFwSoloMode(this, 1)
+                                Prefs.setFwSolo(this, true)
+                                Shell.runAdmin("svc power reboot")
+                            }.start()
+                        }.setNegativeButton("Cancelar", null).show())
+                }
+            }.start()
+        }, lp(8))
+        ds.addView(button("Quitar y reiniciar", false) {
+            Thread {
+                val ok = Shell.probeRoot() || Shell.shizukuGranted()
+                runOnUiThread {
+                    if (!ok) { dialog("Hace falta root o Shizuku", "No encuentro root (Magisk) ni Shizuku con permiso."); return@runOnUiThread }
+                    glass(AlertDialog.Builder(this).setTitle("Quitar y reiniciar")
+                        .setMessage("Se devuelve el modo escritorio a su valor normal y el teléfono se reinicia ahora.")
+                        .setPositiveButton("Reiniciar") { _, _ ->
+                            Thread { Shell.runAdmin(FloatingWindow.DESKTOP_OFF); Shell.runAdmin("svc power reboot") }.start()
+                        }.setNegativeButton("Cancelar", null).show())
+                }
+            }.start()
+        }, lp(8))
+        ds.addView(button("Ver estado", false) {
+            Thread {
+                val a = Shell.runAdmin("getprop persist.wm.debug.desktop_experience_devopts").second.trim()
+                val b = Shell.runAdmin("getprop persist.wm.debug.desktop_mode_enforce_device_restrictions").second.trim()
+                val who = if (Shell.probeRoot()) "root" else if (Shell.shizukuGranted()) "Shizuku" else "ninguno"
+                runOnUiThread {
+                    dialog("Estado del modo escritorio", "Ejecutado con: $who\n" +
+                        "desktop_experience_devopts = ${a.ifEmpty { "(vacío)" }}\n" +
+                        "enforce_device_restrictions = ${b.ifEmpty { "(vacío)" }}\n\n" +
+                        "Activado = 1 y false. Valor normal = vacío o -1 y true.")
+                }
+            }.start()
+        }, lp(8))
+
         val g = titled(p, "Otros métodos de ventana flotante", "Se abre con el gesto «Ventana flotante» (por defecto, deslizar hacia abajo)")
         g.addView(rowWithSwitch("Forzar ventana nueva", "Aunque la app ya esté abierta", Prefs.forceNew(this)) { Prefs.setForceNew(this, it) })
         g.addView(label("Apertura sin privilegios", 13f, R.color.muted, true), lp(12))

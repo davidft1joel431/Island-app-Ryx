@@ -72,6 +72,13 @@ object Shell {
         }
     }
 
+    /** Para ajustes puntuales del sistema: root si responde (Magisk) y, si no, Shizuku. Ignora el método elegido arriba. Fuera del hilo principal. */
+    fun runAdmin(cmd: String): Pair<Int, String> = when {
+        probeRoot() -> Root.run(cmd)
+        shizukuGranted() -> runShizuku(cmd)
+        else -> Pair(-1, "Ni root ni Shizuku disponibles")
+    }
+
     /** Quién ejecuta los comandos, para el registro. */
     fun label(c: Context): String = when (method(c)) {
         2 -> "root"
