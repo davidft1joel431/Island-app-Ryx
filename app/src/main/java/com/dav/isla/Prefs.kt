@@ -31,7 +31,7 @@ object Prefs {
     fun setIdleWidthDp(c: Context, v: Int) = sp(c).edit().putInt("idle_w", v).apply()
 
     fun lastLog(c: Context): String = sp(c).getString("last_log", "") ?: ""
-    fun setLastLog(c: Context, s: String) = sp(c).edit().putString("last_log", s.takeLast(4000)).apply()
+    fun setLastLog(c: Context, s: String) = sp(c).edit().putString("last_log", s.takeLast(8000)).apply()
 
     // ---- Eventos ----
     private fun land(c: Context) =
@@ -216,7 +216,7 @@ object Prefs {
     fun setFwMode(c: Context, v: Int) = sp(c).edit().putInt("fw_mode", v).apply()
     fun fwOwnBounds(c: Context): Boolean = sp(c).getBoolean("fw_own_bounds", true)
     fun setFwOwnBounds(c: Context, v: Boolean) = sp(c).edit().putBoolean("fw_own_bounds", v).apply()
-    fun fwFrame(c: Context): Boolean = sp(c).getBoolean("fw_frame", false)
+    fun fwFrame(c: Context): Boolean = sp(c).getBoolean("fw_frame", true)
     fun setFwFrame(c: Context, v: Boolean) = sp(c).edit().putBoolean("fw_frame", v).apply()
 
     // ---- Copia en la nube y actualizaciones ----

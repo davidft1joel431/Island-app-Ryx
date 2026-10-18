@@ -779,8 +779,8 @@ class MainActivity : Activity() {
         fz.addView(label(when (mth) {
             0 -> "Auto: usa Shizuku si está activo y, si no, abre con las opciones de Android para cualquier app. Nunca usa root."
             1 -> "Solo Shizuku. Si no está activo, la ventana no se podrá forzar."
-            3 -> "Sin privilegios: no necesita Shizuku ni root. Usa solo opciones de Android disponibles para cualquier app; " +
-                "depende de la ROM, y Ryx no puede comprobar si quedó flotante: míralo en pantalla."
+            3 -> "Sin privilegios: no necesita Shizuku ni root. La ventana se abre, pero Ryx no puede moverla ni comprobar si quedó " +
+                "flotante; en ROMs sin barra de ventana usa las asas de Ryx (experimental) o cambia a Shizuku."
             else -> "Root: solo se usa si lo eliges aquí. Deja el teléfono más expuesto, por eso nunca se usa por su cuenta."
         }, 12f, R.color.muted), lp(8))
         if (mth == 0 || mth == 1) {
@@ -816,10 +816,10 @@ class MainActivity : Activity() {
             }, lp(8))
         }
         val cp = titled(p, "Compatibilidad de la ROM", "${Build.DISPLAY} · Android ${Build.VERSION.RELEASE}")
-        cp.addView(label("Para que la ventana tenga barra y se pueda mover, en Opciones de desarrollador activa: " +
-            "«Permitir ventanas de forma libre», «Forzar que las actividades sean redimensionables» y la opción de " +
-            "ventanas/modo escritorio de tu ROM (Infinity X: busca «escritorio» o «desktop»). Después reinicia. " +
-            "El modo escritorio es lo que hace que Android dibuje la barra de la ventana; ya no se recomienda dejarlo apagado.",
+        cp.addView(label("Para abrir ventanas libres hacen falta «Permitir ventanas de forma libre» y «Forzar que las actividades " +
+            "sean redimensionables» (Opciones de desarrollador). En Android 17 el modo escritorio es solo para pantallas externas: " +
+            "en el teléfono el sistema no dibuja la barra de la ventana para apps de terceros (sí lo hace el «Formato libre» del " +
+            "lanzador, porque es una función interna). Para mover la ventana desde Ryx usa Shizuku (no es root) con las asas de Ryx.",
             12f, R.color.muted), lp(8))
         cp.addView(button("Abrir Opciones de desarrollador", false) {
             try { startActivity(Intent(Settings.ACTION_APPLICATION_DEVELOPMENT_SETTINGS)) } catch (e: Exception) { toast("No se pudo abrir") }
@@ -877,6 +877,9 @@ class MainActivity : Activity() {
         if (log.isNotEmpty()) {
             val d = titled(p, "Último diagnóstico")
             d.addView(label(log, 11f, R.color.muted).apply { typeface = Typeface.MONOSPACE }, lp(8))
+            d.addView(button("Copiar registro", false) {
+                (getSystemService(CLIPBOARD_SERVICE) as ClipboardManager).setPrimaryClip(ClipData.newPlainText("ryx", log)); toast("Registro copiado")
+            }, lp(8))
         }
     }
 
@@ -1080,6 +1083,9 @@ class MainActivity : Activity() {
     private fun devDialog() = sheet("Opciones de desarrollador") { b ->
         b.addView(label("Registro de la última apertura en ventana flotante:", 13f, R.color.muted))
         b.addView(label(Prefs.lastLog(this).ifEmpty { "Todavía no hay registro. Haz una prueba en la pestaña Ventana." }, 12f, R.color.text), lp(8))
+        b.addView(button("Copiar registro", false) {
+            (getSystemService(CLIPBOARD_SERVICE) as ClipboardManager).setPrimaryClip(ClipData.newPlainText("ryx", Prefs.lastLog(this))); toast("Registro copiado")
+        }, lp(8))
         b.addView(button("Probar iconos de apps", false) {
             val pm = packageManager; val sb = StringBuilder()
             val n = pm.queryIntentActivities(Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER), 0).size

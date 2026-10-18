@@ -56,8 +56,9 @@ object FloatingWindow {
             if (id != 0) try { sb.append("$n = ${sys.getBoolean(id)}\n") } catch (e: Exception) {}
         }
         sb.append("\nMétodo actual: ${Shell.label(c)}\n")
-        sb.append("\nLa barra para mover/redimensionar la dibuja el sistema, y en Android 15+ solo en modo escritorio: " +
-            "en Opciones de desarrollador activa también la opción de ventanas/modo escritorio (\"Desktop\" / \"Escritorio\") y reinicia.\n")
+        if (sysBool("config_canInternalDisplayHostDesktops") == false)
+            sb.append("\nEsta ROM solo permite el modo escritorio en pantallas externas: en el teléfono el sistema no dibuja " +
+                "la barra de las ventanas libres de apps de terceros. Para moverla usa las asas de Ryx con Shizuku.\n")
         if (!has && f1 != "1")
             sb.append("\nActiva «Permitir ventanas de forma libre» en Opciones de desarrollador y reinicia.")
         else if (!has)
@@ -69,7 +70,8 @@ object FloatingWindow {
 
     /** Devuelve el registro de lo ocurrido (también se guarda para Opciones de desarrollador). */
     fun open(c: Context, pkg: String): String {
-        val log = StringBuilder("Aplicación: $pkg\nMétodo: ${Shell.label(c)}\n")
+        val log = StringBuilder("Hora: ${java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.getDefault()).format(java.util.Date())}\n" +
+            "Aplicación: $pkg\nMétodo: ${Shell.label(c)}\n")
         val launch = c.packageManager.getLaunchIntentForPackage(pkg)
         if (launch == null) { log.append("No se encontró la actividad principal."); return save(c, log) }
         launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
@@ -142,13 +144,39 @@ object FloatingWindow {
             c.startActivity(launch, opts.toBundle())
             if (Prefs.fwFrame(c)) { FloatFrame.show(c, "", b, pkg); log.append("Asas de Ryx: mostradas (modo sin privilegios, experimental)\n") }
             log.append("\nLanzada sin privilegios · modo libre pedido: ${if (modeAsked) "sí" else "no"}\n" +
-                "Ryx no puede comprobar el resultado sin permisos: mira si la ventana quedó flotante.")
+                "Ryx no puede comprobar el resultado sin permisos: mira si la ventana quedó flotante.\n" + snapshot(c))
             return save(c, log)
         } catch (e: Exception) { log.append("\nFalló la apertura sin privilegios: ${e.message}") }
 
         // 3) Apertura normal
         try { c.startActivity(launch); log.append("\nSe abrió en pantalla completa.") } catch (e: Exception) {}
         return save(c, log)
+    }
+
+    private fun sysBool(name: String): Boolean? = try {
+        val r = android.content.res.Resources.getSystem()
+        val id = r.getIdentifier(name, "bool", "android")
+        if (id == 0) null else r.getBoolean(id)
+    } catch (e: Exception) { null }
+
+    /** Estado del sistema en pocas líneas, para el registro. */
+    private fun snapshot(c: Context): String {
+        fun g(k: String): String = try { Settings.Global.getString(c.contentResolver, k) ?: "-" } catch (e: Exception) { "?" }
+        val has = c.packageManager.hasSystemFeature("android.software.freeform_window_management")
+        val canHost = sysBool("config_canInternalDisplayHostDesktops")
+        val sb = StringBuilder("\n--- Estado del sistema ---\n")
+        sb.append("Android ${Build.VERSION.RELEASE} (API ${Build.VERSION.SDK_INT}) · ${Build.DISPLAY}\n")
+        sb.append("Ventanas libres declaradas: ${if (has) "sí" else "no"} · enable_freeform_support=${g("enable_freeform_support")} · " +
+            "force_resizable_activities=${g("force_resizable_activities")}\n")
+        sb.append("Escritorio soportado: ${sysBool("config_isDesktopModeSupported") ?: "?"} · " +
+            "escritorio en pantalla del teléfono: ${canHost ?: "?"}\n")
+        sb.append("Modo de apertura: ${if (Prefs.fwMode(c) == 0) "como el lanzador" else "con animación Ryx"} · " +
+            "tamaño propio: ${if (Prefs.fwOwnBounds(c)) "sí" else "no"} · ventana nueva: ${if (Prefs.forceNew(c)) "sí" else "no"}\n")
+        sb.append("\nVeredicto: sin privilegios Ryx no puede saber si la ventana quedó flotante ni moverla.\n")
+        if (canHost == false) sb.append("Si salió sin barra es porque esta ROM no dibuja la barra de ventana libre en el teléfono " +
+            "(escritorio solo en pantallas externas). Opciones: asas de Ryx (experimental sin privilegios) o Shizuku (no es root), " +
+            "con el que Ryx sí mueve y redimensiona la ventana real.\n")
+        return sb.toString()
     }
 
     /** Sin privilegios: vuelve a pedir la ventana libre en otra posición/tamaño (experimental; depende de la ROM). */
