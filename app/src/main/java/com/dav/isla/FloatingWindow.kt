@@ -87,26 +87,31 @@ object FloatingWindow {
                 "(si sale en gris: Info de la app → ⋮ → «Permitir ajustes restringidos»).\n")
             return save(c, log)
         }
-        if (Prefs.fwSoloMode(c) == 0) {
-            log.append("Formato libre REAL del sistema (barra, iconos y esquinas del sistema), con cortina para no ver el cambio de pantalla.\n")
-            val ok0 = try { svc.launchSystemFreeform(pkg, appLabel(c, pkg), Prefs.fwKeepApp(c), log) } catch (e: Throwable) {
+        val soloMode = Prefs.fwSoloMode(c)
+        if (soloMode == 0 || soloMode == 2) {
+            val bubble = soloMode == 2
+            log.append(if (bubble) "Burbuja del sistema (Android 17): flota sobre tu app y se queda ahí. Se crea pulsando «Burbuja» en el menú del launcher, con cortina.\n"
+                       else "Formato libre REAL del sistema (barra, iconos y esquinas del sistema), con cortina para no ver el cambio de pantalla.\n")
+            val ok0 = try { svc.launchSystemFreeform(pkg, appLabel(c, pkg), Prefs.fwKeepApp(c), log, bubble) } catch (e: Throwable) {
                 log.append("Error: ${e.javaClass.simpleName} ${e.message ?: ""}\n"); false }
-            if (ok0 && pi != null) {
+            if (ok0 && pi != null && !bubble) {
                 Thread.sleep(500)
                 log.append(if (sendPending(c, pi, true, null)) "Abrí el destino exacto de la notificación (el chat).\n"
                            else "No pude abrir el destino exacto de la notificación.\n")
             }
-            if (!ok0) log.append("\nNo se pudo abrir con el menú del launcher; mira arriba qué vio Ryx.\n")
-            else log.append("\nLa ventana la abre el sistema desde el menú de tu launcher, con su barra y su tamaño habitual.\n")
+            if (!ok0) log.append("\nNo se pudo abrir con el menú del launcher; mira arriba qué vio Ryx" + (if (bubble) " (si tu launcher no tiene la opción «Burbuja», esta ROM no la trae)." else ".") + "\n")
+            else log.append(if (bubble) "\nLa burbuja la crea el sistema desde el menú de tu launcher; para volver a abrirla toca la burbuja.\n"
+                            else "\nLa ventana la abre el sistema desde el menú de tu launcher, con su barra y su tamaño habitual.\n")
             return save(c, log)
         }
         val b = bounds(c)
         log.append("Ventana pedida: ${b.left},${b.top} → ${b.right},${b.bottom}\n")
         val ok = svc.launchSmartIsland(pkg, pi, b, log)
-        if (ok && Prefs.fwFrame(c)) {
+        if (ok && Prefs.fwFrame(c) && !Prefs.fwDesktop(c)) {
             FloatFrame.show(c, "", b, pkg, appLabel(c, pkg))
             log.append("Barra de Ryx: mostrada sobre la ventana (mover, cambiar tamaño y cerrar la barra).\n")
         }
+        if (Prefs.fwDesktop(c)) log.append("Modo escritorio activo: la barra la dibuja el sistema (Ryx no pone la suya).\n")
         log.append("\nSi la ventana salió a pantalla completa, tu ROM no respetó el modo libre pedido por una app normal; " +
             "las medidas de arriba lo confirman.")
         return save(c, log)
