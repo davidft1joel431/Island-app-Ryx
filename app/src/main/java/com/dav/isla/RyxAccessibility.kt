@@ -49,13 +49,13 @@ class RyxAccessibility : AccessibilityService() {
     fun keepBehind(prev: String?, target: String, log: StringBuilder) {
         val skip = setOf(packageName, target, homePackage(), "com.android.systemui")
         if (prev == null || prev in skip) return
-        pause(1300)
+        pause(600)
         val a = packageManager.getLaunchIntentForPackage(prev) ?: return
         a.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         val t = packageManager.getLaunchIntentForPackage(target) ?: return
         t.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         try {
-            startActivity(a); pause(1000)       // tu app vuelve al frente
+            startActivity(a); pause(500)       // tu app vuelve al frente
             startActivity(t); pause(500)         // la ventana libre se sube encima
             log.append("Devolví «$prev» al fondo y subí la ventana libre encima.\n")
         } catch (e: Exception) { log.append("No pude devolver tu app al fondo: ${e.javaClass.simpleName}\n") }
@@ -195,33 +195,111 @@ class RyxAccessibility : AccessibilityService() {
         return false
     }
 
+    /** true si en el último intento hubo que abrir la app a pantalla completa antes (entonces tu app anterior hay que restaurarla). */
+    @Volatile var launchedFirst = false
+
+    private fun waitUntil(ms: Long, step: Long = 100, cond: () -> Boolean): Boolean {
+        val end = System.currentTimeMillis() + ms
+        while (System.currentTimeMillis() < end) { if (cond()) return true; pause(step) }
+        return cond()
+    }
+
+    private fun waitFreeform(ms: Long): AccessibilityNodeInfo? {
+        var r: AccessibilityNodeInfo? = null
+        waitUntil(ms) { r = findFreeform(); r != null }
+        return r
+    }
+
+    /** ¿Seguimos en Recientes (launcher o SystemUI al frente)? */
+    private fun inRecents(): Boolean {
+        val p = try { rootInActiveWindow?.packageName?.toString() } catch (e: Exception) { null }
+        return p != null && (p == homePackage() || p == "com.android.systemui")
+    }
+
+    private fun area(n: AccessibilityNodeInfo): Int { val r = Rect(); n.getBoundsInScreen(r); return r.width() * r.height() }
+
+    /** Elementos de Recientes con el nombre de la app, del más pequeño (el icono) al más grande (la tarjeta). */
+    private fun recentsCandidates(label: String): List<AccessibilityNodeInfo> {
+        val seen = HashSet<String>()
+        return findAllLabel(label).filter { n -> val r = Rect(); n.getBoundsInScreen(r); seen.add(r.flattenToString()) }
+            .sortedBy { area(it) }
+    }
+
+    /** Toca el nodo en sí (sin subir a un padre clicable, que sería la tarjeta y abriría la app). */
+    private fun tapExact(n: AccessibilityNodeInfo): Boolean =
+        (n.isClickable && n.performAction(AccessibilityNodeInfo.ACTION_CLICK)) || gesture(pointOf(n), 50)
+
+    /** Cierra el menú/Recientes sin sacarte de tu app si ya estás en ella. */
+    private fun closeRecents() {
+        var k = 0
+        while (inRecents() && k++ < 3) { performGlobalAction(GLOBAL_ACTION_BACK); pause(250) }
+    }
+
     /**
-     * Camino 2 (mantiene tu app de fondo): abre la app de destino, entra en Recientes y toca su icono para sacar el menú
-     * con «Formato libre». La app de destino pasa a ventana libre y tu app anterior queda detrás, sin ir a la pantalla de inicio.
+     * Camino Recientes (mantiene tu app de fondo y NO pasa por la pantalla de inicio):
+     * abre Recientes directamente desde la app en la que estás; si la app destino ya está ahí, toca su icono y «Formato libre».
+     * Solo si no está en Recientes la abre antes. Rápido: espera por sondeo, no con pausas fijas.
      */
     private fun viaRecents(pkg: String, label: String, log: StringBuilder): Boolean {
-        log.append("Camino Recientes: abro la app y toco su icono en Recientes (tu app anterior queda detrás).\n")
-        val launch = packageManager.getLaunchIntentForPackage(pkg) ?: return false
-        launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        try { startActivity(launch) } catch (e: Exception) { log.append("No pude abrir la app: ${e.javaClass.simpleName}\n"); return false }
-        if (!waitForeground(pkg, 4000)) log.append("La app tardó en ponerse al frente; sigo igualmente.\n")
-        pause(500)
-        performGlobalAction(GLOBAL_ACTION_RECENTS); pause(1300)
-        // Puede haber varios elementos con ese nombre (icono y miniatura): se prueba uno por uno hasta que salga el menú
-        var item: AccessibilityNodeInfo? = null
-        val cands = findAllLabel(label)
-        log.append("Elementos «$label» en Recientes: ${cands.size}\n")
-        for (cnd in cands.take(3)) {
-            clickNode(cnd); pause(900)
-            item = findFreeform()
-            if (item != null) break
-            if (findAllLabel(label).isEmpty()) break      // Recientes se cerró (se abrió la app): no seguir tocando
+        launchedFirst = false
+        log.append("Camino Recientes: abro Recientes desde tu app (sin ir al inicio).\n")
+        var opened = false
+        for (round in 0..1) {
+            if (!inRecents()) { performGlobalAction(GLOBAL_ACTION_RECENTS) }
+            waitUntil(1600) { inRecents() }
+            // El carrusel puede tener la app más a un lado: se busca con hasta 3 deslizamientos
+            var cands = recentsCandidates(label)
+            var sw = 0
+            while (cands.isEmpty() && sw < 3) {
+                val m = resources.displayMetrics
+                gesture(Path().apply { moveTo(m.widthPixels * 0.2f, m.heightPixels * 0.5f); lineTo(m.widthPixels * 0.85f, m.heightPixels * 0.5f) }, 250)
+                pause(350); cands = recentsCandidates(label); sw++
+            }
+            if (cands.isNotEmpty()) { opened = true; break }
+            if (round == 0) {
+                log.append("«$label» no está en Recientes; la abro primero.\n")
+                closeRecents()
+                val launch = packageManager.getLaunchIntentForPackage(pkg) ?: return false
+                launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                try { startActivity(launch) } catch (e: Exception) { log.append("No pude abrir la app: ${e.javaClass.simpleName}\n"); return false }
+                launchedFirst = true
+                if (!waitForeground(pkg, 4000)) log.append("La app tardó en ponerse al frente; sigo igualmente.\n")
+                pause(350)
+                performGlobalAction(GLOBAL_ACTION_RECENTS)
+                waitUntil(1600) { inRecents() }
+            }
         }
-        if (item == null) { log.append("Recientes no mostró «Formato libre».\n"); performGlobalAction(GLOBAL_ACTION_HOME); return false }
-        val ok = clickNode(item)
-        pause(500)
-        log.append(if (ok) "Pulsé «${nodeText(item)}» en Recientes.\n" else "No pude pulsar la opción en Recientes.\n")
-        return ok
+        if (!opened) { log.append("No encontré «$label» en Recientes.\n"); closeRecents(); return false }
+
+        // Se toca primero el elemento más pequeño (el icono): ahí sale el menú. La tarjeta grande abriría la app.
+        var taps = 0
+        while (taps < 4) {
+            val cands = recentsCandidates(label)
+            if (taps == 0) log.append("Elementos «$label» en Recientes: ${cands.size} (toco el icono, el más pequeño)\n")
+            if (cands.isEmpty()) {
+                // Recientes se cerró (se abrió la app): se reabre y se prueba otro elemento
+                performGlobalAction(GLOBAL_ACTION_RECENTS); waitUntil(1500) { inRecents() }
+                taps++; continue
+            }
+            val target = cands[minOf(taps, cands.size - 1)]
+            tapExact(target)
+            var item = waitFreeform(1100)
+            if (item == null) {      // algunos launchers sacan el menú con mantener pulsado
+                var cur: AccessibilityNodeInfo? = target; var k = 0
+                while (cur != null && k < 3) { if (cur.isLongClickable && cur.performAction(AccessibilityNodeInfo.ACTION_LONG_CLICK)) break; cur = cur.parent; k++ }
+                item = waitFreeform(900)
+            }
+            if (item != null) {
+                val ok = clickNode(item)
+                log.append(if (ok) "Pulsé «${nodeText(item)}» en Recientes.\n" else "No pude pulsar la opción en Recientes.\n")
+                return ok
+            }
+            taps++
+            if (inRecents()) performGlobalAction(GLOBAL_ACTION_BACK).also { pause(250) }   // cierra un menú sin la opción
+        }
+        log.append("Recientes no mostró «Formato libre».\n")
+        closeRecents()
+        return false
     }
 
     /** Textos visibles de otras apps, para el registro cuando algo falla (así se ve qué ve Ryx en tu launcher). */
@@ -245,15 +323,16 @@ class RyxAccessibility : AccessibilityService() {
      * Llamar fuera del hilo principal.
      */
     fun launchViaLauncher(pkg: String, label: String, log: StringBuilder, keepApp: Boolean = true): Boolean {
+        launchedFirst = false
         if (keepApp) {
+            // Con «Mantener mi app de fondo» nunca se pasa por el inicio: si Recientes no funciona, se abre directo.
             if (viaRecents(pkg, label, log)) return true
-            performGlobalAction(GLOBAL_ACTION_HOME); pause(700)
-            if (viaHome(label, log)) return true
-        } else {
-            if (viaHome(label, log)) return true
-            performGlobalAction(GLOBAL_ACTION_HOME); pause(700)
-            if (viaRecents(pkg, label, log)) return true
+            dump(log)
+            return false
         }
+        if (viaHome(label, log)) return true
+        performGlobalAction(GLOBAL_ACTION_HOME); pause(500)
+        if (viaRecents(pkg, label, log)) return true
         dump(log)
         performGlobalAction(GLOBAL_ACTION_HOME)
         return false
