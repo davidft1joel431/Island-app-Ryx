@@ -50,7 +50,6 @@ class MainActivity : Activity() {
     private var landscapeView = false
     private val expandedGroups = HashSet<String>().apply { add("power") }
     private var previewView: IslandPreview? = null
-    private var windowPreview: WindowPreview? = null
     private var previewOpen = false
     private var appQuery = ""
     private var rootStatus = "Sin comprobar"
@@ -137,7 +136,7 @@ class MainActivity : Activity() {
         } catch (e: Throwable) {}
         Backup.maybeUpload(this, 60 * 60_000L)
         offerRestore()
-        if (Prefs.fwMode(this) == 2 && !RyxAccessibility.isEnabled(this) && !Prefs.a11yAsked(this)) {
+        if (!RyxAccessibility.isEnabled(this) && !Prefs.a11yAsked(this)) {
             Prefs.setA11yAsked(this, true); askAccessibility()
         }
         if (System.currentTimeMillis() - Prefs.updLast(this) > 12 * 3600_000L) checkUpdates(false)
@@ -366,7 +365,7 @@ class MainActivity : Activity() {
             tabBar.addView(b, LinearLayout.LayoutParams(0, WRAP, 1f).apply { marginStart = px(2); marginEnd = px(2) })
         }
         content.removeAllViews()
-        previewView = null; windowPreview = null; appsBox = null
+        previewView = null; appsBox = null
         val page = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(px(18), px(6), px(18), px(24))
@@ -393,7 +392,7 @@ class MainActivity : Activity() {
             else -> buildSettings(page)
         }
         val scroll = ScrollView(this).apply { addView(page); isVerticalScrollBarEnabled = false }
-        val fixed: View? = when (tab) { 1 -> buildPreview(); 3 -> buildWindowPreview(); else -> null }
+        val fixed: View? = when (tab) { 1 -> buildPreview(); else -> null }
         if (fixed != null) {
             val colm = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
             colm.addView(fixed, LinearLayout.LayoutParams(MATCH, WRAP).apply { marginStart = px(18); marginEnd = px(18); topMargin = px(4) })
@@ -428,17 +427,6 @@ class MainActivity : Activity() {
         row.addView(button("▶ Animación", true) { previewOpen = false; pv.play() },
             LinearLayout.LayoutParams(0, WRAP, 1f).apply { marginStart = px(6) })
         c.addView(row, lp(8))
-        return c
-    }
-
-    private fun buildWindowPreview(): View {
-        val c = card().apply { setPadding(px(12), px(12), px(12), px(12)) }
-        c.addView(label("Así se abrirá la ventana", 15f, R.color.text, true))
-        c.addView(label("Crece desde la isla con la animación elegida", 12f, R.color.muted))
-        val wp = WindowPreview(this)
-        windowPreview = wp
-        c.addView(wp, LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = px(8) })
-        c.addView(button("▶ Reproducir animación", true) { wp.play() }, lp(8))
         return c
     }
 
@@ -805,200 +793,65 @@ class MainActivity : Activity() {
     // ---------------- VENTANA FLOTANTE ----------------
 
     private fun buildWindow(p: LinearLayout) {
-        val fz = titled(p, "Cómo abrir la ventana flotante", "Con root (Magisk) o Shizuku se abre en segundo plano")
-        val order = intArrayOf(0, 1, 3, 2)               // posición del botón → método guardado
-        val mth = Prefs.shellMethod(this)
-        fz.addView(segmented(listOf("Auto", "Shizuku", "Sin privilegios", "Root"),
-            order.indexOf(mth).coerceAtLeast(0), true) { Prefs.setShellMethod(this, order[it]) }, lp(10))
-        fz.addView(label(when (mth) {
-            0 -> "Auto: usa Shizuku si está activo; si no, usa root (Magisk pedirá permiso una sola vez). La ventana se abre en segundo plano, sin sacarte de tu app. " +
-                "Sin ninguno de los dos, abre con las opciones de Android."
-            1 -> "Solo Shizuku. Si no está activo, la ventana no se podrá forzar."
-            3 -> "Sin privilegios: no necesita Shizuku ni root. La ventana se abre, pero Ryx no puede moverla ni comprobar si quedó " +
-                "flotante; en ROMs sin barra de ventana usa las asas de Ryx (experimental) o cambia a Shizuku."
-            else -> "Root: solo se usa si lo eliges aquí. Deja el teléfono más expuesto, por eso nunca se usa por su cuenta."
-        }, 12f, R.color.muted), lp(8))
-        if (mth == 0 || mth == 1) {
-            val shz = Shell.shizukuStatus(this)
-            statusRow(fz, "Shizuku", shz, shz == "Listo")
-            when {
-                !Shell.shizukuInstalled(this) -> fz.addView(button("Descargar Shizuku", true) {
-                    startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://shizuku.rikka.app/download/")))
-                }, lp(10))
-                !Shell.shizukuRunning() -> {
-                    fz.addView(button("Abrir Shizuku para iniciarlo", true) {
-                        packageManager.getLaunchIntentForPackage(Shell.SHIZUKU_PKG)?.let { startActivity(it) }
-                    }, lp(10))
-                    fz.addView(label("Sin root, se inicia con «Depuración inalámbrica» (dentro de Shizuku → Iniciar mediante " +
-                        "depuración inalámbrica). Hay que repetirlo tras reiniciar el teléfono.", 12f, R.color.muted), lp(8))
-                }
-                !Shell.shizukuGranted() -> fz.addView(button("Dar permiso a Ryx Island", true) {
-                    Shell.requestShizuku()
-                }, lp(10))
-            }
-            fz.addView(label("Shizuku no da superusuario: Ryx solo puede ejecutar comandos de shell (como adb) mientras Shizuku " +
-                "esté activo y tú lo hayas autorizado. Se apaga al reiniciar y puedes revocar el permiso desde la app Shizuku.",
-                12f, R.color.muted), lp(8))
-        }
-        if (mth == 2) {
-            statusRow(fz, "Root", rootStatus, rootStatus.startsWith("Disponible"))
-            fz.addView(button("Comprobar root", false) {
-                rootStatus = "Comprobando…"; render()
-                Thread {
-                    val r = Root.run("id")
-                    runOnUiThread { rootStatus = if (r.first == 0) "Disponible" else "No disponible"; render() }
-                }.start()
-            }, lp(8))
-        }
-        val cp = titled(p, "Compatibilidad de la ROM", "${Build.DISPLAY} · Android ${Build.VERSION.RELEASE}")
-        cp.addView(label("Para abrir ventanas libres hacen falta «Permitir ventanas de forma libre» y «Forzar que las actividades " +
-            "sean redimensionables» (Opciones de desarrollador). En Android 17 el modo escritorio es solo para pantallas externas: " +
-            "en el teléfono el sistema no dibuja la barra de la ventana para apps de terceros (sí lo hace el «Formato libre» del " +
-            "lanzador, porque es una función interna). Para mover la ventana desde Ryx usa Shizuku (no es root) con las asas de Ryx.",
-            12f, R.color.muted), lp(8))
-        cp.addView(button("Abrir Opciones de desarrollador", false) {
-            try { startActivity(Intent(Settings.ACTION_APPLICATION_DEVELOPMENT_SETTINGS)) } catch (e: Exception) { toast("No se pudo abrir") }
-        }, lp(10))
-        cp.addView(button("Comprobar soporte", false) {
-            toast("Comprobando…")
-            dialog("Soporte de ventanas libres", FloatingWindow.support(this))
-        }, lp(10))
-        cp.addView(button("Activar y reiniciar el teléfono", false) {
-            if (!Shell.privileged(this)) {
-                dialog("Sin privilegios", "Sin Shizuku ni root no se puede cambiar ese ajuste desde la app. " +
-                    "Actívalo a mano en Opciones de desarrollador («Permitir ventanas de forma libre» y la opción de modo escritorio) y reinicia.")
-                return@button
-            }
-            glass(AlertDialog.Builder(this).setTitle("Reiniciar teléfono")
-                .setMessage("Se activarán las ventanas libres y el teléfono se reiniciará ahora. Guarda lo que estés haciendo.")
-                .setPositiveButton("Reiniciar") { _, _ ->
-                    Thread { Shell.run(this, FloatingWindow.PREP); Shell.run(this, "svc power reboot") }.start()
-                }.setNegativeButton("Cancelar", null).show())
-        }, lp(8))
-        val so = titled(p, "Formato libre", "Instantáneo desde accesibilidad · con la barra real del sistema si activas el modo escritorio")
-        so.addView(rowWithSwitch("Usar solo este método", "Sin Shizuku, root, Recientes ni el menú del launcher: no te saca de tu app",
-            Prefs.fwSolo(this)) { Prefs.setFwSolo(this, it); render() })
-        so.addView(segmented(listOf("Formato libre del sistema (lento)", "Directo (rápido)", "Burbuja (Android 17)"), Prefs.fwSoloMode(this), true) { Prefs.setFwSoloMode(this, it); render() }, lp(8))
-        so.addView(label(if (Prefs.fwSoloMode(this) == 2)
-            "«Burbuja» (Android 17): es la ventana flotante nueva del sistema. Flota SOBRE tu app y se queda ahí aunque cambies de app, con la decoración del sistema y sin pasar por el escritorio. " +
-            "Android no ofrece ninguna API para pedirla, así que la PRIMERA vez Ryx pulsa por ti «Burbuja» en el menú de tu launcher (con la cortina, unos segundos). La burbuja se queda en pantalla: " +
-            "las siguientes veces Ryx solo toca su icono (instantáneo, sin cortina), y también puedes tocarla tú. Hasta 5 burbujas a la vez."
-            else if (Prefs.fwSoloMode(this) == 0)
-            "«Formato libre del sistema»: abre la ventana real del sistema, con su barra, iconos y esquinas, pulsando por ti «Formato libre» en tu launcher. " +
-            "Ryx pone una captura de tu pantalla como cortina para que no veas el cambio, así que durante unos 2-4 segundos la pantalla se ve congelada: " +
-            "no toques nada hasta que aparezca la ventana. Sale con el tamaño del sistema; muévela y cámbiala con su propia barra."
-            else "«Directo»: pide la ventana con tu tamaño desde accesibilidad (función de Smart Island). No lleva la barra del sistema, por eso Ryx dibuja la suya.",
+        val kind = Prefs.fwKind(this)
+        val so = titled(p, "Formato libre y burbujas", "Se abre encima de la app en la que estás, sin sacarte de ella")
+        so.addView(segmented(listOf("Formato libre (rápido)", "Burbuja (Android 17)"), kind, true) { Prefs.setFwKind(this, it); render() }, lp(8))
+        so.addView(label(if (kind == 1)
+            "«Burbuja» (Android 17): flota SOBRE tu app y se queda ahí, con la decoración del sistema. Android no ofrece ninguna API para crearla: " +
+            "la PRIMERA vez Ryx pulsa por ti «Burbuja» en el menú de tu launcher (con una captura de tu pantalla como cortina). " +
+            "Después la burbuja queda en pantalla y Ryx solo toca su icono: instantáneo, sin cortina y sin salir de tu app. Hasta 5 burbujas a la vez."
+            else
+            "«Formato libre»: Ryx pide la ventana al sistema con tu tamaño desde accesibilidad. Se abre al instante encima de tu app, " +
+            "sin inicio, sin Recientes y sin cortina. Con la ventana de la notificación abre el chat exacto. Ryx dibuja su propia barra para moverla.",
             12f, R.color.muted), lp(6))
-        so.addView(label("Ryx lanza la app desde el servicio de accesibilidad con el modo libre (windowingMode 5) y tu tamaño, y anota en el registro las medidas reales de la ventana.", 12f, R.color.muted), lp(6))
         so.addView(label(if (RyxAccessibility.isEnabled(this)) "Servicio de accesibilidad: activo ✔" else
             "Servicio de accesibilidad: apagado. Actívalo para usar este método.", 12f, R.color.text), lp(8))
         so.addView(button(if (RyxAccessibility.isEnabled(this)) "Ajustes de accesibilidad" else "Activar accesibilidad", !RyxAccessibility.isEnabled(this)) {
             if (RyxAccessibility.isEnabled(this)) openAccessibility() else askAccessibility()
         }, lp(8))
-        so.addView(button("Abrir Opciones de desarrollador", false) {
-            try { startActivity(Intent(Settings.ACTION_APPLICATION_DEVELOPMENT_SETTINGS)) } catch (e: Exception) { toast("No se pudo abrir") }
-        }, lp(8))
-        if (!Prefs.fwDesktop(this)) so.addView(rowWithSwitch("Barra de Ryx sobre la ventana", "Mover, cambiar tamaño y cerrar la barra", Prefs.fwFrame(this)) { Prefs.setFwFrame(this, it) })
-        so.addView(button("▶ Probar solo accesibilidad", true) {
-            val pkg = Prefs.fwTestPkg(this)
-            if (pkg.isEmpty()) { toast("Elige primero una app en «Probar ventana flotante» (abajo)"); return@button }
-            toast("Abriendo…")
-            Thread { val log = FloatingWindow.openSolo(this, pkg); runOnUiThread { render(); dialog("Resultado de la prueba", log) } }.start()
-        }, lp(8))
-
-        val ds = so
-        ds.addView(label("Barra del sistema (modo escritorio)", 14f, R.color.text), lp(16))
-        ds.addView(label(if (Prefs.fwDesktop(this))
-            "Modo escritorio: activado ✔. Las ventanas llevan la barra, los iconos y las esquinas reales del sistema, y Ryx no dibuja la suya. " +
-            "Ojo: Android las abre en su propio escritorio (el «Computador» de Recientes), no encima de tu app: al volver a tu app a pantalla completa quedan escondidas allí. Para una ventana que flote sobre tu app usa «Burbuja (Android 17)». " +
-            "La rayita blanca que ves arriba en las apps a pantalla completa es la «manija de app» del modo escritorio: Android la pone en todas las apps y no tiene ajuste propio para quitarla; solo desaparece apagando el modo escritorio con «Quitar y reiniciar»."
-            else "Modo escritorio: apagado. Ryx dibuja su propia barra sobre la ventana.", 12f, R.color.text), lp(6))
-        ds.addView(label("Android dibuja la barra de título, los iconos y las esquinas redondeadas solo cuando el modo escritorio está activo, y en el teléfono viene apagado. " +
-            "Este botón lo enciende (propiedades del sistema persist.wm.debug.desktop_experience_devopts=1 y desktop_mode_enforce_device_restrictions=false) y reinicia. " +
-            "Después, con el método «Directo», las ventanas se abren al instante, con tu tamaño y con la barra real del sistema: sin captura, sin esperas y sin que accesibilidad pulse tu pantalla. " +
-            "Es experimental y depende de tu ROM; «Quitar» lo deja como estaba.", 12f, R.color.muted), lp(6))
-        ds.addView(button("Activar barra del sistema y reiniciar", true) {
-            Thread {
-                val ok = Shell.probeRoot() || Shell.shizukuGranted()
-                runOnUiThread {
-                    if (!ok) { dialog("Hace falta root o Shizuku", "No encuentro root (Magisk) ni Shizuku con permiso. Concede el permiso de superusuario a Ryx Island en Magisk o inicia Shizuku, y vuelve a intentarlo."); return@runOnUiThread }
-                    glass(AlertDialog.Builder(this).setTitle("Activar y reiniciar")
-                        .setMessage("Se activa el modo escritorio en la pantalla del teléfono y el teléfono se reinicia ahora. Si algo se ve raro, usa «Quitar y reiniciar». Guarda lo que estés haciendo.")
-                        .setPositiveButton("Reiniciar") { _, _ ->
-                            Thread {
-                                Shell.runAdmin(FloatingWindow.DESKTOP_ON)
-                                Prefs.setFwDesktop(this, true)
-                                Prefs.setFwSoloMode(this, 1)
-                                Prefs.setFwSolo(this, true)
-                                Shell.runAdmin("svc power reboot")
-                            }.start()
-                        }.setNegativeButton("Cancelar", null).show())
-                }
-            }.start()
-        }, lp(8))
-        ds.addView(button("Quitar y reiniciar", false) {
-            Thread {
-                val ok = Shell.probeRoot() || Shell.shizukuGranted()
-                runOnUiThread {
-                    if (!ok) { dialog("Hace falta root o Shizuku", "No encuentro root (Magisk) ni Shizuku con permiso."); return@runOnUiThread }
-                    glass(AlertDialog.Builder(this).setTitle("Quitar y reiniciar")
-                        .setMessage("Se devuelve el modo escritorio a su valor normal y el teléfono se reinicia ahora.")
-                        .setPositiveButton("Reiniciar") { _, _ ->
-                            Thread { Shell.runAdmin(FloatingWindow.DESKTOP_OFF); Prefs.setFwDesktop(this, false); Shell.runAdmin("svc power reboot") }.start()
-                        }.setNegativeButton("Cancelar", null).show())
-                }
-            }.start()
-        }, lp(8))
-        ds.addView(button("Ver estado", false) {
-            Thread {
-                val a = Shell.runAdmin("getprop persist.wm.debug.desktop_experience_devopts").second.trim()
-                val b = Shell.runAdmin("getprop persist.wm.debug.desktop_mode_enforce_device_restrictions").second.trim()
-                val who = if (Shell.probeRoot()) "root" else if (Shell.shizukuGranted()) "Shizuku" else "ninguno"
-                runOnUiThread {
-                    dialog("Estado del modo escritorio", "Ejecutado con: $who\n" +
-                        "desktop_experience_devopts = ${a.ifEmpty { "(vacío)" }}\n" +
-                        "enforce_device_restrictions = ${b.ifEmpty { "(vacío)" }}\n\n" +
-                        "Activado = 1 y false. Valor normal = vacío o -1 y true.")
-                }
-            }.start()
-        }, lp(8))
-
-        val g = titled(p, "Otros métodos de ventana flotante", "Se abre con el gesto «Ventana flotante» (por defecto, deslizar hacia abajo)")
-        g.addView(rowWithSwitch("Forzar ventana nueva", "Aunque la app ya esté abierta", Prefs.forceNew(this)) { Prefs.setForceNew(this, it) })
-        g.addView(label("Apertura sin privilegios", 13f, R.color.muted, true), lp(12))
-        g.addView(segmented(listOf("Launcher", "Directo", "Animación"), when (Prefs.fwMode(this)) { 2 -> 0; 0 -> 1; else -> 2 }, true) {
-            Prefs.setFwMode(this, when (it) { 0 -> 2; 1 -> 0; else -> 1 })
-            if (it == 0 && !RyxAccessibility.isEnabled(this)) askAccessibility()
-        }, lp(6))
-        g.addView(label("«Launcher» usa el «Formato libre» de tu launcher: Ryx mantiene pulsado el icono y toca esa opción por ti " +
-            "(servicio de accesibilidad), así que la ventana trae la barra del sistema para moverla y cambiarle el tamaño. " +
-            "Sale con el tamaño que elige el sistema. «Directo» y «Animación» piden la ventana con tu tamaño, pero sin barra en esta ROM.",
-            12f, R.color.muted), lp(6))
-        g.addView(rowWithSwitch("Mantener mi app de fondo", "La ventana se abre encima de la app en la que estás, sin ir al inicio (usa Recientes)",
+        if (kind == 1) so.addView(rowWithSwitch("Volver a mi app al terminar", "Tras crear la burbuja, tu app vuelve al frente",
             Prefs.fwKeepApp(this)) { Prefs.setFwKeepApp(this, it) })
-        g.addView(label(if (RyxAccessibility.isEnabled(this)) "Servicio de accesibilidad: activo ✔" else
-            "Servicio de accesibilidad: apagado. Actívalo para usar «Launcher».", 12f, R.color.text), lp(8))
-        g.addView(button(if (RyxAccessibility.isEnabled(this)) "Ajustes de accesibilidad" else "Activar accesibilidad", !RyxAccessibility.isEnabled(this)) {
-            if (RyxAccessibility.isEnabled(this)) openAccessibility() else askAccessibility()
-        }, lp(8))
-        g.addView(label("Si Android no te deja activarlo (opción en gris): Ajustes → Apps → Ryx Island → ⋮ → «Permitir ajustes restringidos», " +
-            "y vuelve a intentarlo.", 12f, R.color.muted), lp(6))
-        g.addView(rowWithSwitch("Usar mi tamaño y posición", "Apágalo para que Android elija el tamaño, como en el lanzador",
-            Prefs.fwOwnBounds(this)) { Prefs.setFwOwnBounds(this, it) })
-        g.addView(rowWithSwitch("Asas de Ryx para mover y cambiar tamaño", "Úsalo si la ventana sale sin barra. Con Shizuku mueve la real; sin privilegios la reabre en el nuevo sitio (experimental)",
+        else so.addView(rowWithSwitch("Barra de Ryx sobre la ventana", "Mover, cambiar tamaño y cerrar la ventana",
             Prefs.fwFrame(this)) { Prefs.setFwFrame(this, it) })
 
-        val sz = titled(p, "Tamaño y posición")
-        seekRow(sz, "Ancho", "%", 40, 100, Prefs.fwWidthPct(this)) { Prefs.setFwWidthPct(this, it) }
-        seekRow(sz, "Alto", "%", 30, 90, Prefs.fwHeightPct(this)) { Prefs.setFwHeightPct(this, it) }
-        sz.addView(label("Posición", 13f, R.color.muted, true), lp(12))
-        sz.addView(segmented(listOf("Centro", "Arriba", "Abajo"), Prefs.fwPos(this), true) { Prefs.setFwPos(this, it) }, lp(6))
+        if (kind == 0) {
+            val un = titled(p, "Apps no redimensionables", "ROM: ${Build.DISPLAY} · Android ${Build.VERSION.RELEASE}")
+            un.addView(label("Algunas apps dicen que no se pueden redimensionar y Android no las deja flotar. «Forzar que las actividades sean redimensionables» " +
+                "(Opciones de desarrollador) salta esa regla, y Android la aplica sin reiniciar. NO hace falta Shizuku ni root: basta con activar a mano " +
+                "«Permitir ventanas de forma libre» y esa opción. El botón de abajo solo lo automatiza, y para ello necesita un permiso concedido una vez (ADB).",
+                12f, R.color.muted), lp(6))
+            un.addView(rowWithSwitch("Desbloquear automáticamente", "Activa esos ajustes antes de abrir la ventana", Prefs.fwUnlock(this)) { Prefs.setFwUnlock(this, it) })
+            un.addView(label(if (FreeformUnlock.unlocked(this)) "Estado: desbloqueadas ✔" else "Estado: bloqueadas (falta activarlo)", 12f, R.color.text), lp(6))
+            un.addView(button("Desbloquear apps no redimensionables", !FreeformUnlock.unlocked(this)) {
+                Thread {
+                    val lg = StringBuilder()
+                    val ok = FreeformUnlock.ensure(this, lg, true)
+                    runOnUiThread {
+                        render()
+                        if (ok) toast("Apps no redimensionables desbloqueadas")
+                        else {
+                            try { (getSystemService(CLIPBOARD_SERVICE) as ClipboardManager).setPrimaryClip(ClipData.newPlainText("ryx", FreeformUnlock.adbCommand(this))) } catch (e: Exception) {}
+                            dialog("Falta un permiso (una sola vez)",
+                                "Ryx necesita el permiso WRITE_SECURE_SETTINGS para activarlo por ti. Elige una opción:\n\n" +
+                                "• Con ADB, una sola vez (ya copié el comando al portapapeles):\n${FreeformUnlock.adbCommand(this)}\n\n" +
+                                "• A mano: Opciones de desarrollador → «Permitir ventanas de forma libre» y «Forzar que las actividades sean redimensionables».")
+                        }
+                    }
+                }.start()
+            }, lp(8))
+            un.addView(button("Abrir Opciones de desarrollador", false) {
+                try { startActivity(Intent(Settings.ACTION_APPLICATION_DEVELOPMENT_SETTINGS)) } catch (e: Exception) { toast("No se pudo abrir") }
+            }, lp(8))
+            un.addView(button("Comprobar soporte", false) { dialog("Soporte de ventanas libres", FloatingWindow.support(this)) }, lp(8))
 
-        val an = titled(p, "Animación de apertura", "Resorte: crece desde la isla, como en HyperOS")
-        an.addView(segmented(listOf("Resorte", "Desvanecer", "Deslizar"), Prefs.fwAnim(this), true) { Prefs.setFwAnim(this, it) }, lp(10))
-        an.addView(label("Con root, el sistema usa su propia animación; sin privilegios solo se usa con «Con animación Ryx».", 12f, R.color.muted), lp(8))
+            val sz = titled(p, "Tamaño y posición")
+            seekRow(sz, "Ancho", "%", 40, 100, Prefs.fwWidthPct(this)) { Prefs.setFwWidthPct(this, it) }
+            seekRow(sz, "Alto", "%", 30, 90, Prefs.fwHeightPct(this)) { Prefs.setFwHeightPct(this, it) }
+            sz.addView(label("Posición", 13f, R.color.muted, true), lp(12))
+            sz.addView(segmented(listOf("Centro", "Arriba", "Abajo"), Prefs.fwPos(this), true) { Prefs.setFwPos(this, it) }, lp(6))
+        }
 
-        val t = titled(p, "Probar ventana flotante")
+        val t = titled(p, "Probar")
         val test = Prefs.fwTestPkg(this)
         val name = appList.firstOrNull { it.first == test }?.second ?: "Ninguna app elegida"
         t.addView(label("App de prueba: $name", 14f, R.color.text), lp(8))
@@ -1011,7 +864,7 @@ class MainActivity : Activity() {
                 Thread { val log = FloatingWindow.open(this, pkg); runOnUiThread { render(); dialog("Resultado de la prueba", log) } }.start()
                 Unit
             }
-            if (Prefs.fwMode(this) == 2 && !RyxAccessibility.isEnabled(this)) askAccessibility { go() } else go()
+            if (!RyxAccessibility.isEnabled(this)) askAccessibility { go() } else go()
         }, lp(8))
 
         val log = Prefs.lastLog(this)
@@ -1134,7 +987,7 @@ class MainActivity : Activity() {
     }
 
     private fun permsContent(b: LinearLayout) {
-        permRow(b, "Shizuku (forzar ventana flotante)", "Estado: ${Shell.shizukuStatus(this)}. Sin root se inicia por depuración inalámbrica.",
+        permRow(b, "Shizuku (solo para ocultar avisos emergentes)", "Opcional. Estado: ${Shell.shizukuStatus(this)}. El formato libre y las burbujas no lo necesitan.",
             Shell.shizukuGranted()) {
             when {
                 !Shell.shizukuInstalled(this) -> startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://shizuku.rikka.app/download/")))
@@ -1381,7 +1234,7 @@ class MainActivity : Activity() {
             thumbTintList = ColorStateList.valueOf(Color.WHITE)
             setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
                 override fun onProgressChanged(s: SeekBar?, p: Int, fromUser: Boolean) {
-                    lbl.text = "$title: ${p + lo} $unit"; onChange(p + lo); previewView?.refresh(); windowPreview?.refresh()
+                    lbl.text = "$title: ${p + lo} $unit"; onChange(p + lo); previewView?.refresh()
                 }
                 override fun onStartTrackingTouch(s: SeekBar?) {}
                 override fun onStopTrackingTouch(s: SeekBar?) { svc()?.let { it.applySettings(); it.showTest() } }

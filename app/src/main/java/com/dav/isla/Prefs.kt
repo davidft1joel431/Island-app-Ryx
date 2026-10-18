@@ -9,11 +9,7 @@ object Prefs {
     fun durationMs(c: Context): Long = durationSeconds(c) * 1000L
     fun setDurationSeconds(c: Context, s: Int) = sp(c).edit().putInt("duration_s", s).apply()
 
-    fun freeform(c: Context): Boolean = sp(c).getBoolean("freeform", true)
-    fun setFreeform(c: Context, v: Boolean) = sp(c).edit().putBoolean("freeform", v).apply()
 
-    fun forceNew(c: Context): Boolean = sp(c).getBoolean("force_new", true)
-    fun setForceNew(c: Context, v: Boolean) = sp(c).edit().putBoolean("force_new", v).apply()
 
     fun permanent(c: Context): Boolean = sp(c).getBoolean("permanent", false)
     fun setPermanent(c: Context, v: Boolean) = sp(c).edit().putBoolean("permanent", v).apply()
@@ -125,8 +121,6 @@ object Prefs {
     fun setFwHeightPct(c: Context, v: Int) = sp(c).edit().putInt("fw_h", v).apply()
     fun fwPos(c: Context): Int = sp(c).getInt("fw_pos", 0)             // 0 centro, 1 arriba, 2 abajo
     fun setFwPos(c: Context, v: Int) = sp(c).edit().putInt("fw_pos", v).apply()
-    fun fwAnim(c: Context): Int = sp(c).getInt("fw_anim", 0)           // 0 resorte, 1 desvanecer, 2 deslizar
-    fun setFwAnim(c: Context, v: Int) = sp(c).edit().putInt("fw_anim", v).apply()
     fun fwTestPkg(c: Context): String = sp(c).getString("fw_test", "") ?: ""
     fun setFwTestPkg(c: Context, v: String) = sp(c).edit().putString("fw_test", v).apply()
 
@@ -211,11 +205,7 @@ object Prefs {
     fun hideApps(c: Context): Set<String> = sp(c).getStringSet("hide_apps", emptySet()) ?: emptySet()
     fun setHideApps(c: Context, v: Set<String>) = sp(c).edit().putStringSet("hide_apps", v).apply()
 
-    // ---- Ventana flotante: cómo se abre ----
-    fun fwMode(c: Context): Int = sp(c).getInt("fw_mode", 2)            // 0 directo, 1 con animación de Ryx, 2 «Formato libre» del launcher (accesibilidad)
-    fun setFwMode(c: Context, v: Int) = sp(c).edit().putInt("fw_mode", v).apply()
-    fun fwOwnBounds(c: Context): Boolean = sp(c).getBoolean("fw_own_bounds", true)
-    fun setFwOwnBounds(c: Context, v: Boolean) = sp(c).edit().putBoolean("fw_own_bounds", v).apply()
+    // ---- Formato libre y burbujas ----
     fun fwFrame(c: Context): Boolean = sp(c).getBoolean("fw_frame", true)
     fun setFwFrame(c: Context, v: Boolean) = sp(c).edit().putBoolean("fw_frame", v).apply()
 
@@ -226,21 +216,15 @@ object Prefs {
     fun setCloudLast(c: Context, v: Long) = sp(c).edit().putLong("cloud_last", v).apply()
     fun updLast(c: Context): Long = sp(c).getLong("upd_last", 0L)
     fun setUpdLast(c: Context, v: Long) = sp(c).edit().putLong("upd_last", v).apply()
-    /** true si se activó el modo escritorio del teléfono (barra real del sistema): entonces Ryx no dibuja su propia barra. */
-    fun fwDesktop(c: Context): Boolean = sp(c).getBoolean("fw_desktop", false)
-    fun setFwDesktop(c: Context, v: Boolean) = sp(c).edit().putBoolean("fw_desktop", v).apply()
-    /** Método de «solo accesibilidad»: 0 = Formato libre REAL del sistema (con cortina, lento), 1 = directo estilo Smart Island (instantáneo). */
-    fun fwSoloMode(c: Context): Int = sp(c).getInt("fw_solo_mode", 1)
-    fun setFwSoloMode(c: Context, v: Int) = sp(c).edit().putInt("fw_solo_mode", v).apply()
-    /** Camino del launcher que funcionó en esta ROM: 0 sin calibrar, 1 Recientes, 2 pantalla de inicio. */
-    fun fwRoute(c: Context): Int = sp(c).getInt("fw_route", 0)
-    fun setFwRoute(c: Context, v: Int) = sp(c).edit().putInt("fw_route", v).apply()
-    /** Sección «Ventana flotante · solo accesibilidad»: usa únicamente el método de Smart Island, sin otros caminos. */
-    fun fwSolo(c: Context): Boolean = sp(c).getBoolean("fw_solo", true)
-    fun setFwSolo(c: Context, v: Boolean) = sp(c).edit().putBoolean("fw_solo", v).apply()
     /** Variante de apertura directa que funcionó en esta ROM (-1 = sin calibrar). */
     fun fwVariant(c: Context): Int = sp(c).getInt("fw_variant", -1)
     fun setFwVariant(c: Context, v: Int) = sp(c).edit().putInt("fw_variant", v).apply()
+    /** Activar solo «Forzar que las actividades sean redimensionables» antes de abrir (necesita WRITE_SECURE_SETTINGS, concedido una vez por ADB). */
+    fun fwUnlock(c: Context): Boolean = sp(c).getBoolean("fw_unlock", true)
+    fun setFwUnlock(c: Context, v: Boolean) = sp(c).edit().putBoolean("fw_unlock", v).apply()
+    /** 0 formato libre directo, 1 burbuja (Android 17). Migra la elección anterior: antes la burbuja era «fw_solo_mode» = 2. */
+    fun fwKind(c: Context): Int = sp(c).getInt("fw_kind", if (sp(c).getInt("fw_solo_mode", 1) == 2) 1 else 0)
+    fun setFwKind(c: Context, v: Int) = sp(c).edit().putInt("fw_kind", v).apply()
     fun fwKeepApp(c: Context): Boolean = sp(c).getBoolean("fw_keep_app", true)
     fun setFwKeepApp(c: Context, v: Boolean) = sp(c).edit().putBoolean("fw_keep_app", v).apply()
     fun a11yAsked(c: Context): Boolean = sp(c).getBoolean("a11y_asked", false)
