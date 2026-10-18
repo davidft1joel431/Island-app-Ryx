@@ -71,6 +71,8 @@ object FloatingWindow {
 
     /** Devuelve el registro de lo ocurrido (también se guarda para Opciones de desarrollador). */
     fun open(c: Context, pkg: String, pi: PendingIntent? = null): String {
+        // Auto: si no hay Shizuku, se prueba root (Magisk) una vez; así funciona en segundo plano sin tocar tu pantalla
+        if (Shell.method(c) == 0 && !Shell.shizukuGranted()) Shell.probeRoot()
         val log = StringBuilder("Hora: ${java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.getDefault()).format(java.util.Date())}\n" +
             "Aplicación: $pkg\nMétodo: ${Shell.label(c)}\n")
         val launch = c.packageManager.getLaunchIntentForPackage(pkg)
@@ -122,6 +124,25 @@ object FloatingWindow {
             log.append("\nLos comandos fallaron; se prueba sin privilegios.\n")
         } else if (Shell.method(c) != 3) {
             log.append("Sin Shizuku activo; se abre sin privilegios (nunca se usa root si no lo eliges).\n")
+        }
+
+        // 2·0) Apertura directa «a lo Smart Island»: la lanza el servicio de accesibilidad, sin tocar tu pantalla
+        //      ni pasar por Recientes/inicio. Es el camino preferido: no te saca de tu app.
+        if (Prefs.fwMode(c) != 1) {
+            val svc0 = RyxAccessibility.instance
+            if (svc0 != null) {
+                log.append("Apertura directa desde accesibilidad (sin tocar tu pantalla):\n")
+                val ok0 = try { svc0.launchFreeformDirect(pkg, pi, b, log) } catch (e: Throwable) {
+                    log.append("Error: ${e.javaClass.simpleName} ${e.message ?: ""}\n"); false }
+                if (ok0) return save(c, log)
+                if (Prefs.fwKeepApp(c)) {
+                    log.append("\nLa ROM no respetó el modo libre con ninguna variante. Para no sacarte de tu app no uso el menú del launcher " +
+                        "(apaga «Mantener mi app de fondo» si prefieres que lo use).\n")
+                    return save(c, log)
+                }
+            } else if (Prefs.fwMode(c) == 2) {
+                log.append("Accesibilidad apagada: actívala para abrir sin sacarte de tu app.\n")
+            }
         }
 
         // 2a) «Formato libre» del propio launcher, pulsado por el servicio de accesibilidad de Ryx

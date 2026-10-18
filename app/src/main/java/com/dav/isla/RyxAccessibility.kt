@@ -2,6 +2,9 @@ package com.dav.isla
 
 import android.accessibilityservice.AccessibilityService
 import android.accessibilityservice.GestureDescription
+import android.app.ActivityOptions
+import android.app.PendingIntent
+import android.os.Build
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
@@ -32,6 +35,8 @@ class RyxAccessibility : AccessibilityService() {
         }
 
         private val FREEFORM = Regex("formato libre|forma libre|ventana libre|free-?form", RegexOption.IGNORE_CASE)
+        /** Nombres alternativos que algunas ROM (Android 16/17) usan en el menú de Recientes. */
+        private val FREEFORM_ALT = Regex("escritorio|desktop|flotante|floating|pop-?up", RegexOption.IGNORE_CASE)
     }
 
     override fun onServiceConnected() { instance = this }
@@ -61,6 +66,86 @@ class RyxAccessibility : AccessibilityService() {
         } catch (e: Exception) { log.append("No pude devolver tu app al fondo: ${e.javaClass.simpleName}\n") }
     }
 
+    // ─────────────────────────────────────────────────────────────────────────────────────────────
+    // Apertura directa en ventana libre, sin tocar tu pantalla ni salir de tu app.
+    // El servicio de accesibilidad es quien lanza (tiene ventana propia y exención de segundo plano) y
+    // pide el modo libre con ActivityOptions + la clave «android.activity.windowingMode» = 5.
+    // Como Android no avisa si la ROM lo respetó, se comprueba con las ventanas que ve accesibilidad
+    // y se prueban variantes; la que funciona se recuerda para las siguientes aperturas.
+    // ─────────────────────────────────────────────────────────────────────────────────────────────
+
+    private val VARIANTS = listOf("estándar (clave windowingMode)", "con pantalla 0", "sin ventana nueva", "método interno")
+
+    private fun fire(v: Int, launch: Intent, pi: PendingIntent?, b: Rect): Boolean = try {
+        val opts = ActivityOptions.makeBasic()
+        try { opts.setLaunchBounds(b) } catch (e: Throwable) {}
+        if (v == 1) try { opts.setLaunchDisplayId(0) } catch (e: Throwable) {}
+        if (Build.VERSION.SDK_INT >= 34) try {
+            opts.setPendingIntentBackgroundActivityStartMode(ActivityOptions.MODE_BACKGROUND_ACTIVITY_START_ALLOWED)
+        } catch (e: Throwable) {}
+        if (v == 3) try {
+            org.lsposed.hiddenapibypass.HiddenApiBypass.addHiddenApiExemptions("L")
+            ActivityOptions::class.java.getMethod("setLaunchWindowingMode", Int::class.javaPrimitiveType).invoke(opts, 5)
+        } catch (e: Throwable) {}
+        val bundle = opts.toBundle() ?: android.os.Bundle()
+        if (v != 3) bundle.putInt("android.activity.windowingMode", 5)
+        val flags = Intent.FLAG_ACTIVITY_NEW_TASK or (if (v == 2) 0 else Intent.FLAG_ACTIVITY_MULTIPLE_TASK)
+        if (pi != null) {
+            pi.send(this, 0, Intent().addFlags(flags), null, null, null, bundle)
+        } else {
+            launch.flags = flags
+            startActivity(launch, bundle)
+        }
+        true
+    } catch (e: Throwable) { false }
+
+    /** true = la ventana de [pkg] no ocupa toda la pantalla (flotante); false = pantalla completa; null = no se pudo saber. */
+    private fun floatingState(pkg: String): Boolean? {
+        val m = resources.displayMetrics
+        val ws = try { windows } catch (e: Exception) { null } ?: return null
+        var found = false
+        for (w in ws) {
+            val name = try { w.root?.packageName?.toString() } catch (e: Exception) { null }
+            if (name != pkg) continue
+            found = true
+            val r = Rect(); w.getBoundsInScreen(r)
+            if (r.width() < m.widthPixels * 0.97f || r.height() < m.heightPixels * 0.88f) return true
+        }
+        return if (found) false else null
+    }
+
+    private fun waitFloating(pkg: String, ms: Long): Boolean? {
+        val end = System.currentTimeMillis() + ms
+        var last: Boolean? = null
+        while (System.currentTimeMillis() < end) {
+            last = floatingState(pkg)
+            if (last == true) return true
+            pause(150)
+        }
+        return last
+    }
+
+    /** Llamar fuera del hilo principal. Devuelve true si la app quedó (o parece haber quedado) en ventana libre. */
+    fun launchFreeformDirect(pkg: String, pi: PendingIntent?, b: Rect, log: StringBuilder): Boolean {
+        val launch = packageManager.getLaunchIntentForPackage(pkg) ?: run { log.append("No se encontró la actividad principal.\n"); return false }
+        val cached = Prefs.fwVariant(this)
+        val order = if (cached in VARIANTS.indices) listOf(cached) + VARIANTS.indices.filter { it != cached } else VARIANTS.indices.toList()
+        for (v in order) {
+            val sent = fire(v, Intent(launch), pi, b)
+            if (!sent) { log.append("Variante ${v + 1} · ${VARIANTS[v]}: no se pudo lanzar.\n"); continue }
+            when (waitFloating(pkg, 1800)) {
+                true -> { log.append("Variante ${v + 1} · ${VARIANTS[v]}: ventana libre verificada.\n"); Prefs.setFwVariant(this, v); return true }
+                null -> { log.append("Variante ${v + 1} · ${VARIANTS[v]}: lanzada (no pude verificar si es libre; mira la pantalla).\n"); return true }
+                false -> {
+                    log.append("Variante ${v + 1} · ${VARIANTS[v]}: la ROM la abrió a pantalla completa.\n")
+                    if (pi != null) pause(250)
+                }
+            }
+        }
+        Prefs.setFwVariant(this, -1)
+        return false
+    }
+
     private fun pause(ms: Long) { try { Thread.sleep(ms) } catch (e: InterruptedException) {} }
 
     private fun homePackage(): String? = try {
@@ -87,14 +172,16 @@ class RyxAccessibility : AccessibilityService() {
         return null
     }
 
-    private fun findFreeform(): AccessibilityNodeInfo? {
+    private fun findFreeform(extended: Boolean = false): AccessibilityNodeInfo? {
+        val rx = FREEFORM
         for (r in roots()) {
             val stack = ArrayDeque<AccessibilityNodeInfo>()
             stack.add(r)
             var guard = 0
             while (stack.isNotEmpty() && guard++ < 800) {
                 val n = stack.removeLast()
-                if (n.isVisibleToUser && FREEFORM.containsMatchIn(nodeText(n))) return n
+                val t = nodeText(n)
+                if (n.isVisibleToUser && (rx.containsMatchIn(t) || (extended && t.length < 40 && FREEFORM_ALT.containsMatchIn(t)))) return n
                 for (i in 0 until n.childCount) n.getChild(i)?.let { stack.add(it) }
             }
         }
@@ -204,9 +291,9 @@ class RyxAccessibility : AccessibilityService() {
         return cond()
     }
 
-    private fun waitFreeform(ms: Long): AccessibilityNodeInfo? {
+    private fun waitFreeform(ms: Long, extended: Boolean = true): AccessibilityNodeInfo? {
         var r: AccessibilityNodeInfo? = null
-        waitUntil(ms) { r = findFreeform(); r != null }
+        waitUntil(ms) { r = findFreeform(extended); r != null }
         return r
     }
 
@@ -228,6 +315,48 @@ class RyxAccessibility : AccessibilityService() {
     /** Toca el nodo en sí (sin subir a un padre clicable, que sería la tarjeta y abriría la app). */
     private fun tapExact(n: AccessibilityNodeInfo): Boolean =
         (n.isClickable && n.performAction(AccessibilityNodeInfo.ACTION_CLICK)) || gesture(pointOf(n), 50)
+
+    /** Pequeños elementos (iconos) dentro o junto a una tarjeta de Recientes, de arriba a abajo y de izquierda a derecha. */
+    private fun iconGuesses(card: AccessibilityNodeInfo): List<AccessibilityNodeInfo> {
+        val m = resources.displayMetrics
+        val limit = (m.widthPixels * m.heightPixels * 0.04).toInt()
+        val out = ArrayList<AccessibilityNodeInfo>()
+        val cr = Rect(); card.getBoundsInScreen(cr)
+        // Solo lo que cae dentro de ESTA tarjeta o justo encima (cabecera con el icono): nunca iconos de otras apps
+        val zone = Rect(cr.left, cr.top - (m.heightPixels * 0.12f).toInt(), cr.right, cr.bottom)
+        val scopes = listOfNotNull(card.parent ?: card)
+        val seen = HashSet<String>()
+        for (sc in scopes) {
+            val stack = ArrayDeque<AccessibilityNodeInfo>(); stack.add(sc); var g = 0
+            while (stack.isNotEmpty() && g++ < 300) {
+                val n = stack.removeLast()
+                val r = Rect(); n.getBoundsInScreen(r)
+                if (n.isVisibleToUser && r.width() > 20 && r.height() > 20 && r.width() * r.height() < limit &&
+                    zone.contains(r.centerX(), r.centerY()) && seen.add(r.flattenToString())) out.add(n)
+                for (i in 0 until n.childCount) n.getChild(i)?.let { stack.add(it) }
+            }
+        }
+        return out.sortedWith(compareBy({ val r = Rect(); it.getBoundsInScreen(r); r.top }, { val r = Rect(); it.getBoundsInScreen(r); r.left })).take(4)
+    }
+
+    /** Árbol visible del launcher, para el registro cuando falla (clase · texto · clicable · posición). */
+    private fun treeDump(log: StringBuilder) {
+        val lines = ArrayList<String>()
+        for (r in roots()) {
+            val stack = ArrayDeque<AccessibilityNodeInfo>(); stack.add(r); var g = 0
+            while (stack.isNotEmpty() && g++ < 400 && lines.size < 40) {
+                val n = stack.removeLast()
+                if (n.isVisibleToUser) {
+                    val b = Rect(); n.getBoundsInScreen(b)
+                    val t = nodeText(n)
+                    if (t.isNotEmpty() || n.isClickable)
+                        lines.add("${n.className?.toString()?.substringAfterLast('.') ?: "?"}|${t.take(24)}|${if (n.isClickable) "clic" else "-"}|${b.left},${b.top},${b.right},${b.bottom}")
+                }
+                for (i in 0 until n.childCount) n.getChild(i)?.let { stack.add(it) }
+            }
+        }
+        log.append("Árbol de Recientes: ${lines.joinToString(" ; ")}\n")
+    }
 
     /** Cierra el menú/Recientes sin sacarte de tu app si ya estás en ella. */
     private fun closeRecents() {
@@ -271,31 +400,41 @@ class RyxAccessibility : AccessibilityService() {
         }
         if (!opened) { log.append("No encontré «$label» en Recientes.\n"); closeRecents(); return false }
 
-        // Se toca primero el elemento más pequeño (el icono): ahí sale el menú. La tarjeta grande abriría la app.
+        // Se tocan primero los iconos pequeños de la tarjeta; la tarjeta grande abriría la app.
+        val screenArea = resources.displayMetrics.let { it.widthPixels * it.heightPixels }
         var taps = 0
-        while (taps < 4) {
-            val cands = recentsCandidates(label)
-            if (taps == 0) log.append("Elementos «$label» en Recientes: ${cands.size} (toco el icono, el más pequeño)\n")
-            if (cands.isEmpty()) {
-                // Recientes se cerró (se abrió la app): se reabre y se prueba otro elemento
+        var queue: List<AccessibilityNodeInfo> = emptyList()
+        var qi = 0
+        while (taps < 5) {
+            if (!inRecents()) {      // Recientes se cerró (se abrió la app): se reabre
                 performGlobalAction(GLOBAL_ACTION_RECENTS); waitUntil(1500) { inRecents() }
-                taps++; continue
+                queue = emptyList(); qi = 0
             }
-            val target = cands[minOf(taps, cands.size - 1)]
+            if (qi >= queue.size) {
+                val cands = recentsCandidates(label)
+                if (taps == 0) log.append("Elementos «$label» en Recientes: ${cands.size}\n")
+                if (cands.isEmpty()) break
+                val first = cands.first()
+                queue = if (area(first) > screenArea * 0.04) iconGuesses(first) + cands else cands
+                if (taps == 0) log.append("Candidatos a icono: ${queue.size}\n")
+                qi = 0
+                if (queue.isEmpty()) break
+            }
+            val target = queue[qi++]
             tapExact(target)
+            taps++
             var item = waitFreeform(1100)
             if (item == null) {      // algunos launchers sacan el menú con mantener pulsado
                 var cur: AccessibilityNodeInfo? = target; var k = 0
                 while (cur != null && k < 3) { if (cur.isLongClickable && cur.performAction(AccessibilityNodeInfo.ACTION_LONG_CLICK)) break; cur = cur.parent; k++ }
-                item = waitFreeform(900)
+                item = waitFreeform(800)
             }
             if (item != null) {
                 val ok = clickNode(item)
                 log.append(if (ok) "Pulsé «${nodeText(item)}» en Recientes.\n" else "No pude pulsar la opción en Recientes.\n")
                 return ok
             }
-            taps++
-            if (inRecents()) performGlobalAction(GLOBAL_ACTION_BACK).also { pause(250) }   // cierra un menú sin la opción
+            if (inRecents()) { treeDump(log); performGlobalAction(GLOBAL_ACTION_BACK); pause(250) }   // cierra un menú sin la opción
         }
         log.append("Recientes no mostró «Formato libre».\n")
         closeRecents()
@@ -325,9 +464,14 @@ class RyxAccessibility : AccessibilityService() {
     fun launchViaLauncher(pkg: String, label: String, log: StringBuilder, keepApp: Boolean = true): Boolean {
         launchedFirst = false
         if (keepApp) {
-            // Con «Mantener mi app de fondo» nunca se pasa por el inicio: si Recientes no funciona, se abre directo.
+            // Primero Recientes (no te saca de tu app). Si esa ROM no muestra la opción ahí, se usa el camino del inicio,
+            // que sí funciona, para que la ventana libre se abra siempre.
             if (viaRecents(pkg, label, log)) return true
+            log.append("Recientes no sirvió en esta ROM; uso el camino del inicio.\n")
+            performGlobalAction(GLOBAL_ACTION_HOME); pause(500)
+            if (viaHome(label, log)) return true
             dump(log)
+            performGlobalAction(GLOBAL_ACTION_HOME)
             return false
         }
         if (viaHome(label, log)) return true

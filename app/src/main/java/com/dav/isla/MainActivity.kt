@@ -206,14 +206,14 @@ class MainActivity : Activity() {
                 } else if (i.newer) {
                     val warn = if (i.channel.isEmpty()) "" else
                         "⚠ Esta versión es ${i.channel.uppercase()}. Puede tener errores o fallar; instalarla es bajo tu propio riesgo.\n\n"
-                    glass(AlertDialog.Builder(this).setTitle("Hay una versión nueva: ${i.name}")
+                    glass(AlertDialog.Builder(this).setTitle("Hay una versión nueva: ${if (i.version.isNotEmpty()) "v" + i.version else i.name}")
                         .setMessage(warn + i.notes.trim().take(500).ifEmpty { "Hay una actualización disponible." } +
                             "\n\nPara actualizar, Ryx descarga el APK, guarda tu copia en la nube y desinstala esta versión; " +
                             "luego abres el archivo descargado para instalar la nueva.")
                         .setPositiveButton(if (i.channel.isEmpty()) "Actualizar" else "Entiendo el riesgo, actualizar") { _, _ -> startUpdate(i) }
                         .setNegativeButton("Luego", null).show())
                 } else if (manual) {
-                    dialog("Actualizaciones", "Ya tienes la última versión (v${BuildConfig.VERSION_NAME}).")
+                    dialog("Actualizaciones", "Ya tienes la última versión (v${BuildConfig.VERSION_NAME}).${if (i.version.isNotEmpty()) "\nÚltima publicada: v${i.version}" else ""}")
                 }
             }
         }.start()
@@ -297,8 +297,8 @@ class MainActivity : Activity() {
     /** Pide el permiso de accesibilidad con las instrucciones exactas. */
     private fun askAccessibility(onSkip: (() -> Unit)? = null) {
         glass(AlertDialog.Builder(this).setTitle("Falta el permiso de accesibilidad")
-            .setMessage("Para usar el «Formato libre» de tu launcher, Ryx necesita su servicio de accesibilidad: lo único que hace es " +
-                "mantener pulsado el icono y tocar «Formato libre» por ti.\n\n" +
+            .setMessage("Con este servicio Ryx abre las ventanas flotantes desde el propio servicio, sin sacarte de tu app, y comprueba que la ventana quedó flotante. " +
+                "No lee ni guarda lo que ves.\n\n" +
                 "1. Toca «Abrir accesibilidad» y entra en «Apps instaladas» (o «Servicios descargados»).\n" +
                 "2. Elige «Ryx Island · Formato libre» y actívalo.\n\n" +
                 "Si no aparece o sale en gris: toca «Info de la app», abre ⋮ (arriba a la derecha) → «Permitir ajustes restringidos», " +
@@ -805,13 +805,14 @@ class MainActivity : Activity() {
     // ---------------- VENTANA FLOTANTE ----------------
 
     private fun buildWindow(p: LinearLayout) {
-        val fz = titled(p, "Cómo abrir la ventana flotante", "Sin root. Shizuku no es root.")
+        val fz = titled(p, "Cómo abrir la ventana flotante", "Con root (Magisk) o Shizuku se abre en segundo plano")
         val order = intArrayOf(0, 1, 3, 2)               // posición del botón → método guardado
         val mth = Prefs.shellMethod(this)
         fz.addView(segmented(listOf("Auto", "Shizuku", "Sin privilegios", "Root"),
             order.indexOf(mth).coerceAtLeast(0), true) { Prefs.setShellMethod(this, order[it]) }, lp(10))
         fz.addView(label(when (mth) {
-            0 -> "Auto: usa Shizuku si está activo y, si no, abre con las opciones de Android para cualquier app. Nunca usa root."
+            0 -> "Auto: usa Shizuku si está activo; si no, usa root (Magisk pedirá permiso una sola vez). La ventana se abre en segundo plano, sin sacarte de tu app. " +
+                "Sin ninguno de los dos, abre con las opciones de Android."
             1 -> "Solo Shizuku. Si no está activo, la ventana no se podrá forzar."
             3 -> "Sin privilegios: no necesita Shizuku ni root. La ventana se abre, pero Ryx no puede moverla ni comprobar si quedó " +
                 "flotante; en ROMs sin barra de ventana usa las asas de Ryx (experimental) o cambia a Shizuku."
