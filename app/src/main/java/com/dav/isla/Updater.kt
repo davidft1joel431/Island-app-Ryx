@@ -1,6 +1,7 @@
 package com.dav.isla
 
 import android.content.Context
+import org.json.JSONArray
 import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
@@ -10,8 +11,11 @@ import java.util.TimeZone
 
 /**
  * Busca la última versión publicada en GitHub Releases del repositorio de Ryx.
- * La versión se lee del tag, del nombre del release y de la descripción: en cualquiera de ellos vale «vN.N.N».
- * Se compara la versión más alta de los últimos releases, no solo el más reciente.
+ *
+ * La versión se lee del TÍTULO del release y debe ir como «v» + número: «vN», «vN.N» o «vN.N.N» (o más niveles).
+ * Ejemplos: «Ryx Island v1», «Ryx Island v0.9», «Ryx Island v0.9.6». Si el título no la trae, se mira el tag
+ * y por último la descripción. Se compara la versión más alta de los últimos releases, no solo el más reciente.
+ * Si la API de GitHub falla, se usa la página pública de releases (feed) como respaldo.
  */
 object Updater {
     const val REPO = "davidft1joel431/Island-app-Ryx"
@@ -20,15 +24,17 @@ object Updater {
                val newer: Boolean, val channel: String, val version: String = "")
     class Res(val info: Info?, val error: String = "")
 
-    private val SEMVER = Regex("v?(\\d+)\\.(\\d+)\\.(\\d+)", RegexOption.IGNORE_CASE)
-    private val SEMVER_V = Regex("(?<![\\w.])v(\\d+)\\.(\\d+)\\.(\\d+)", RegexOption.IGNORE_CASE)
+    /** «vN», «vN.N», «vN.N.N»… con la «v» pegada y no dentro de otra palabra. */
+    private val V_TITLE = Regex("(?<![\\p{L}\\d.])v(\\d+(?:\\.\\d+)*)(?![\\d])", RegexOption.IGNORE_CASE)
+    /** Tag: «v0.9.6», «0.9.6», «v1». */
+    private val V_TAG = Regex("^\\s*v?(\\d+(?:\\.\\d+)*)\\s*$", RegexOption.IGNORE_CASE)
 
-    private fun semver(s: String, r: Regex): List<Long>? =
-        r.find(s)?.groupValues?.drop(1)?.mapNotNull { it.toLongOrNull() }?.takeIf { it.size == 3 }
+    private fun parts(s: String): List<Long> = s.split('.').mapNotNull { it.toLongOrNull() }
 
-    /** Versión de un release: tag, luego nombre (con o sin «v») y por último la descripción (solo si dice «vN.N.N»). */
-    private fun versionOf(o: JSONObject): List<Long>? =
-        semver(o.optString("tag_name"), SEMVER) ?: semver(o.optString("name"), SEMVER) ?: semver(o.optString("body"), SEMVER_V)
+    private fun versionOf(title: String, tag: String, body: String): List<Long>? =
+        V_TITLE.find(title)?.groupValues?.get(1)?.let(::parts)
+            ?: V_TAG.find(tag)?.groupValues?.get(1)?.let(::parts)
+            ?: V_TITLE.find(body)?.groupValues?.get(1)?.let(::parts)
 
     private fun cmp(a: List<Long>, b: List<Long>): Int {
         for (i in 0 until maxOf(a.size, b.size)) {
@@ -38,52 +44,84 @@ object Updater {
         return 0
     }
 
-    /** Llamar fuera del hilo principal. */
-    fun check(c: Context): Res = try {
-        val con = URL("https://api.github.com/repos/$REPO/releases?per_page=15").openConnection() as HttpURLConnection
-        con.connectTimeout = 8000; con.readTimeout = 8000
-        con.setRequestProperty("Accept", "application/vnd.github+json")
+    private class Rel(val tag: String, val name: String, val page: String, val apk: String, val body: String,
+                      val pre: Boolean, val published: String, val ver: List<Long>?)
+
+    private fun get(url: String, accept: String): Pair<Int, String> {
+        val con = URL(url).openConnection() as HttpURLConnection
+        con.connectTimeout = 10000; con.readTimeout = 10000
+        con.instanceFollowRedirects = true
+        con.setRequestProperty("Accept", accept)
         con.setRequestProperty("User-Agent", "RyxIsland")
-        when (val code = con.responseCode) {
-            200 -> {
-                val arr = org.json.JSONArray(con.inputStream.bufferedReader().use { it.readText() })
-                var first: JSONObject? = null
-                var best: JSONObject? = null
-                var bestV: List<Long>? = null
-                for (k in 0 until arr.length()) {
-                    val x = arr.getJSONObject(k)
-                    if (x.optBoolean("draft")) continue
-                    if (first == null) first = x
-                    val v = versionOf(x)
-                    val b = bestV
-                    if (v != null && (b == null || cmp(v, b) > 0)) { best = x; bestV = v }
-                }
-                val o = best ?: first
-                if (o == null) Res(null, "El repositorio no tiene versiones publicadas todavía.")
-                else {
-                    val tag = o.optString("tag_name")
-                    val name = o.optString("name").ifEmpty { tag }
-                    val body = o.optString("body")
-                    var apk = ""
-                    val assets = o.optJSONArray("assets")
-                    if (assets != null) for (i in 0 until assets.length()) {
-                        val a = assets.getJSONObject(i)
-                        if (a.optString("name").endsWith(".apk")) { apk = a.optString("browser_download_url"); break }
-                    }
-                    val v = bestV
-                    val newer = if (v != null) cmp(v, nums(BuildConfig.VERSION_NAME).let { n -> if (n.size >= 3) n.take(3) else n }) > 0
-                                else isNewerByNumber(c, tag, o.optString("published_at"))
-                    Res(Info(tag, name, o.optString("html_url"), apk, body, newer,
-                        channelOf(tag, name, body, o.optBoolean("prerelease")), v?.joinToString(".") ?: ""))
+        val code = con.responseCode
+        val text = try { (if (code in 200..299) con.inputStream else con.errorStream)?.bufferedReader()?.use { it.readText() } ?: "" } catch (e: Exception) { "" }
+        return code to text
+    }
+
+    private fun fromApi(): List<Rel> {
+        val (code, text) = get("https://api.github.com/repos/$REPO/releases?per_page=20", "application/vnd.github+json")
+        if (code != 200) throw IllegalStateException("HTTP $code")
+        val arr = JSONArray(text)
+        val out = ArrayList<Rel>()
+        for (k in 0 until arr.length()) {
+            val x: JSONObject = arr.getJSONObject(k)
+            if (x.optBoolean("draft")) continue
+            val tag = x.optString("tag_name"); val name = x.optString("name").ifEmpty { tag }; val body = x.optString("body")
+            var apk = ""
+            x.optJSONArray("assets")?.let { assets ->
+                for (i in 0 until assets.length()) {
+                    val a = assets.getJSONObject(i)
+                    if (a.optString("name").endsWith(".apk")) { apk = a.optString("browser_download_url"); break }
                 }
             }
-            404 -> Res(null, "No encontré versiones publicadas. Si el repositorio es privado, la app no puede consultarlo: " +
-                "tiene que ser público y tener al menos un Release.")
-            403 -> Res(null, "GitHub limitó las consultas por un rato. Prueba más tarde.")
-            else -> Res(null, "GitHub respondió con el código $code.")
+            out.add(Rel(tag, name, x.optString("html_url"), apk, body, x.optBoolean("prerelease"),
+                x.optString("published_at"), versionOf(name, tag, body)))
         }
-    } catch (e: Exception) {
-        Res(null, "Sin conexión o GitHub no respondió (${e.javaClass.simpleName}).")
+        return out
+    }
+
+    /** Respaldo sin API (sin límite de consultas): feed público de releases. */
+    private fun fromFeed(): List<Rel> {
+        val (code, text) = get("https://github.com/$REPO/releases.atom", "application/atom+xml")
+        if (code != 200) throw IllegalStateException("feed HTTP $code")
+        val out = ArrayList<Rel>()
+        for (m in Regex("<entry>(.*?)</entry>", RegexOption.DOT_MATCHES_ALL).findAll(text)) {
+            val e = m.groupValues[1]
+            val title = Regex("<title>(.*?)</title>", RegexOption.DOT_MATCHES_ALL).find(e)?.groupValues?.get(1)?.trim() ?: ""
+            val href = Regex("<link[^>]*href=\"([^\"]+)\"").find(e)?.groupValues?.get(1) ?: ""
+            val tag = href.substringAfter("/releases/tag/", "").substringBefore('"')
+            val content = Regex("<content[^>]*>(.*?)</content>", RegexOption.DOT_MATCHES_ALL).find(e)?.groupValues?.get(1)
+                ?.replace(Regex("&lt;.*?&gt;"), " ")?.replace("&amp;", "&")?.trim() ?: ""
+            val apk = if (tag.isNotEmpty()) "https://github.com/$REPO/releases/download/$tag/RyxIsland.apk" else ""
+            out.add(Rel(tag, title.ifEmpty { tag }, href, apk, content, false,
+                Regex("<updated>(.*?)</updated>").find(e)?.groupValues?.get(1) ?: "", versionOf(title, tag, content)))
+        }
+        return out
+    }
+
+    /** Llamar fuera del hilo principal. */
+    fun check(c: Context): Res {
+        var rels: List<Rel>? = null
+        val errs = ArrayList<String>()
+        try { rels = fromApi() } catch (e: Exception) { errs.add("API: ${e.javaClass.simpleName} ${e.message ?: ""}".trim()) }
+        if (rels == null || rels.isEmpty()) {
+            try { rels = fromFeed() } catch (e: Exception) { errs.add("Feed: ${e.javaClass.simpleName} ${e.message ?: ""}".trim()) }
+        }
+        if (rels == null) return Res(null, "No pude consultar las versiones.\n\n${errs.joinToString("\n")}\n\n" +
+            "Revisa tu conexión. Si el repositorio es privado la app no puede verlo: tiene que ser público y tener al menos un Release.")
+        if (rels.isEmpty()) return Res(null, "El repositorio no tiene versiones publicadas todavía.")
+
+        // Versiones con punto (N.N…) mandan sobre las de un solo número (tags antiguos de número de compilación como v57)
+        val dotted = rels.filter { (it.ver?.size ?: 0) >= 2 }
+        val pool = if (dotted.isNotEmpty()) dotted else rels.filter { it.ver != null }
+        var best: Rel? = null
+        for (r in pool) { val b = best; if (b == null || cmp(r.ver!!, b.ver!!) > 0) best = r }
+        val o = best ?: rels.first()
+        val cur = parts(BuildConfig.VERSION_NAME)
+        val v = o.ver
+        val newer = if (v != null) cmp(v, cur) > 0 else isNewerByNumber(c, o.tag, o.published)
+        return Res(Info(o.tag, o.name, o.page, o.apk, o.body, newer, channelOf(o.tag, o.name, o.body, o.pre),
+            v?.joinToString(".") ?: ""))
     }
 
     /** "alpha", "beta" o "" según el tag, el nombre o la descripción del release (o si GitHub lo marca como pre-release). */
@@ -99,7 +137,7 @@ object Updater {
 
     private fun nums(s: String) = Regex("\\d+").findAll(s).map { it.value.toLong() }.toList()
 
-    /** Releases antiguos sin «N.N.N» (tags tipo v57): se compara el número de ejecución o, si no hay, la fecha. */
+    /** Releases antiguos sin versión (tags tipo v57): se compara el número de ejecución o, si no hay, la fecha. */
     private fun isNewerByNumber(c: Context, tag: String, publishedAt: String): Boolean {
         val n = nums(tag)
         if (n.size != 1) return false

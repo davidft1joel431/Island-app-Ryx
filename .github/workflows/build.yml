@@ -34,7 +34,9 @@ jobs:
           tag_name: v${{ steps.ver.outputs.v }}
           name: Ryx Island v${{ steps.ver.outputs.v }}
           body: |
-            - La ventana flotante usa el «Formato libre» del launcher (servicio de accesibilidad) y ya no te saca de tu app.
+            - Formato libre directo desde accesibilidad (como Smart Island), verificado y calibrado por ROM; ya no te saca de tu app.
+            - Formato libre: abre Recientes sin ir al inicio y, si la ROM no lo permite, usa el camino del inicio (siempre abre en ventana libre).
+            - Actualizaciones: lee la versión del título del release como vN, vN.N o vN.N.N, con respaldo si la API falla.
             - Visibilidad: mostrar en pantalla de bloqueo, ocultar en juegos y en apps elegidas.
             - Copia del historial y ajustes en la nube (Google Drive u otra carpeta).
             - Búsqueda de actualizaciones en GitHub con aviso de versiones de prueba.

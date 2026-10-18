@@ -36,27 +36,48 @@ object Shell {
         } catch (e: Throwable) {}
     }
 
-    /** 0 auto (Shizuku si está activo; nunca root), 1 Shizuku, 2 root (solo si se elige), 3 sin privilegios. */
+    /** null = aún no probado. true si «su» responde como uid 0 (Magisk/KernelSU ya concedió el permiso). */
+    @Volatile private var rootOk: Boolean? = null
+
+    /** Prueba root UNA vez por sesión (Magisk pregunta solo la primera vez). Llamar fuera del hilo principal. */
+    fun probeRoot(): Boolean {
+        val r = rootOk
+        if (r != null) return r
+        val ok = Root.run("id").second.contains("uid=0")
+        rootOk = ok
+        return ok
+    }
+
+    fun autoUsesRoot(): Boolean = !shizukuGranted() && rootOk == true
+
+    /** 0 auto (Shizuku si está activo y, si no, root con Magisk si concediste el permiso), 1 Shizuku, 2 root, 3 sin privilegios. */
     fun method(c: Context): Int = Prefs.shellMethod(c)
 
     /** ¿Se pueden ejecutar comandos con privilegios ahora mismo? */
     fun privileged(c: Context): Boolean = when (method(c)) {
         2 -> true
         3 -> false
-        else -> shizukuGranted()
+        1 -> shizukuGranted()
+        else -> shizukuGranted() || rootOk == true
     }
 
     fun run(c: Context, cmd: String): Pair<Int, String> = when (method(c)) {
         2 -> Root.run(cmd)
         3 -> Pair(-1, "Modo sin privilegios")
-        else -> if (shizukuGranted()) runShizuku(cmd) else Pair(-1, "Shizuku sin permiso o sin iniciar")
+        1 -> if (shizukuGranted()) runShizuku(cmd) else Pair(-1, "Shizuku sin permiso o sin iniciar")
+        else -> when {
+            shizukuGranted() -> runShizuku(cmd)
+            rootOk == true -> Root.run(cmd)
+            else -> Pair(-1, "Ni Shizuku ni root disponibles")
+        }
     }
 
     /** Quién ejecuta los comandos, para el registro. */
     fun label(c: Context): String = when (method(c)) {
         2 -> "root"
         3 -> "sin privilegios"
-        else -> "Shizuku"
+        1 -> "Shizuku"
+        else -> if (autoUsesRoot()) "root (Magisk)" else "Shizuku"
     }
 
     /** Shizuku.newProcess es privado desde la API 13, por eso se llama por reflexión. */

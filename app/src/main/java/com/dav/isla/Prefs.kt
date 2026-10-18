@@ -226,6 +226,9 @@ object Prefs {
     fun setCloudLast(c: Context, v: Long) = sp(c).edit().putLong("cloud_last", v).apply()
     fun updLast(c: Context): Long = sp(c).getLong("upd_last", 0L)
     fun setUpdLast(c: Context, v: Long) = sp(c).edit().putLong("upd_last", v).apply()
+    /** Variante de apertura directa que funcionó en esta ROM (-1 = sin calibrar). */
+    fun fwVariant(c: Context): Int = sp(c).getInt("fw_variant", -1)
+    fun setFwVariant(c: Context, v: Int) = sp(c).edit().putInt("fw_variant", v).apply()
     fun fwKeepApp(c: Context): Boolean = sp(c).getBoolean("fw_keep_app", true)
     fun setFwKeepApp(c: Context, v: Boolean) = sp(c).edit().putBoolean("fw_keep_app", v).apply()
     fun a11yAsked(c: Context): Boolean = sp(c).getBoolean("a11y_asked", false)
