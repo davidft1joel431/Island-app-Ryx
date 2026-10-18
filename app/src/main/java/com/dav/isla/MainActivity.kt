@@ -4,6 +4,7 @@ import android.app.Activity
 import android.app.AlertDialog
 import android.app.Dialog
 import android.content.ClipData
+import android.content.ComponentName
 import android.content.ClipboardManager
 import android.content.Intent
 import android.content.pm.PackageManager
@@ -136,6 +137,9 @@ class MainActivity : Activity() {
         } catch (e: Throwable) {}
         Backup.maybeUpload(this, 60 * 60_000L)
         offerRestore()
+        if (Prefs.fwMode(this) == 2 && !RyxAccessibility.isEnabled(this) && !Prefs.a11yAsked(this)) {
+            Prefs.setA11yAsked(this, true); askAccessibility()
+        }
         if (System.currentTimeMillis() - Prefs.updLast(this) > 12 * 3600_000L) checkUpdates(false)
     }
 
@@ -272,6 +276,36 @@ class MainActivity : Activity() {
                     }.setNegativeButton("Cancelar", null).show())
             }
         }.start()
+    }
+
+    /** Abre Accesibilidad e intenta resaltar el servicio de Ryx. */
+    private fun openAccessibility() {
+        val cn = ComponentName(this, RyxAccessibility::class.java).flattenToString()
+        val i = Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)
+        i.putExtra(":settings:fragment_args_key", cn)
+        i.putExtra(":settings:show_fragment_args", Bundle().apply { putString(":settings:fragment_args_key", cn) })
+        try { startActivity(i) } catch (e: Exception) {
+            try { startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)) } catch (e2: Exception) { toast("No se pudo abrir Accesibilidad") }
+        }
+    }
+
+    private fun openAppInfo() {
+        try { startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:$packageName"))) }
+        catch (e: Exception) { toast("No se pudo abrir") }
+    }
+
+    /** Pide el permiso de accesibilidad con las instrucciones exactas. */
+    private fun askAccessibility(onSkip: (() -> Unit)? = null) {
+        glass(AlertDialog.Builder(this).setTitle("Falta el permiso de accesibilidad")
+            .setMessage("Para usar el «Formato libre» de tu launcher, Ryx necesita su servicio de accesibilidad: lo único que hace es " +
+                "mantener pulsado el icono y tocar «Formato libre» por ti.\n\n" +
+                "1. Toca «Abrir accesibilidad» y entra en «Apps instaladas» (o «Servicios descargados»).\n" +
+                "2. Elige «Ryx Island · Formato libre» y actívalo.\n\n" +
+                "Si no aparece o sale en gris: toca «Info de la app», abre ⋮ (arriba a la derecha) → «Permitir ajustes restringidos», " +
+                "y vuelve a intentarlo. Si sigue sin aparecer, asegúrate de haber instalado la versión más reciente de Ryx.")
+            .setPositiveButton("Abrir accesibilidad") { _, _ -> openAccessibility() }
+            .setNeutralButton("Info de la app") { _, _ -> openAppInfo() }
+            .setNegativeButton(if (onSkip == null) "Luego" else "Probar sin él") { _, _ -> onSkip?.invoke() }.show())
     }
 
     private fun askUsageAccess() {
@@ -843,9 +877,21 @@ class MainActivity : Activity() {
         val g = titled(p, "Ventana flotante", "Se abre con el gesto «Ventana flotante» (por defecto, deslizar hacia abajo)")
         g.addView(rowWithSwitch("Forzar ventana nueva", "Aunque la app ya esté abierta", Prefs.forceNew(this)) { Prefs.setForceNew(this, it) })
         g.addView(label("Apertura sin privilegios", 13f, R.color.muted, true), lp(12))
-        g.addView(segmented(listOf("Como el lanzador", "Con animación Ryx"), Prefs.fwMode(this), true) { Prefs.setFwMode(this, it) }, lp(6))
-        g.addView(label("«Como el lanzador» pide la ventana igual que el menú «Formato libre» de tu launcher, para que Android " +
-            "le ponga su barra y se pueda mover y cambiar de tamaño. Si no te funciona, prueba la otra.", 12f, R.color.muted), lp(6))
+        g.addView(segmented(listOf("Launcher", "Directo", "Animación"), when (Prefs.fwMode(this)) { 2 -> 0; 0 -> 1; else -> 2 }, true) {
+            Prefs.setFwMode(this, when (it) { 0 -> 2; 1 -> 0; else -> 1 })
+            if (it == 0 && !RyxAccessibility.isEnabled(this)) askAccessibility()
+        }, lp(6))
+        g.addView(label("«Launcher» usa el «Formato libre» de tu launcher: Ryx mantiene pulsado el icono y toca esa opción por ti " +
+            "(servicio de accesibilidad), así que la ventana trae la barra del sistema para moverla y cambiarle el tamaño. " +
+            "Sale con el tamaño que elige el sistema. «Directo» y «Animación» piden la ventana con tu tamaño, pero sin barra en esta ROM.",
+            12f, R.color.muted), lp(6))
+        g.addView(label(if (RyxAccessibility.isEnabled(this)) "Servicio de accesibilidad: activo ✔" else
+            "Servicio de accesibilidad: apagado. Actívalo para usar «Launcher».", 12f, R.color.text), lp(8))
+        g.addView(button(if (RyxAccessibility.isEnabled(this)) "Ajustes de accesibilidad" else "Activar accesibilidad", !RyxAccessibility.isEnabled(this)) {
+            if (RyxAccessibility.isEnabled(this)) openAccessibility() else askAccessibility()
+        }, lp(8))
+        g.addView(label("Si Android no te deja activarlo (opción en gris): Ajustes → Apps → Ryx Island → ⋮ → «Permitir ajustes restringidos», " +
+            "y vuelve a intentarlo.", 12f, R.color.muted), lp(6))
         g.addView(rowWithSwitch("Usar mi tamaño y posición", "Apágalo para que Android elija el tamaño, como en el lanzador",
             Prefs.fwOwnBounds(this)) { Prefs.setFwOwnBounds(this, it) })
         g.addView(rowWithSwitch("Asas de Ryx para mover y cambiar tamaño", "Úsalo si la ventana sale sin barra. Con Shizuku mueve la real; sin privilegios la reabre en el nuevo sitio (experimental)",
@@ -869,8 +915,12 @@ class MainActivity : Activity() {
         t.addView(button("▶ Probar ahora", true) {
             val pkg = Prefs.fwTestPkg(this)
             if (pkg.isEmpty()) { toast("Elige primero una app"); return@button }
-            toast("Abriendo…")
-            Thread { val log = FloatingWindow.open(this, pkg); runOnUiThread { render(); dialog("Resultado de la prueba", log) } }.start()
+            val go = {
+                toast("Abriendo…")
+                Thread { val log = FloatingWindow.open(this, pkg); runOnUiThread { render(); dialog("Resultado de la prueba", log) } }.start()
+                Unit
+            }
+            if (Prefs.fwMode(this) == 2 && !RyxAccessibility.isEnabled(this)) askAccessibility { go() } else go()
         }, lp(8))
 
         val log = Prefs.lastLog(this)
@@ -1017,6 +1067,10 @@ class MainActivity : Activity() {
         permRow(b, "Dispositivos cercanos", "Detecta conexiones Bluetooth",
             Build.VERSION.SDK_INT < 31 || checkSelfPermission("android.permission.BLUETOOTH_CONNECT") == 0) {
             if (Build.VERSION.SDK_INT >= 31) requestPermissions(arrayOf("android.permission.BLUETOOTH_CONNECT"), 1)
+        }
+        permRow(b, "Accesibilidad (Formato libre del launcher)", "Para pulsar «Formato libre» en tu launcher al abrir una ventana flotante",
+            RyxAccessibility.isEnabled(this)) {
+            if (RyxAccessibility.isEnabled(this)) openAccessibility() else askAccessibility()
         }
         permRow(b, "Acceso de uso (detectar juegos)", "Para ocultar la isla cuando hay un juego o una app elegida al frente",
             Foreground.hasAccess(this)) { askUsageAccess() }

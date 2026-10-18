@@ -212,7 +212,7 @@ object Prefs {
     fun setHideApps(c: Context, v: Set<String>) = sp(c).edit().putStringSet("hide_apps", v).apply()
 
     // ---- Ventana flotante: cómo se abre ----
-    fun fwMode(c: Context): Int = sp(c).getInt("fw_mode", 0)            // 0 como el lanzador, 1 con animación de Ryx
+    fun fwMode(c: Context): Int = sp(c).getInt("fw_mode", 2)            // 0 directo, 1 con animación de Ryx, 2 «Formato libre» del launcher (accesibilidad)
     fun setFwMode(c: Context, v: Int) = sp(c).edit().putInt("fw_mode", v).apply()
     fun fwOwnBounds(c: Context): Boolean = sp(c).getBoolean("fw_own_bounds", true)
     fun setFwOwnBounds(c: Context, v: Boolean) = sp(c).edit().putBoolean("fw_own_bounds", v).apply()
@@ -226,6 +226,8 @@ object Prefs {
     fun setCloudLast(c: Context, v: Long) = sp(c).edit().putLong("cloud_last", v).apply()
     fun updLast(c: Context): Long = sp(c).getLong("upd_last", 0L)
     fun setUpdLast(c: Context, v: Long) = sp(c).edit().putLong("upd_last", v).apply()
+    fun a11yAsked(c: Context): Boolean = sp(c).getBoolean("a11y_asked", false)
+    fun setA11yAsked(c: Context, v: Boolean) = sp(c).edit().putBoolean("a11y_asked", v).apply()
     fun restoreAsked(c: Context): Boolean = sp(c).getBoolean("restore_asked", false)
     fun setRestoreAsked(c: Context, v: Boolean) = sp(c).edit().putBoolean("restore_asked", v).apply()
     fun histRaw(c: Context): String = sp(c).getString("hist2", "[]") ?: "[]"

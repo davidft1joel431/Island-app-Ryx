@@ -1,4 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Ryx Island</string>
+    <string name="a11y_label">Ryx Island · Formato libre</string>
+    <string name="a11y_desc">Solo se usa cuando abres una ventana flotante: Ryx pulsa por ti «Formato libre» en el menú de tu launcher. No lee ni guarda lo que hay en pantalla.</string>
 </resources>
