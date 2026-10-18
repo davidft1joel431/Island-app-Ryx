@@ -39,6 +39,28 @@ class RyxAccessibility : AccessibilityService() {
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {}
     override fun onInterrupt() {}
 
+    /** Paquete de la app que está al frente ahora (la ventana activa). */
+    fun currentPackage(): String? = try { rootInActiveWindow?.packageName?.toString() } catch (e: Exception) { null }
+
+    /**
+     * Tras abrir la ventana libre: devuelve al frente la app en la que estabas y luego sube la ventana libre,
+     * para que quede flotando encima de tu app y no encima del inicio.
+     */
+    fun keepBehind(prev: String?, target: String, log: StringBuilder) {
+        val skip = setOf(packageName, target, homePackage(), "com.android.systemui")
+        if (prev == null || prev in skip) return
+        pause(1300)
+        val a = packageManager.getLaunchIntentForPackage(prev) ?: return
+        a.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        val t = packageManager.getLaunchIntentForPackage(target) ?: return
+        t.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        try {
+            startActivity(a); pause(1000)       // tu app vuelve al frente
+            startActivity(t); pause(500)         // la ventana libre se sube encima
+            log.append("Devolví «$prev» al fondo y subí la ventana libre encima.\n")
+        } catch (e: Exception) { log.append("No pude devolver tu app al fondo: ${e.javaClass.simpleName}\n") }
+    }
+
     private fun pause(ms: Long) { try { Thread.sleep(ms) } catch (e: InterruptedException) {} }
 
     private fun homePackage(): String? = try {
