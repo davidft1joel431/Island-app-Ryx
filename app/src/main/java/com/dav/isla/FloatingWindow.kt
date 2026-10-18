@@ -82,6 +82,19 @@ object FloatingWindow {
                 "(si sale en gris: Info de la app → ⋮ → «Permitir ajustes restringidos»).\n")
             return save(c, log)
         }
+        if (Prefs.fwSoloMode(c) == 0) {
+            log.append("Formato libre REAL del sistema (barra, iconos y esquinas del sistema), con cortina para no ver el cambio de pantalla.\n")
+            val ok0 = try { svc.launchSystemFreeform(pkg, appLabel(c, pkg), Prefs.fwKeepApp(c), log) } catch (e: Throwable) {
+                log.append("Error: ${e.javaClass.simpleName} ${e.message ?: ""}\n"); false }
+            if (ok0 && pi != null) {
+                Thread.sleep(500)
+                log.append(if (sendPending(c, pi, true, null)) "Abrí el destino exacto de la notificación (el chat).\n"
+                           else "No pude abrir el destino exacto de la notificación.\n")
+            }
+            if (!ok0) log.append("\nNo se pudo abrir con el menú del launcher; mira arriba qué vio Ryx.\n")
+            else log.append("\nLa ventana la abre el sistema desde el menú de tu launcher, con su barra y su tamaño habitual.\n")
+            return save(c, log)
+        }
         val b = bounds(c)
         log.append("Ventana pedida: ${b.left},${b.top} → ${b.right},${b.bottom}\n")
         val ok = svc.launchSmartIsland(pkg, pi, b, log)

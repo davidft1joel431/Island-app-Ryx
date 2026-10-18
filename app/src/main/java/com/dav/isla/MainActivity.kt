@@ -878,6 +878,13 @@ class MainActivity : Activity() {
         val so = titled(p, "Ventana flotante · solo accesibilidad", "Usa únicamente la función de Smart Island desde el servicio de accesibilidad")
         so.addView(rowWithSwitch("Usar solo este método", "Sin Shizuku, root, Recientes ni el menú del launcher: no te saca de tu app",
             Prefs.fwSolo(this)) { Prefs.setFwSolo(this, it); render() })
+        so.addView(segmented(listOf("Formato libre del sistema", "Directo"), Prefs.fwSoloMode(this), true) { Prefs.setFwSoloMode(this, it); render() }, lp(8))
+        so.addView(label(if (Prefs.fwSoloMode(this) == 0)
+            "«Formato libre del sistema»: abre la ventana real del sistema, con su barra, iconos y esquinas, pulsando por ti «Formato libre» en tu launcher. " +
+            "Ryx pone una captura de tu pantalla como cortina para que no veas el cambio, así que durante unos 2-4 segundos la pantalla se ve congelada: " +
+            "no toques nada hasta que aparezca la ventana. Sale con el tamaño del sistema; muévela y cámbiala con su propia barra."
+            else "«Directo»: pide la ventana con tu tamaño desde accesibilidad (función de Smart Island). No lleva la barra del sistema, por eso Ryx dibuja la suya.",
+            12f, R.color.muted), lp(6))
         so.addView(label("Ryx lanza la app desde su servicio de accesibilidad con el modo libre (windowingMode 5) y tu tamaño, igual que Smart Island, " +
             "y en el registro anota las medidas reales de la ventana. Como Android no dibuja la barra del sistema en apps de terceros en el teléfono, " +
             "Ryx pone su propia barra de título encima (mover, cambiar tamaño). Para la barra del sistema activa «Habilitar funciones de experiencia de escritorio» " +

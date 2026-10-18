@@ -9,6 +9,7 @@ import android.content.BroadcastReceiver
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.view.MotionEvent
+import android.view.HapticFeedbackConstants
 import android.view.ViewConfiguration
 import java.io.File
 import java.io.FileOutputStream
@@ -376,6 +377,58 @@ class NotifListener : NotificationListenerService() {
         return layers
     }
 
+    // ---------- Zona táctil ampliada ----------
+    // La ventana de la isla mide lo mismo que la pastilla: un toque unos píxeles fuera caía en la barra de estado y bajaba el panel.
+    // Esta ventana transparente, más grande que la isla y siempre pegada a ella, atrapa esos toques y los gestos.
+    private var hitView: View? = null
+    private var hitLp: WindowManager.LayoutParams? = null
+    private var hitAttached = false
+    private val touchHandler by lazy { IslandTouch() }
+
+    private fun addHit(params: WindowManager.LayoutParams) {
+        if (hitAttached || !::wm.isInitialized) return
+        val v = View(this).apply { setOnTouchListener(touchHandler) }
+        val hp = WindowManager.LayoutParams(
+            params.width, px(48), WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
+                WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or (params.flags and WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED),
+            PixelFormat.TRANSLUCENT
+        ).apply {
+            gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL
+            if (Build.VERSION.SDK_INT >= 30) layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS
+        }
+        hitView = v; hitLp = hp
+        syncHit(params)
+        try { wm.addView(v, hp); hitAttached = true } catch (e: Exception) { hitAttached = false }
+    }
+
+    private fun removeHit() {
+        val v = hitView
+        if (hitAttached && v != null && ::wm.isInitialized) try { wm.removeView(v) } catch (e: Exception) {}
+        hitAttached = false; hitView = null; hitLp = null
+    }
+
+    /** Coloca la zona táctil sobre la isla con margen extra (mínimo ~48 dp de alto y 96 dp de ancho). */
+    private fun syncHit(params: WindowManager.LayoutParams) {
+        val hp = hitLp ?: return
+        val row = island
+        val h = maxOf(row?.height ?: 0, row?.minimumHeight ?: 0, px(24))
+        val padX = px(16); val padB = px(16)
+        val padT = minOf(px(12), maxOf(params.y, 0))
+        hp.width = maxOf(params.width + 2 * padX, px(96))
+        hp.height = maxOf(h + padT + padB, px(48))
+        hp.x = params.x
+        hp.y = params.y - padT
+        if (hitAttached) hitView?.let { try { wm.updateViewLayout(it, hp) } catch (e: Exception) {} }
+    }
+
+    /** Actualiza la ventana de la isla y mueve su zona táctil con ella. */
+    private fun upd(v: View?, params: WindowManager.LayoutParams) {
+        if (v == null) return
+        try { wm.updateViewLayout(v, params) } catch (e: Exception) {}
+        syncHit(params)
+    }
+
     private fun buildIsland() {
         if (island != null) return
         val s = Styles.byId(Prefs.style(this))
@@ -458,7 +511,8 @@ class NotifListener : NotificationListenerService() {
             })
             addView(badge, LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT).apply { marginStart = px(8) })
-            setOnTouchListener(IslandTouch())
+            setOnTouchListener(touchHandler)
+            addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ -> lp?.let { syncHit(it) } }
         }
         island = row
         iconView = icon
@@ -552,10 +606,11 @@ class NotifListener : NotificationListenerService() {
         if (!attached) {
             params.width = idleWidth()
             setIdleContent()
+            addHit(params)
             try {
                 wm.addView(v, params)
             } catch (e: Exception) {
-                return
+                removeHit(); return
             }
             attached = true
         }
@@ -616,10 +671,11 @@ class NotifListener : NotificationListenerService() {
             if (!attached) {
                 params.width = idleWidth()
                 setIdleContent()
+                addHit(params)
                 try {
                     wm.addView(v, params)
                 } catch (e: Exception) {
-                    return@post
+                    removeHit(); return@post
                 }
                 attached = true
             }
@@ -697,47 +753,65 @@ class NotifListener : NotificationListenerService() {
     private inner class IslandTouch : View.OnTouchListener {
         private var x0 = 0f
         private var y0 = 0f
+        private var t0 = 0L
         private var down = false
         private var longFired = false
         private var baseX = 0
         private var baseY = 0
         private val slop = ViewConfiguration.get(this@NotifListener).scaledTouchSlop
         private val longRun = Runnable {
-            if (down) { longFired = true; onGesture(5) }
+            if (down) { longFired = true; island?.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS); onGesture(5) }
         }
 
         override fun onTouch(v: View, e: MotionEvent): Boolean {
             val params = lp ?: return false
             when (e.actionMasked) {
                 MotionEvent.ACTION_DOWN -> {
-                    x0 = e.rawX; y0 = e.rawY; down = true; longFired = false
+                    x0 = e.rawX; y0 = e.rawY; t0 = e.eventTime; down = true; longFired = false
                     baseX = px(Prefs.xOffsetDp(this@NotifListener)); baseY = px(Prefs.yOffsetDp(this@NotifListener))
                     main.removeCallbacks(hideTask)
-                    main.postDelayed(longRun, 450)
+                    main.postDelayed(longRun, 420)
+                    // Respuesta inmediata al tocar: se hunde un poco al instante
+                    island?.animate()?.cancel()
+                    island?.animate()?.scaleX(0.96f)?.scaleY(0.96f)?.setDuration(60)?.start()
                 }
                 MotionEvent.ACTION_MOVE -> {
                     if (!down) return true
                     val dx = e.rawX - x0; val dy = e.rawY - y0
-                    if (abs(dx) > slop || abs(dy) > slop) main.removeCallbacks(longRun)
-                    // la isla sigue al dedo con resistencia (se mueve la ventana, no la vista)
-                    params.x = baseX + (dx * 0.35f).toInt()
-                    params.y = baseY + (dy * 0.5f).coerceIn(-px(24).toFloat(), px(60).toFloat()).toInt()
-                    try { wm.updateViewLayout(v, params) } catch (e: Exception) {}
+                    if (abs(dx) > slop * 2 || abs(dy) > slop * 2) main.removeCallbacks(longRun)
+                    // la isla sigue al dedo con resistencia (se mueve la ventana, no la vista); un temblor pequeño no la mueve
+                    if (abs(dx) > slop || abs(dy) > slop) {
+                        params.x = baseX + (dx * 0.35f).toInt()
+                        params.y = baseY + (dy * 0.5f).coerceIn(-px(24).toFloat(), px(60).toFloat()).toInt()
+                        upd(island, params)
+                    }
                 }
                 MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
                     main.removeCallbacks(longRun)
                     val wasDown = down; down = false
                     val dx = e.rawX - x0; val dy = e.rawY - y0
-                    val th = px(Prefs.swipeDp(this@NotifListener)).toFloat()
+                    val dist = kotlin.math.hypot(dx, dy)
+                    val ms = e.eventTime - t0
+                    // Umbral de deslizar más bajo (nunca más de 28 dp) y toque tolerante: un dedo no es un punto
+                    val th = minOf(px(Prefs.swipeDp(this@NotifListener)), px(28)).toFloat()
+                    val tapR = maxOf(slop * 3f, px(16).toFloat())
+                    island?.animate()?.cancel()
+                    island?.animate()?.scaleX(1f)?.scaleY(1f)?.setDuration(140)?.start()
                     springBack(v)
                     if (expanded && !detail) main.postDelayed(hideTask, Prefs.durationMs(this@NotifListener))
                     if (!wasDown || longFired || e.actionMasked == MotionEvent.ACTION_CANCEL) return true
-                    when {
-                        dy > th && dy > abs(dx) -> onGesture(1)
-                        dy < -th && -dy > abs(dx) -> onGesture(2)
-                        dx > th && dx > abs(dy) -> onGesture(4)
-                        dx < -th && -dx > abs(dy) -> onGesture(3)
-                        abs(dx) < slop && abs(dy) < slop -> onGesture(0)
+                    val kind = when {
+                        dist <= tapR && ms < 700 -> 0
+                        dy > th && dy > abs(dx) * 1.1f -> 1
+                        dy < -th && -dy > abs(dx) * 1.1f -> 2
+                        dx > th && dx > abs(dy) * 1.1f -> 4
+                        dx < -th && -dx > abs(dy) * 1.1f -> 3
+                        dist <= tapR * 2f && ms < 450 -> 0      // movimiento dudoso y rápido: era un toque
+                        else -> -1
+                    }
+                    if (kind >= 0) {
+                        island?.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+                        onGesture(kind)
                     }
                 }
             }
@@ -757,7 +831,7 @@ class NotifListener : NotificationListenerService() {
                 val t = it.animatedValue as Float
                 params.x = lerp(fx.toFloat(), bx.toFloat(), t).toInt()
                 params.y = lerp(fy.toFloat(), by.toFloat(), t).toInt()
-                if (attached) try { wm.updateViewLayout(v, params) } catch (e: Exception) {}
+                if (attached) upd(island, params)
             }
             start()
         }
@@ -856,7 +930,7 @@ class NotifListener : NotificationListenerService() {
             row.minimumHeight = lerp(from.toFloat(), target.toFloat(), t).toInt().coerceAtLeast(compact)
             val k = if (open) t.coerceIn(0f, 1f) else (1f - t).coerceIn(0f, 1f)
             detailImg?.alpha = k; actionsRow?.alpha = k
-            if (attached) try { wm.updateViewLayout(row, params) } catch (e: Exception) {}
+            if (attached) upd(row, params)
         }
         a.addListener(object : AnimatorListenerAdapter() {
             override fun onAnimationEnd(animation: Animator) {
@@ -986,6 +1060,7 @@ class NotifListener : NotificationListenerService() {
 
     private fun removeNow() {
         main.removeCallbacks(hideTask)
+        removeHit()
         if (attached && ::wm.isInitialized) {
             try {
                 wm.removeView(island)
@@ -1049,12 +1124,12 @@ class NotifListener : NotificationListenerService() {
             row?.minimumHeight = lerp(fromH.toFloat(), toH.toFloat(), t).toInt().coerceAtLeast(idleH)
             setCorners(lerp(fromR, toR, t.coerceIn(0f, 1f)))
             setBlend(lerp(fromB, toB, t.coerceIn(0f, 1f)))
-            val c = if (toExpanded) ((time - 0.22f) / 0.5f).coerceIn(0f, 1f) else (1f - time / 0.45f).coerceIn(0f, 1f)
+            val c = if (toExpanded) ((time - 0.08f) / 0.42f).coerceIn(0f, 1f) else (1f - time / 0.4f).coerceIn(0f, 1f)
             setContentAlpha(c)
             iconView?.scaleX = 0.6f + 0.4f * c; iconView?.scaleY = 0.6f + 0.4f * c
             textCol?.translationX = (1f - c) * px(14)
             if (attached) {
-                try { wm.updateViewLayout(island, params) } catch (e: Exception) {}
+                upd(island, params)
             }
         }
         a.addListener(object : AnimatorListenerAdapter() {
