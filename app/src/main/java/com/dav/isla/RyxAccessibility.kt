@@ -146,6 +146,20 @@ class RyxAccessibility : AccessibilityService() {
         }
     }
 
+    /** Límites reales de la ventana flotante de [pkg] (la de menor área si hay varias), o null si no se ve. */
+    fun windowBounds(pkg: String): Rect? {
+        val ws = try { windows } catch (e: Exception) { null } ?: return null
+        var best: Rect? = null
+        for (w in ws) {
+            val name = try { w.root?.packageName?.toString() } catch (e: Exception) { null }
+            if (name != pkg) continue
+            val r = Rect(); w.getBoundsInScreen(r)
+            val b = best
+            if (b == null || r.width() * r.height() < b.width() * b.height()) best = r
+        }
+        return best
+    }
+
     /** ¿Sigue visible alguna ventana de [pkg]? (para quitar la barra de Ryx cuando la ventana se cierra) */
     fun windowAlive(pkg: String): Boolean = floatingState(pkg) != null
 
