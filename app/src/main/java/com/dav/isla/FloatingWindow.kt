@@ -69,8 +69,30 @@ object FloatingWindow {
         return sb.toString()
     }
 
+    /**
+     * «Ventana flotante · solo accesibilidad»: únicamente la función de Smart Island desde el servicio de accesibilidad.
+     * No usa Shizuku, root, Recientes, inicio ni el menú del launcher.
+     */
+    fun openSolo(c: Context, pkg: String, pi: PendingIntent? = null): String {
+        val log = StringBuilder("Hora: ${java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.getDefault()).format(java.util.Date())}\n" +
+            "Aplicación: $pkg\nMétodo: solo accesibilidad (función de Smart Island)\n")
+        val svc = RyxAccessibility.instance
+        if (svc == null) {
+            log.append("El servicio de accesibilidad de Ryx está apagado. Actívalo en Ajustes de Android → Accesibilidad → Ryx Island " +
+                "(si sale en gris: Info de la app → ⋮ → «Permitir ajustes restringidos»).\n")
+            return save(c, log)
+        }
+        val b = bounds(c)
+        log.append("Ventana pedida: ${b.left},${b.top} → ${b.right},${b.bottom}\n")
+        svc.launchSmartIsland(pkg, pi, b, log)
+        log.append("\nSi la ventana salió a pantalla completa, tu ROM no respetó el modo libre pedido por una app normal; " +
+            "las medidas de arriba lo confirman.")
+        return save(c, log)
+    }
+
     /** Devuelve el registro de lo ocurrido (también se guarda para Opciones de desarrollador). */
     fun open(c: Context, pkg: String, pi: PendingIntent? = null): String {
+        if (Prefs.fwSolo(c)) return openSolo(c, pkg, pi)
         // Auto: si no hay Shizuku, se prueba root (Magisk) una vez; así funciona en segundo plano sin tocar tu pantalla
         if (Shell.method(c) == 0 && !Shell.shizukuGranted()) Shell.probeRoot()
         val log = StringBuilder("Hora: ${java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.getDefault()).format(java.util.Date())}\n" +

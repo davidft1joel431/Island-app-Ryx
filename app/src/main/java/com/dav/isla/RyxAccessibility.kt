@@ -99,6 +99,53 @@ class RyxAccessibility : AccessibilityService() {
         true
     } catch (e: Throwable) { false }
 
+    /** Medidas reales de las ventanas de [pkg] y de la pantalla, para el registro (así se ve si quedó flotante o completa). */
+    fun describeWindows(pkg: String): String {
+        val m = resources.displayMetrics
+        val ws = try { windows } catch (e: Exception) { null }
+        val parts = ArrayList<String>()
+        if (ws != null) for (w in ws) {
+            val name = try { w.root?.packageName?.toString() } catch (e: Exception) { null } ?: continue
+            if (name != pkg) continue
+            val r = Rect(); w.getBoundsInScreen(r)
+            parts.add("${r.left},${r.top}→${r.right},${r.bottom} (${r.width()}×${r.height()})")
+        }
+        return "Pantalla ${m.widthPixels}×${m.heightPixels} · ventanas de $pkg: ${if (parts.isEmpty()) "ninguna visible" else parts.joinToString(" | ")}"
+    }
+
+    /**
+     * Método EXACTO de Smart Island, sin variantes, sin comprobaciones y sin caminos alternativos:
+     * ActivityOptions.makeBasic() + límites + clave «android.activity.windowingMode» = 5, lanzado desde este servicio de accesibilidad
+     * con NEW_TASK | MULTIPLE_TASK (con el PendingIntent de la notificación si lo hay). Llamar fuera del hilo principal.
+     */
+    fun launchSmartIsland(pkg: String, pi: PendingIntent?, b: Rect, log: StringBuilder): Boolean {
+        return try {
+            val options = ActivityOptions.makeBasic()
+            try { options.setLaunchBounds(b) } catch (e: Throwable) { log.append("Límites: ${e.javaClass.simpleName}\n") }
+            if (Build.VERSION.SDK_INT >= 34) try {
+                options.setPendingIntentBackgroundActivityStartMode(ActivityOptions.MODE_BACKGROUND_ACTIVITY_START_ALLOWED)
+            } catch (e: Throwable) {}
+            val bundle = options.toBundle() ?: android.os.Bundle()
+            bundle.putInt("android.activity.windowingMode", 5)
+            val flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_MULTIPLE_TASK
+            if (pi != null) {
+                pi.send(this, 0, Intent().addFlags(flags), null, null, null, bundle)
+                log.append("Lanzado con el destino exacto de la notificación.\n")
+            } else {
+                val launch = packageManager.getLaunchIntentForPackage(pkg)
+                if (launch == null) { log.append("No se encontró la actividad principal.\n"); return false }
+                launch.addFlags(flags)
+                startActivity(launch, bundle)
+                log.append("Lanzado desde el servicio de accesibilidad con windowingMode=5.\n")
+            }
+            pause(1200)
+            log.append(describeWindows(pkg)).append("\n")
+            true
+        } catch (e: Throwable) {
+            log.append("Error al lanzar: ${e.javaClass.simpleName} ${e.message ?: ""}\n"); false
+        }
+    }
+
     /** true = la ventana de [pkg] no ocupa toda la pantalla (flotante); false = pantalla completa; null = no se pudo saber. */
     private fun floatingState(pkg: String): Boolean? {
         val m = resources.displayMetrics
@@ -134,7 +181,7 @@ class RyxAccessibility : AccessibilityService() {
             val sent = fire(v, Intent(launch), pi, b)
             if (!sent) { log.append("Variante ${v + 1} · ${VARIANTS[v]}: no se pudo lanzar.\n"); continue }
             when (waitFloating(pkg, 1800)) {
-                true -> { log.append("Variante ${v + 1} · ${VARIANTS[v]}: ventana libre verificada.\n"); Prefs.setFwVariant(this, v); return true }
+                true -> { log.append("Variante ${v + 1} · ${VARIANTS[v]}: ventana libre verificada. ${describeWindows(pkg)}\n"); Prefs.setFwVariant(this, v); return true }
                 null -> { log.append("Variante ${v + 1} · ${VARIANTS[v]}: lanzada (no pude verificar si es libre; mira la pantalla).\n"); return true }
                 false -> {
                     log.append("Variante ${v + 1} · ${VARIANTS[v]}: la ROM la abrió a pantalla completa.\n")

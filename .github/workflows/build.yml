@@ -34,6 +34,7 @@ jobs:
           tag_name: v${{ steps.ver.outputs.v }}
           name: Ryx Island v${{ steps.ver.outputs.v }}
           body: |
+            - Nueva sección «Ventana flotante · solo accesibilidad»: usa únicamente la función de Smart Island y anota las medidas reales de la ventana.
             - Formato libre directo desde accesibilidad (como Smart Island), verificado y calibrado por ROM; ya no te saca de tu app.
             - Formato libre: abre Recientes sin ir al inicio y, si la ROM no lo permite, usa el camino del inicio (siempre abre en ventana libre).
             - Actualizaciones: lee la versión del título del release como vN, vN.N o vN.N.N, con respaldo si la API falla.
