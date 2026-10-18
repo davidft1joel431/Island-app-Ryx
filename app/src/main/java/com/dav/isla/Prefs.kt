@@ -183,7 +183,7 @@ object Prefs {
     fun setGRight(c: Context, v: Int) = sp(c).edit().putInt("g_right", v).apply()
     fun gLong(c: Context): Int = sp(c).getInt("g_long", 6)
     fun setGLong(c: Context, v: Int) = sp(c).edit().putInt("g_long", v).apply()
-    fun swipeDp(c: Context): Int = sp(c).getInt("swipe_dp", 36)
+    fun swipeDp(c: Context): Int = sp(c).getInt("swipe_dp", 24)
     fun setSwipeDp(c: Context, v: Int) = sp(c).edit().putInt("swipe_dp", v).apply()
     fun autoHideAfterTouch(c: Context): Boolean = true
     fun appTheme(c: Context): String = sp(c).getString("app_theme", "ryx") ?: "ryx"
@@ -226,6 +226,12 @@ object Prefs {
     fun setCloudLast(c: Context, v: Long) = sp(c).edit().putLong("cloud_last", v).apply()
     fun updLast(c: Context): Long = sp(c).getLong("upd_last", 0L)
     fun setUpdLast(c: Context, v: Long) = sp(c).edit().putLong("upd_last", v).apply()
+    /** Método de «solo accesibilidad»: 0 = Formato libre REAL del sistema (con cortina), 1 = directo estilo Smart Island (sin barra del sistema). */
+    fun fwSoloMode(c: Context): Int = sp(c).getInt("fw_solo_mode", 0)
+    fun setFwSoloMode(c: Context, v: Int) = sp(c).edit().putInt("fw_solo_mode", v).apply()
+    /** Camino del launcher que funcionó en esta ROM: 0 sin calibrar, 1 Recientes, 2 pantalla de inicio. */
+    fun fwRoute(c: Context): Int = sp(c).getInt("fw_route", 0)
+    fun setFwRoute(c: Context, v: Int) = sp(c).edit().putInt("fw_route", v).apply()
     /** Sección «Ventana flotante · solo accesibilidad»: usa únicamente el método de Smart Island, sin otros caminos. */
     fun fwSolo(c: Context): Boolean = sp(c).getBoolean("fw_solo", true)
     fun setFwSolo(c: Context, v: Boolean) = sp(c).edit().putBoolean("fw_solo", v).apply()

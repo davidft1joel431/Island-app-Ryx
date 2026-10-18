@@ -18,6 +18,6 @@ object Motion {
 
     /** Relajada más lenta, ágil más rápida. */
     fun factor(c: Context): Float = when (Prefs.speed(c)) { 0 -> 1.4f; 2 -> 0.65f; else -> 1f }
-    fun expandMs(c: Context): Long = (520 * factor(c)).toLong()
-    fun collapseMs(c: Context): Long = (300 * factor(c)).toLong()
+    fun expandMs(c: Context): Long = (430 * factor(c)).toLong()
+    fun collapseMs(c: Context): Long = (240 * factor(c)).toLong()
 }

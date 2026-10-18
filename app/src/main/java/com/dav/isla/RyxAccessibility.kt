@@ -9,9 +9,16 @@ import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.graphics.Bitmap
+import android.graphics.Color
+import android.graphics.PixelFormat
 import android.graphics.Path
 import android.graphics.Rect
+import android.os.Handler
+import android.os.Looper
 import android.provider.Settings
+import android.view.WindowManager
+import android.widget.ImageView
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
 import java.util.concurrent.CountDownLatch
@@ -225,6 +232,101 @@ class RyxAccessibility : AccessibilityService() {
         return false
     }
 
+    // ─────────────────────────────────────────────────────────────────────────────────────────────
+    // CORTINA: una captura de tu pantalla puesta a pantalla completa mientras Ryx hace por debajo lo que harías
+    // con el dedo en el launcher (Recientes / inicio → «Formato libre»). Se ve tu app congelada, no el salto al
+    // inicio; al abrirse la ventana real del sistema (con su barra, iconos y esquinas) la cortina se retira.
+    // ─────────────────────────────────────────────────────────────────────────────────────────────
+    private val ui = Handler(Looper.getMainLooper())
+    @Volatile private var curtain: ImageView? = null
+    private var curtainLp: WindowManager.LayoutParams? = null
+
+    private fun onMain(block: () -> Unit) {
+        val l = CountDownLatch(1)
+        ui.post { try { block() } catch (e: Throwable) {} finally { l.countDown() } }
+        try { l.await(1500, TimeUnit.MILLISECONDS) } catch (e: InterruptedException) {}
+    }
+
+    private fun grabScreen(): Bitmap? {
+        if (Build.VERSION.SDK_INT < 30) return null
+        var out: Bitmap? = null
+        val latch = CountDownLatch(1)
+        try {
+            takeScreenshot(android.view.Display.DEFAULT_DISPLAY, mainExecutor, object : TakeScreenshotCallback {
+                override fun onSuccess(r: ScreenshotResult) {
+                    try {
+                        val hb = r.hardwareBuffer
+                        val hw = Bitmap.wrapHardwareBuffer(hb, r.colorSpace)
+                        out = hw?.copy(Bitmap.Config.ARGB_8888, false)
+                        hw?.recycle(); hb.close()
+                    } catch (e: Throwable) {}
+                    latch.countDown()
+                }
+                override fun onFailure(errorCode: Int) { latch.countDown() }
+            })
+        } catch (e: Throwable) { return null }
+        try { latch.await(2500, TimeUnit.MILLISECONDS) } catch (e: InterruptedException) {}
+        return out
+    }
+
+    private fun showCurtain(log: StringBuilder): Boolean {
+        val bmp = grabScreen()
+        if (bmp == null) { log.append("Cortina: no pude capturar la pantalla (se verá el cambio de pantalla).\n"); return false }
+        var ok = false
+        onMain {
+            val wm = getSystemService(WINDOW_SERVICE) as WindowManager
+            val iv = ImageView(this).apply { setImageBitmap(bmp); scaleType = ImageView.ScaleType.FIT_XY; setBackgroundColor(Color.BLACK) }
+            val lp = WindowManager.LayoutParams(WindowManager.LayoutParams.MATCH_PARENT, WindowManager.LayoutParams.MATCH_PARENT,
+                WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
+                WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
+                    WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS, PixelFormat.OPAQUE)
+            if (Build.VERSION.SDK_INT >= 28) lp.layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS
+            wm.addView(iv, lp); curtain = iv; curtainLp = lp; ok = true
+        }
+        if (ok) ui.postDelayed({ hideCurtain() }, 15000)      // seguro: nunca se queda puesta
+        log.append(if (ok) "Cortina: puesta (tu pantalla se ve congelada mientras se abre la ventana).\n" else "Cortina: no se pudo poner.\n")
+        return ok
+    }
+
+    private fun hideCurtain() {
+        val iv = curtain ?: return
+        curtain = null
+        onMain { try { (getSystemService(WINDOW_SERVICE) as WindowManager).removeView(iv) } catch (e: Throwable) {} }
+    }
+
+    /** La cortina deja pasar los toques solo mientras Ryx inyecta un gesto; el resto del tiempo los absorbe. */
+    private fun curtainPassThrough(on: Boolean) {
+        val iv = curtain ?: return
+        val lp = curtainLp ?: return
+        onMain {
+            lp.flags = if (on) lp.flags or WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE else lp.flags and WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE.inv()
+            try { (getSystemService(WINDOW_SERVICE) as WindowManager).updateViewLayout(iv, lp) } catch (e: Throwable) {}
+        }
+    }
+
+    /**
+     * «Formato libre» REAL del sistema, sin que veas el salto: cortina → camino del launcher → (si hace falta) devuelve tu app al fondo
+     * → quita la cortina cuando la ventana ya está abierta. Llamar fuera del hilo principal.
+     */
+    fun launchSystemFreeform(pkg: String, label: String, keepApp: Boolean, log: StringBuilder): Boolean {
+        val prev = currentPackage()
+        val covered = showCurtain(log)
+        try {
+            val ok = launchViaLauncher(pkg, label, log, keepApp)
+            if (!ok) return false
+            waitUntil(2500) { windowBounds(pkg) != null }
+            val skip = setOf(packageName, pkg, homePackage(), "com.android.systemui")
+            if (keepApp && prev != null && prev !in skip) {
+                keepBehind(prev, pkg, log)
+                waitUntil(1500) { windowBounds(pkg) != null }
+            }
+            log.append("Ventana del sistema abierta. ${describeWindows(pkg)}\n")
+            return true
+        } finally {
+            if (covered) { pause(150); hideCurtain() }
+        }
+    }
+
     private fun pause(ms: Long) { try { Thread.sleep(ms) } catch (e: InterruptedException) {} }
 
     private fun homePackage(): String? = try {
@@ -268,6 +370,11 @@ class RyxAccessibility : AccessibilityService() {
     }
 
     private fun gesture(p: Path, dur: Long): Boolean {
+        curtainPassThrough(true)
+        try { return gestureRaw(p, dur) } finally { curtainPassThrough(false) }
+    }
+
+    private fun gestureRaw(p: Path, dur: Long): Boolean {
         var ok = false
         val latch = CountDownLatch(1)
         val g = GestureDescription.Builder().addStroke(GestureDescription.StrokeDescription(p, 0, dur)).build()
@@ -542,20 +649,18 @@ class RyxAccessibility : AccessibilityService() {
      */
     fun launchViaLauncher(pkg: String, label: String, log: StringBuilder, keepApp: Boolean = true): Boolean {
         launchedFirst = false
-        if (keepApp) {
-            // Primero Recientes (no te saca de tu app). Si esa ROM no muestra la opción ahí, se usa el camino del inicio,
-            // que sí funciona, para que la ventana libre se abra siempre.
-            if (viaRecents(pkg, label, log)) return true
+        // Se recuerda qué camino funcionó en esta ROM para no perder tiempo con el que falla
+        val homeFirst = !keepApp || Prefs.fwRoute(this) == 2
+        if (homeFirst) {
+            if (viaHome(label, log)) { Prefs.setFwRoute(this, 2); return true }
+            performGlobalAction(GLOBAL_ACTION_HOME); pause(500)
+            if (viaRecents(pkg, label, log)) { Prefs.setFwRoute(this, 1); return true }
+        } else {
+            if (viaRecents(pkg, label, log)) { Prefs.setFwRoute(this, 1); return true }
             log.append("Recientes no sirvió en esta ROM; uso el camino del inicio.\n")
             performGlobalAction(GLOBAL_ACTION_HOME); pause(500)
-            if (viaHome(label, log)) return true
-            dump(log)
-            performGlobalAction(GLOBAL_ACTION_HOME)
-            return false
+            if (viaHome(label, log)) { Prefs.setFwRoute(this, 2); return true }
         }
-        if (viaHome(label, log)) return true
-        performGlobalAction(GLOBAL_ACTION_HOME); pause(500)
-        if (viaRecents(pkg, label, log)) return true
         dump(log)
         performGlobalAction(GLOBAL_ACTION_HOME)
         return false
