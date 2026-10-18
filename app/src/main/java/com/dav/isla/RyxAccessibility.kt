@@ -154,18 +154,47 @@ class RyxAccessibility : AccessibilityService() {
         return ok
     }
 
-    /** Camino 2: abre la app, entra a Recientes y toca su icono para sacar el menú con «Formato libre». */
+    private fun findAllLabel(label: String): List<AccessibilityNodeInfo> {
+        val out = ArrayList<AccessibilityNodeInfo>()
+        for (r in roots()) {
+            val list = try { r.findAccessibilityNodeInfosByText(label) } catch (e: Exception) { null } ?: continue
+            list.filter { n -> n.isVisibleToUser && nodeText(n).startsWith(label, true) }.forEach { out.add(it) }
+        }
+        return out
+    }
+
+    /** Espera a que la app indicada esté al frente (hasta [ms] milisegundos). */
+    private fun waitForeground(pkg: String, ms: Long): Boolean {
+        val end = System.currentTimeMillis() + ms
+        while (System.currentTimeMillis() < end) {
+            if (rootInActiveWindow?.packageName?.toString() == pkg) return true
+            pause(150)
+        }
+        return false
+    }
+
+    /**
+     * Camino 2 (mantiene tu app de fondo): abre la app de destino, entra en Recientes y toca su icono para sacar el menú
+     * con «Formato libre». La app de destino pasa a ventana libre y tu app anterior queda detrás, sin ir a la pantalla de inicio.
+     */
     private fun viaRecents(pkg: String, label: String, log: StringBuilder): Boolean {
-        log.append("Camino 2 · Recientes: abro la app y toco su icono en Recientes.\n")
+        log.append("Camino Recientes: abro la app y toco su icono en Recientes (tu app anterior queda detrás).\n")
         val launch = packageManager.getLaunchIntentForPackage(pkg) ?: return false
         launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         try { startActivity(launch) } catch (e: Exception) { log.append("No pude abrir la app: ${e.javaClass.simpleName}\n"); return false }
-        pause(1500)
+        if (!waitForeground(pkg, 4000)) log.append("La app tardó en ponerse al frente; sigo igualmente.\n")
+        pause(500)
         performGlobalAction(GLOBAL_ACTION_RECENTS); pause(1300)
-        val icon = findLabel(label)
-        if (icon == null) { log.append("No vi «$label» en Recientes.\n"); performGlobalAction(GLOBAL_ACTION_HOME); return false }
-        clickNode(icon); pause(900)
-        val item = findFreeform()
+        // Puede haber varios elementos con ese nombre (icono y miniatura): se prueba uno por uno hasta que salga el menú
+        var item: AccessibilityNodeInfo? = null
+        val cands = findAllLabel(label)
+        log.append("Elementos «$label» en Recientes: ${cands.size}\n")
+        for (cnd in cands.take(3)) {
+            clickNode(cnd); pause(900)
+            item = findFreeform()
+            if (item != null) break
+            if (findAllLabel(label).isEmpty()) break      // Recientes se cerró (se abrió la app): no seguir tocando
+        }
         if (item == null) { log.append("Recientes no mostró «Formato libre».\n"); performGlobalAction(GLOBAL_ACTION_HOME); return false }
         val ok = clickNode(item)
         pause(500)
@@ -189,11 +218,20 @@ class RyxAccessibility : AccessibilityService() {
         log.append("Textos que ve Ryx ahora: ${if (seen.isEmpty()) "ninguno (¿el launcher oculta su contenido?)" else seen.joinToString(" | ")}\n")
     }
 
-    /** Prueba el camino por la pantalla de inicio y, si falla, el de Recientes. Llamar fuera del hilo principal. */
-    fun launchViaLauncher(pkg: String, label: String, log: StringBuilder): Boolean {
-        if (viaHome(label, log)) return true
-        performGlobalAction(GLOBAL_ACTION_HOME); pause(700)
-        if (viaRecents(pkg, label, log)) return true
+    /**
+     * Prueba primero el camino elegido y, si falla, el otro. Con [keepApp] va primero por Recientes para no sacarte de tu app.
+     * Llamar fuera del hilo principal.
+     */
+    fun launchViaLauncher(pkg: String, label: String, log: StringBuilder, keepApp: Boolean = true): Boolean {
+        if (keepApp) {
+            if (viaRecents(pkg, label, log)) return true
+            performGlobalAction(GLOBAL_ACTION_HOME); pause(700)
+            if (viaHome(label, log)) return true
+        } else {
+            if (viaHome(label, log)) return true
+            performGlobalAction(GLOBAL_ACTION_HOME); pause(700)
+            if (viaRecents(pkg, label, log)) return true
+        }
         dump(log)
         performGlobalAction(GLOBAL_ACTION_HOME)
         return false

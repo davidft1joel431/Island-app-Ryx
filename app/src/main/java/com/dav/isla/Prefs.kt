@@ -226,6 +226,8 @@ object Prefs {
     fun setCloudLast(c: Context, v: Long) = sp(c).edit().putLong("cloud_last", v).apply()
     fun updLast(c: Context): Long = sp(c).getLong("upd_last", 0L)
     fun setUpdLast(c: Context, v: Long) = sp(c).edit().putLong("upd_last", v).apply()
+    fun fwKeepApp(c: Context): Boolean = sp(c).getBoolean("fw_keep_app", true)
+    fun setFwKeepApp(c: Context, v: Boolean) = sp(c).edit().putBoolean("fw_keep_app", v).apply()
     fun a11yAsked(c: Context): Boolean = sp(c).getBoolean("a11y_asked", false)
     fun setA11yAsked(c: Context, v: Boolean) = sp(c).edit().putBoolean("a11y_asked", v).apply()
     fun restoreAsked(c: Context): Boolean = sp(c).getBoolean("restore_asked", false)

@@ -26,8 +26,16 @@ jobs:
       - run: gradle assembleDebug --no-daemon -PbuildNumber=${{ github.run_number }}
       - name: Renombrar APK
         run: cp app/build/outputs/apk/debug/app-debug.apk RyxIsland.apk
+      - name: Versión
+        id: ver
+        run: echo "v=$(grep -oP 'versionName = "\K[^"]+' app/build.gradle.kts)" >> "$GITHUB_OUTPUT"
       - uses: softprops/action-gh-release@v2
         with:
-          tag_name: v${{ github.run_number }}
-          name: Ryx Island v${{ github.run_number }}
+          tag_name: v${{ steps.ver.outputs.v }}
+          name: Ryx Island v${{ steps.ver.outputs.v }}
+          body: |
+            - La ventana flotante usa el «Formato libre» del launcher (servicio de accesibilidad) y ya no te saca de tu app.
+            - Visibilidad: mostrar en pantalla de bloqueo, ocultar en juegos y en apps elegidas.
+            - Copia del historial y ajustes en la nube (Google Drive u otra carpeta).
+            - Búsqueda de actualizaciones en GitHub con aviso de versiones de prueba.
           files: RyxIsland.apk
