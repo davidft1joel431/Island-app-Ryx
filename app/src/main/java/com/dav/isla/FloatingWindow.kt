@@ -84,7 +84,11 @@ object FloatingWindow {
         }
         val b = bounds(c)
         log.append("Ventana pedida: ${b.left},${b.top} → ${b.right},${b.bottom}\n")
-        svc.launchSmartIsland(pkg, pi, b, log)
+        val ok = svc.launchSmartIsland(pkg, pi, b, log)
+        if (ok && Prefs.fwFrame(c)) {
+            FloatFrame.show(c, "", b, pkg, appLabel(c, pkg))
+            log.append("Barra de Ryx: mostrada sobre la ventana (mover, cambiar tamaño y cerrar la barra).\n")
+        }
         log.append("\nSi la ventana salió a pantalla completa, tu ROM no respetó el modo libre pedido por una app normal; " +
             "las medidas de arriba lo confirman.")
         return save(c, log)
@@ -276,6 +280,8 @@ object FloatingWindow {
 
     /** Sin privilegios: vuelve a pedir la ventana libre en otra posición/tamaño (experimental; depende de la ROM). */
     fun reposition(c: Context, pkg: String, r: Rect) {
+        val svc = RyxAccessibility.instance
+        if (Prefs.fwSolo(c) && svc != null) { svc.relaunchBounds(pkg, r); return }
         try {
             val launch = c.packageManager.getLaunchIntentForPackage(pkg) ?: return
             launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)

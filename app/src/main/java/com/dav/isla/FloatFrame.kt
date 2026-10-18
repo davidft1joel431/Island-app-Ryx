@@ -33,6 +33,7 @@ object FloatFrame {
     private var downY = 0f
     private var taskId = ""
     private var pkgName = ""
+    private var title = ""
     private var priv = false
     @Volatile private var generation = 0
     @Volatile private var pending: Rect? = null
@@ -40,30 +41,35 @@ object FloatFrame {
 
     private fun dp(c: Context, v: Int) = (v * c.resources.displayMetrics.density).toInt()
 
-    fun show(c: Context, id: String, bounds: Rect, pkg: String = "") {
+    fun show(c: Context, id: String, bounds: Rect, pkg: String = "", label: String = "") {
         val app = c.applicationContext
         main.post {
             if (!Settings.canDrawOverlays(app)) return@post
             hide()
-            ctx = app; taskId = id; pkgName = pkg; priv = id.isNotEmpty() && Shell.privileged(app); r.set(bounds)
+            ctx = app; taskId = id; pkgName = pkg; title = label; priv = id.isNotEmpty() && Shell.privileged(app); r.set(bounds)
             val w = app.getSystemService(Context.WINDOW_SERVICE) as WindowManager
             wm = w
             val gen = generation
 
-            // Asa superior: arrastrar mueve la ventana; la X quita las asas
+            // Barra de título de Ryx, del ancho de la ventana y pegada encima: arrastrar la mueve; la X quita la barra
             val bar = LinearLayout(app).apply {
                 orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
-                background = GradientDrawable().apply { cornerRadius = dp(app, 14).toFloat(); setColor(0xCC15171C.toInt()) }
-                setPadding(dp(app, 14), dp(app, 2), dp(app, 4), dp(app, 2))
+                background = GradientDrawable().apply {
+                    val rad = dp(app, 14).toFloat(); cornerRadii = floatArrayOf(rad, rad, rad, rad, 0f, 0f, 0f, 0f); setColor(0xE615171C.toInt())
+                }
+                setPadding(dp(app, 14), 0, dp(app, 4), 0)
             }
-            bar.addView(TextView(app).apply { text = "━━━  mover"; setTextColor(Color.WHITE); textSize = 11f })
             bar.addView(TextView(app).apply {
-                text = "✕"; setTextColor(Color.WHITE); textSize = 13f
-                setPadding(dp(app, 10), dp(app, 4), dp(app, 10), dp(app, 4))
+                text = "━━  ${if (title.isNotEmpty()) title else "mover"}"; setTextColor(Color.WHITE); textSize = 12f
+                maxLines = 1; layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+            })
+            bar.addView(TextView(app).apply {
+                text = "✕"; setTextColor(Color.WHITE); textSize = 14f
+                setPadding(dp(app, 12), dp(app, 6), dp(app, 12), dp(app, 6))
                 setOnClickListener { hide() }
             })
-            val hw = dp(app, 130); val hh = dp(app, 30)
-            hp = WindowManager.LayoutParams(hw, hh, WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
+            val hh = dp(app, 32)
+            hp = WindowManager.LayoutParams(r.width(), hh, WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
                 WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL,
                 PixelFormat.TRANSLUCENT).apply { gravity = Gravity.TOP or Gravity.START }
             // Esquina inferior derecha: arrastrar cambia el tamaño
@@ -80,6 +86,7 @@ object FloatFrame {
             place()
             try { w.addView(bar, hp); w.addView(g, gp) } catch (e: Exception) { hide(); return@post }
             if (priv) watchTask(app, id, gen)
+            else if (pkg.isNotEmpty() && RyxAccessibility.instance != null) watchWindow(pkg, gen)
             else main.postDelayed({ if (generation == gen) hide() }, 120_000L)   // sin verificación: se quitan solas a los 2 min
         }
     }
@@ -94,7 +101,7 @@ object FloatFrame {
 
     private fun place() {
         val c = ctx ?: return
-        hp?.let { it.x = r.left + (r.width() - it.width) / 2; it.y = r.top + dp(c, 2) }
+        hp?.let { it.width = r.width(); it.x = r.left; it.y = if (r.top >= it.height) r.top - it.height else r.top }
         gp?.let { it.x = r.right - it.width; it.y = r.bottom - it.height }
         try { handle?.let { wm?.updateViewLayout(it, hp) } } catch (e: Exception) {}
         try { grip?.let { wm?.updateViewLayout(it, gp) } } catch (e: Exception) {}
@@ -144,6 +151,20 @@ object FloatFrame {
                     FloatingWindow.resizeTask(c, id, p)
                 }
             } finally { worker = false }
+        }.start()
+    }
+
+    /** Sin privilegios: mira por accesibilidad si la ventana sigue visible y quita la barra cuando ya no está. */
+    private fun watchWindow(pkg: String, gen: Int) {
+        Thread {
+            var misses = 0
+            try { Thread.sleep(2500) } catch (e: InterruptedException) { return@Thread }
+            while (generation == gen) {
+                val svc = RyxAccessibility.instance ?: break
+                misses = if (svc.windowAlive(pkg)) 0 else misses + 1
+                if (misses >= 3) { main.post { if (generation == gen) hide() }; return@Thread }
+                try { Thread.sleep(2000) } catch (e: InterruptedException) { return@Thread }
+            }
         }.start()
     }
 
