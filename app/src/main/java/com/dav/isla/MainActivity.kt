@@ -875,20 +875,21 @@ class MainActivity : Activity() {
                     Thread { Shell.run(this, FloatingWindow.PREP); Shell.run(this, "svc power reboot") }.start()
                 }.setNegativeButton("Cancelar", null).show())
         }, lp(8))
-        val so = titled(p, "Ventana flotante · solo accesibilidad", "Usa únicamente la función de Smart Island desde el servicio de accesibilidad")
+        val so = titled(p, "Formato libre", "Instantáneo desde accesibilidad · con la barra real del sistema si activas el modo escritorio")
         so.addView(rowWithSwitch("Usar solo este método", "Sin Shizuku, root, Recientes ni el menú del launcher: no te saca de tu app",
             Prefs.fwSolo(this)) { Prefs.setFwSolo(this, it); render() })
-        so.addView(segmented(listOf("Formato libre del sistema", "Directo"), Prefs.fwSoloMode(this), true) { Prefs.setFwSoloMode(this, it); render() }, lp(8))
-        so.addView(label(if (Prefs.fwSoloMode(this) == 0)
+        so.addView(segmented(listOf("Formato libre del sistema (lento)", "Directo (rápido)", "Burbuja (Android 17)"), Prefs.fwSoloMode(this), true) { Prefs.setFwSoloMode(this, it); render() }, lp(8))
+        so.addView(label(if (Prefs.fwSoloMode(this) == 2)
+            "«Burbuja» (Android 17): es la ventana flotante nueva del sistema. Flota SOBRE tu app y se queda ahí aunque cambies de app, con la decoración del sistema y sin pasar por el escritorio. " +
+            "Android no ofrece ninguna API para pedirla, así que la PRIMERA vez Ryx pulsa por ti «Burbuja» en el menú de tu launcher (con la cortina, unos segundos). La burbuja se queda en pantalla: " +
+            "las siguientes veces Ryx solo toca su icono (instantáneo, sin cortina), y también puedes tocarla tú. Hasta 5 burbujas a la vez."
+            else if (Prefs.fwSoloMode(this) == 0)
             "«Formato libre del sistema»: abre la ventana real del sistema, con su barra, iconos y esquinas, pulsando por ti «Formato libre» en tu launcher. " +
             "Ryx pone una captura de tu pantalla como cortina para que no veas el cambio, así que durante unos 2-4 segundos la pantalla se ve congelada: " +
             "no toques nada hasta que aparezca la ventana. Sale con el tamaño del sistema; muévela y cámbiala con su propia barra."
             else "«Directo»: pide la ventana con tu tamaño desde accesibilidad (función de Smart Island). No lleva la barra del sistema, por eso Ryx dibuja la suya.",
             12f, R.color.muted), lp(6))
-        so.addView(label("Ryx lanza la app desde su servicio de accesibilidad con el modo libre (windowingMode 5) y tu tamaño, igual que Smart Island, " +
-            "y en el registro anota las medidas reales de la ventana. Como Android no dibuja la barra del sistema en apps de terceros en el teléfono, " +
-            "Ryx pone su propia barra de título encima (mover, cambiar tamaño). Para la barra del sistema activa «Habilitar funciones de experiencia de escritorio» " +
-            "en Opciones de desarrollador (Android 16 o superior; elige que valga también en el teléfono) y reinicia. Apágalo para volver a los otros métodos de abajo.", 12f, R.color.muted), lp(6))
+        so.addView(label("Ryx lanza la app desde el servicio de accesibilidad con el modo libre (windowingMode 5) y tu tamaño, y anota en el registro las medidas reales de la ventana.", 12f, R.color.muted), lp(6))
         so.addView(label(if (RyxAccessibility.isEnabled(this)) "Servicio de accesibilidad: activo ✔" else
             "Servicio de accesibilidad: apagado. Actívalo para usar este método.", 12f, R.color.text), lp(8))
         so.addView(button(if (RyxAccessibility.isEnabled(this)) "Ajustes de accesibilidad" else "Activar accesibilidad", !RyxAccessibility.isEnabled(this)) {
@@ -897,7 +898,7 @@ class MainActivity : Activity() {
         so.addView(button("Abrir Opciones de desarrollador", false) {
             try { startActivity(Intent(Settings.ACTION_APPLICATION_DEVELOPMENT_SETTINGS)) } catch (e: Exception) { toast("No se pudo abrir") }
         }, lp(8))
-        so.addView(rowWithSwitch("Barra de Ryx sobre la ventana", "Mover, cambiar tamaño y cerrar la barra", Prefs.fwFrame(this)) { Prefs.setFwFrame(this, it) })
+        if (!Prefs.fwDesktop(this)) so.addView(rowWithSwitch("Barra de Ryx sobre la ventana", "Mover, cambiar tamaño y cerrar la barra", Prefs.fwFrame(this)) { Prefs.setFwFrame(this, it) })
         so.addView(button("▶ Probar solo accesibilidad", true) {
             val pkg = Prefs.fwTestPkg(this)
             if (pkg.isEmpty()) { toast("Elige primero una app en «Probar ventana flotante» (abajo)"); return@button }
@@ -905,7 +906,13 @@ class MainActivity : Activity() {
             Thread { val log = FloatingWindow.openSolo(this, pkg); runOnUiThread { render(); dialog("Resultado de la prueba", log) } }.start()
         }, lp(8))
 
-        val ds = titled(p, "Barra del sistema en ventanas libres", "Con root (Magisk) o Shizuku · una sola vez · instantáneo y sin cortina")
+        val ds = so
+        ds.addView(label("Barra del sistema (modo escritorio)", 14f, R.color.text), lp(16))
+        ds.addView(label(if (Prefs.fwDesktop(this))
+            "Modo escritorio: activado ✔. Las ventanas llevan la barra, los iconos y las esquinas reales del sistema, y Ryx no dibuja la suya. " +
+            "Ojo: Android las abre en su propio escritorio (el «Computador» de Recientes), no encima de tu app: al volver a tu app a pantalla completa quedan escondidas allí. Para una ventana que flote sobre tu app usa «Burbuja (Android 17)». " +
+            "La rayita blanca que ves arriba en las apps a pantalla completa es la «manija de app» del modo escritorio: Android la pone en todas las apps y no tiene ajuste propio para quitarla; solo desaparece apagando el modo escritorio con «Quitar y reiniciar»."
+            else "Modo escritorio: apagado. Ryx dibuja su propia barra sobre la ventana.", 12f, R.color.text), lp(6))
         ds.addView(label("Android dibuja la barra de título, los iconos y las esquinas redondeadas solo cuando el modo escritorio está activo, y en el teléfono viene apagado. " +
             "Este botón lo enciende (propiedades del sistema persist.wm.debug.desktop_experience_devopts=1 y desktop_mode_enforce_device_restrictions=false) y reinicia. " +
             "Después, con el método «Directo», las ventanas se abren al instante, con tu tamaño y con la barra real del sistema: sin captura, sin esperas y sin que accesibilidad pulse tu pantalla. " +
@@ -920,6 +927,7 @@ class MainActivity : Activity() {
                         .setPositiveButton("Reiniciar") { _, _ ->
                             Thread {
                                 Shell.runAdmin(FloatingWindow.DESKTOP_ON)
+                                Prefs.setFwDesktop(this, true)
                                 Prefs.setFwSoloMode(this, 1)
                                 Prefs.setFwSolo(this, true)
                                 Shell.runAdmin("svc power reboot")
@@ -936,7 +944,7 @@ class MainActivity : Activity() {
                     glass(AlertDialog.Builder(this).setTitle("Quitar y reiniciar")
                         .setMessage("Se devuelve el modo escritorio a su valor normal y el teléfono se reinicia ahora.")
                         .setPositiveButton("Reiniciar") { _, _ ->
-                            Thread { Shell.runAdmin(FloatingWindow.DESKTOP_OFF); Shell.runAdmin("svc power reboot") }.start()
+                            Thread { Shell.runAdmin(FloatingWindow.DESKTOP_OFF); Prefs.setFwDesktop(this, false); Shell.runAdmin("svc power reboot") }.start()
                         }.setNegativeButton("Cancelar", null).show())
                 }
             }.start()

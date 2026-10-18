@@ -43,6 +43,8 @@ class RyxAccessibility : AccessibilityService() {
 
         private val FREEFORM = Regex("formato libre|forma libre|ventana libre|free-?form", RegexOption.IGNORE_CASE)
         /** Nombres alternativos que algunas ROM (Android 16/17) usan en el menú de Recientes. */
+        /** Opción «Burbuja» del menú del launcher (Android 17). */
+        private val BUBBLE = Regex("burbuja|bubble", RegexOption.IGNORE_CASE)
         private val FREEFORM_ALT = Regex("escritorio|desktop|flotante|floating|pop-?up", RegexOption.IGNORE_CASE)
     }
 
@@ -305,24 +307,66 @@ class RyxAccessibility : AccessibilityService() {
     }
 
     /**
+     * Burbuja ya creada: se toca su icono (instantáneo, sin cortina ni menús). Las burbujas de Android 17 se quedan en pantalla,
+     * así que después de crearla una vez, abrirla es un solo toque. Solo se aceptan vistas que sean de burbuja (clase del sistema)
+     * y cuyo texto/descripción contenga el nombre de la app, para no tocar una notificación por error.
+     */
+    fun tapExistingBubble(label: String, log: StringBuilder): Boolean {
+        val ws = try { windows } catch (e: Exception) { null } ?: return false
+        for (w in ws) {
+            val root = try { w.root } catch (e: Exception) { null } ?: continue
+            val pk = root.packageName?.toString() ?: continue
+            if (pk == packageName) continue
+            val stack = ArrayDeque<AccessibilityNodeInfo>(); stack.add(root); var g = 0
+            while (stack.isNotEmpty() && g++ < 400) {
+                val n = stack.removeLast()
+                val cls = n.className?.toString() ?: ""
+                if (n.isVisibleToUser && (cls.contains("Bubble", true) || cls.contains("BadgedImageView", true))) {
+                    val t = nodeText(n)
+                    if (t.contains(label, true) && t.length < 120) {
+                        val ok = tapExact(n)
+                        log.append(if (ok) "Toqué la burbuja existente de «$label» (${cls.substringAfterLast('.')}).\n" else "No pude tocar la burbuja de «$label».\n")
+                        if (ok) return true
+                    }
+                }
+                for (i in 0 until n.childCount) n.getChild(i)?.let { stack.add(it) }
+            }
+        }
+        return false
+    }
+
+    /**
      * «Formato libre» REAL del sistema, sin que veas el salto: cortina → camino del launcher → (si hace falta) devuelve tu app al fondo
      * → quita la cortina cuando la ventana ya está abierta. Llamar fuera del hilo principal.
      */
-    fun launchSystemFreeform(pkg: String, label: String, keepApp: Boolean, log: StringBuilder): Boolean {
+    fun launchSystemFreeform(pkg: String, label: String, keepApp: Boolean, log: StringBuilder, bubble: Boolean = false): Boolean {
         val t0 = System.currentTimeMillis()
+        if (bubble && tapExistingBubble(label, log)) { log.append("Abierta en ${System.currentTimeMillis() - t0} ms.\n"); return true }
         val prev = currentPackage()
         val covered = showCurtain(log)
         log.append("Captura y cortina: ${System.currentTimeMillis() - t0} ms\n")
+        wantBubble = bubble
         try {
             val ok = launchViaLauncher(pkg, label, log, keepApp)
             log.append("Camino del launcher: ${System.currentTimeMillis() - t0} ms en total\n")
             if (!ok) return false
-            waitUntil(2000, 60) { windowBounds(pkg) != null }
+            // La burbuja vive en una pantalla virtual del sistema: no sale en la lista de ventanas, así que solo se espera un instante
+            if (bubble) pause(700) else waitUntil(2000, 60) { windowBounds(pkg) != null }
             val skip = setOf(packageName, pkg, homePackage(), "com.android.systemui")
-            if (keepApp && prev != null && prev !in skip) keepBehind(prev, pkg, log)
-            log.append("Ventana del sistema abierta en ${System.currentTimeMillis() - t0} ms. ${describeWindows(pkg)}\n")
+            if (keepApp && prev != null && prev !in skip) {
+                if (bubble) {      // la burbuja se queda flotando encima: basta con devolver tu app
+                    try {
+                        val a = packageManager.getLaunchIntentForPackage(prev)
+                        if (a != null) { a.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK); startActivity(a); waitForeground(prev, 900) }
+                        log.append("Devolví «$prev» al frente; la burbuja queda encima.\n")
+                    } catch (e: Exception) { log.append("No pude devolver tu app: ${e.javaClass.simpleName}\n") }
+                } else keepBehind(prev, pkg, log)
+            }
+            log.append(if (bubble) "Burbuja creada en ${System.currentTimeMillis() - t0} ms.\n"
+                       else "Ventana del sistema abierta en ${System.currentTimeMillis() - t0} ms. ${describeWindows(pkg)}\n")
             return true
         } finally {
+            wantBubble = false
             if (covered) hideCurtain()
         }
     }
@@ -353,8 +397,11 @@ class RyxAccessibility : AccessibilityService() {
         return null
     }
 
+    /** Qué opción del menú del launcher se busca: «Formato libre» o «Burbuja». */
+    @Volatile var wantBubble = false
+
     private fun findFreeform(extended: Boolean = false): AccessibilityNodeInfo? {
-        val rx = FREEFORM
+        val rx = if (wantBubble) BUBBLE else FREEFORM
         for (r in roots()) {
             val stack = ArrayDeque<AccessibilityNodeInfo>()
             stack.add(r)
