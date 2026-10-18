@@ -137,11 +137,11 @@ object FloatingWindow {
                     log.append("Error: ${e.javaClass.simpleName} ${e.message ?: ""}\n"); false }
                 if (ok) {
                     if (pi != null) {
-                        Thread.sleep(900)
+                        Thread.sleep(500)
                         log.append(if (sendPending(c, pi, true, null)) "Abrí el destino exacto de la notificación (el chat).\n"
                                    else "No pude abrir el destino exacto de la notificación.\n")
                     }
-                    if (Prefs.fwKeepApp(c)) try { svc.keepBehind(prev, pkg, log) } catch (e: Throwable) {}
+                    if (Prefs.fwKeepApp(c) && svc.launchedFirst) try { svc.keepBehind(prev, pkg, log) } catch (e: Throwable) {}
                     log.append("\nLa ventana la abre el sistema desde el menú de tu launcher, con su barra y su tamaño habitual.\n")
                     return save(c, log)
                 }
