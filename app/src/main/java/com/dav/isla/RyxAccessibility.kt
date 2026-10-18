@@ -25,9 +25,10 @@ import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 
 /**
- * Servicio de accesibilidad de Ryx. No lee nada por su cuenta: solo cuando abres una ventana flotante,
- * hace por ti lo que harías con el dedo en tu launcher (mantener pulsado el icono y tocar «Formato libre»),
- * para que sea el propio sistema quien abra la ventana, con su barra para mover y cambiar el tamaño.
+ * Servicio de accesibilidad de Ryx. Solo hace dos cosas, las dos cuando tú abres una app desde la isla:
+ *  - FORMATO LIBRE: lanza la app en ventana libre con las opciones oficiales de Android (sin salir de tu app).
+ *  - BURBUJA (Android 17): toca la burbuja si ya existe y, si no, pulsa «Burbuja» en el menú del launcher (solo la primera vez).
+ * No lee ni guarda nada por su cuenta.
  */
 class RyxAccessibility : AccessibilityService() {
 
@@ -41,46 +42,22 @@ class RyxAccessibility : AccessibilityService() {
             return v.split(':').any { it.equals(cn.flattenToString(), true) || it.equals(cn.flattenToShortString(), true) }
         }
 
-        private val FREEFORM = Regex("formato libre|forma libre|ventana libre|free-?form", RegexOption.IGNORE_CASE)
-        /** Nombres alternativos que algunas ROM (Android 16/17) usan en el menú de Recientes. */
         /** Opción «Burbuja» del menú del launcher (Android 17). */
         private val BUBBLE = Regex("burbuja|bubble", RegexOption.IGNORE_CASE)
-        private val FREEFORM_ALT = Regex("escritorio|desktop|flotante|floating|pop-?up", RegexOption.IGNORE_CASE)
     }
 
     override fun onServiceConnected() { instance = this }
-    override fun onUnbind(intent: Intent?): Boolean { instance = null; return super.onUnbind(intent) }
+    override fun onUnbind(intent: Intent?): Boolean { hideCurtain(); instance = null; return super.onUnbind(intent) }
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {}
     override fun onInterrupt() {}
 
     /** Paquete de la app que está al frente ahora (la ventana activa). */
     fun currentPackage(): String? = try { rootInActiveWindow?.packageName?.toString() } catch (e: Exception) { null }
 
-    /**
-     * Tras abrir la ventana libre: devuelve al frente la app en la que estabas y luego sube la ventana libre,
-     * para que quede flotando encima de tu app y no encima del inicio.
-     */
-    fun keepBehind(prev: String?, target: String, log: StringBuilder) {
-        val skip = setOf(packageName, target, homePackage(), "com.android.systemui")
-        if (prev == null || prev in skip) return
-        val a = packageManager.getLaunchIntentForPackage(prev) ?: return
-        a.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        val t = packageManager.getLaunchIntentForPackage(target) ?: return
-        t.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        try {
-            startActivity(a); waitForeground(prev, 700)         // tu app vuelve al frente (sin pausa fija)
-            startActivity(t)                                     // la ventana libre se sube encima
-            waitUntil(800, 60) { windowBounds(target) != null && currentPackage() == target }
-            log.append("Devolví «$prev» al fondo y subí la ventana libre encima.\n")
-        } catch (e: Exception) { log.append("No pude devolver tu app al fondo: ${e.javaClass.simpleName}\n") }
-    }
-
     // ─────────────────────────────────────────────────────────────────────────────────────────────
-    // Apertura directa en ventana libre, sin tocar tu pantalla ni salir de tu app.
-    // El servicio de accesibilidad es quien lanza (tiene ventana propia y exención de segundo plano) y
-    // pide el modo libre con ActivityOptions + la clave «android.activity.windowingMode» = 5.
-    // Como Android no avisa si la ROM lo respetó, se comprueba con las ventanas que ve accesibilidad
-    // y se prueban variantes; la que funciona se recuerda para las siguientes aperturas.
+    // FORMATO LIBRE DIRECTO: lo lanza este servicio (tiene ventana propia y exención de segundo plano) pidiendo el modo libre
+    // con ActivityOptions + la clave «android.activity.windowingMode» = 5. Android no avisa si la ROM lo respetó, así que
+    // se comprueba con las ventanas que ve accesibilidad y se prueban variantes; la que funciona se recuerda.
     // ─────────────────────────────────────────────────────────────────────────────────────────────
 
     private val VARIANTS = listOf("estándar (clave windowingMode)", "con pantalla 0", "sin ventana nueva", "método interno")
@@ -123,33 +100,34 @@ class RyxAccessibility : AccessibilityService() {
     }
 
     /**
-     * Método EXACTO de Smart Island, sin variantes, sin comprobaciones y sin caminos alternativos:
-     * ActivityOptions.makeBasic() + límites + clave «android.activity.windowingMode» = 5, lanzado desde este servicio de accesibilidad
-     * con NEW_TASK | MULTIPLE_TASK (con el PendingIntent de la notificación si lo hay). Llamar fuera del hilo principal.
+     * Formato libre DIRECTO (función de Smart Island), sin salir de tu app ni pasar por el launcher:
+     *  1) desbloquea las apps no redimensionables (force_resizable_activities) si hace falta,
+     *  2) lanza desde este servicio con ActivityOptions + límites + «android.activity.windowingMode» = 5 (NEW_TASK | MULTIPLE_TASK),
+     *  3) comprueba con las ventanas de accesibilidad si quedó flotante y, si el sistema la abrió a pantalla completa,
+     *     prueba las variantes de lanzamiento (la que funciona se recuerda para las siguientes aperturas).
+     * Con la variante recordada la apertura es de un solo intento y tarda lo que tarda el sistema (unos cientos de ms).
+     * Llamar fuera del hilo principal.
      */
     fun launchSmartIsland(pkg: String, pi: PendingIntent?, b: Rect, log: StringBuilder): Boolean {
+        val t0 = System.currentTimeMillis()
+        try { FreeformUnlock.ensure(this, log) } catch (e: Throwable) { log.append("Desbloqueo: ${e.javaClass.simpleName}\n") }
         return try {
-            val options = ActivityOptions.makeBasic()
-            try { options.setLaunchBounds(b) } catch (e: Throwable) { log.append("Límites: ${e.javaClass.simpleName}\n") }
-            if (Build.VERSION.SDK_INT >= 34) try {
-                options.setPendingIntentBackgroundActivityStartMode(ActivityOptions.MODE_BACKGROUND_ACTIVITY_START_ALLOWED)
-            } catch (e: Throwable) {}
-            val bundle = options.toBundle() ?: android.os.Bundle()
-            bundle.putInt("android.activity.windowingMode", 5)
-            val flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_MULTIPLE_TASK
-            if (pi != null) {
-                pi.send(this, 0, Intent().addFlags(flags), null, null, null, bundle)
-                log.append("Lanzado con el destino exacto de la notificación.\n")
+            val m = resources.displayMetrics
+            // Si pides una ventana casi del tamaño de la pantalla no se puede distinguir de «pantalla completa»: un solo intento
+            val almostFull = b.width() >= m.widthPixels * 0.97f && b.height() >= m.heightPixels * 0.88f
+            val launch = packageManager.getLaunchIntentForPackage(pkg)
+            if (launch == null && pi == null) { log.append("No se encontró la actividad principal.\n"); return false }
+            val ok = if (almostFull) {
+                val v = Prefs.fwVariant(this).let { if (it in VARIANTS.indices) it else 0 }
+                log.append("Ventana casi a pantalla completa: un solo intento (variante ${v + 1}).\n")
+                fire(v, Intent(launch ?: Intent()), pi, b)
+            } else if (launch != null) {
+                launchFreeformDirect(pkg, pi, b, log)
             } else {
-                val launch = packageManager.getLaunchIntentForPackage(pkg)
-                if (launch == null) { log.append("No se encontró la actividad principal.\n"); return false }
-                launch.addFlags(flags)
-                startActivity(launch, bundle)
-                log.append("Lanzado desde el servicio de accesibilidad con windowingMode=5.\n")
+                fire(Prefs.fwVariant(this).let { if (it in VARIANTS.indices) it else 0 }, Intent(), pi, b)
             }
-            pause(1200)
-            log.append(describeWindows(pkg)).append("\n")
-            true
+            log.append("Tiempo total: ${System.currentTimeMillis() - t0} ms. ${describeWindows(pkg)}\n")
+            ok
         } catch (e: Throwable) {
             log.append("Error al lanzar: ${e.javaClass.simpleName} ${e.message ?: ""}\n"); false
         }
@@ -202,13 +180,19 @@ class RyxAccessibility : AccessibilityService() {
         return if (found) false else null
     }
 
+    /** Espera a ver si la ventana quedó flotante. Sale en cuanto lo sabe: flotante → ya; pantalla completa estable 450 ms → ya. */
     private fun waitFloating(pkg: String, ms: Long): Boolean? {
         val end = System.currentTimeMillis() + ms
         var last: Boolean? = null
+        var falseSince = 0L
         while (System.currentTimeMillis() < end) {
             last = floatingState(pkg)
+            val now = System.currentTimeMillis()
             if (last == true) return true
-            pause(150)
+            if (last == false) {
+                if (falseSince == 0L) falseSince = now else if (now - falseSince > 450) return false
+            } else falseSince = 0L
+            pause(70)
         }
         return last
     }
@@ -221,7 +205,7 @@ class RyxAccessibility : AccessibilityService() {
         for (v in order) {
             val sent = fire(v, Intent(launch), pi, b)
             if (!sent) { log.append("Variante ${v + 1} · ${VARIANTS[v]}: no se pudo lanzar.\n"); continue }
-            when (waitFloating(pkg, 1800)) {
+            when (waitFloating(pkg, 1500)) {
                 true -> { log.append("Variante ${v + 1} · ${VARIANTS[v]}: ventana libre verificada. ${describeWindows(pkg)}\n"); Prefs.setFwVariant(this, v); return true }
                 null -> { log.append("Variante ${v + 1} · ${VARIANTS[v]}: lanzada (no pude verificar si es libre; mira la pantalla).\n"); return true }
                 false -> {
@@ -335,38 +319,34 @@ class RyxAccessibility : AccessibilityService() {
         return false
     }
 
-    /**
-     * «Formato libre» REAL del sistema, sin que veas el salto: cortina → camino del launcher → (si hace falta) devuelve tu app al fondo
-     * → quita la cortina cuando la ventana ya está abierta. Llamar fuera del hilo principal.
-     */
-    fun launchSystemFreeform(pkg: String, label: String, keepApp: Boolean, log: StringBuilder, bubble: Boolean = false): Boolean {
+    // ─────────────────────────────────────────────────────────────────────────────────────────────
+    // BURBUJA (Android 17). Android no ofrece ninguna API para crearla: solo el launcher del sistema puede (menú «Burbuja»
+    // al mantener pulsado un icono). Por eso: 1) si la burbuja ya existe se toca su icono (instantáneo, sin salir de tu app);
+    // 2) si no, se hace UNA vez por el menú del launcher, tapado con una captura, y se devuelve tu app al frente.
+    // ─────────────────────────────────────────────────────────────────────────────────────────────
+
+    /** Llamar fuera del hilo principal. Devuelve true si la burbuja quedó abierta o creada. */
+    fun launchBubble(pkg: String, label: String, keepApp: Boolean, log: StringBuilder): Boolean {
         val t0 = System.currentTimeMillis()
-        if (bubble && tapExistingBubble(label, log)) { log.append("Abierta en ${System.currentTimeMillis() - t0} ms.\n"); return true }
+        if (tapExistingBubble(label, log)) { log.append("Abierta en ${System.currentTimeMillis() - t0} ms.\n"); return true }
         val prev = currentPackage()
         val covered = showCurtain(log)
-        log.append("Captura y cortina: ${System.currentTimeMillis() - t0} ms\n")
-        wantBubble = bubble
         try {
-            val ok = launchViaLauncher(pkg, label, log, keepApp)
-            log.append("Camino del launcher: ${System.currentTimeMillis() - t0} ms en total\n")
-            if (!ok) return false
-            // La burbuja vive en una pantalla virtual del sistema: no sale en la lista de ventanas, así que solo se espera un instante
-            if (bubble) pause(700) else waitUntil(2000, 60) { windowBounds(pkg) != null }
-            val skip = setOf(packageName, pkg, homePackage(), "com.android.systemui")
+            val ok = viaHome(label, log)
+            log.append("Menú del launcher: ${System.currentTimeMillis() - t0} ms en total.\n")
+            if (!ok) { dump(log); performGlobalAction(GLOBAL_ACTION_HOME); return false }
+            pause(400)      // un instante para que el sistema cree la burbuja antes de volver a tu app
+            val skip = setOf(pkg, homePackage(), "com.android.systemui")
             if (keepApp && prev != null && prev !in skip) {
-                if (bubble) {      // la burbuja se queda flotando encima: basta con devolver tu app
-                    try {
-                        val a = packageManager.getLaunchIntentForPackage(prev)
-                        if (a != null) { a.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK); startActivity(a); waitForeground(prev, 900) }
-                        log.append("Devolví «$prev» al frente; la burbuja queda encima.\n")
-                    } catch (e: Exception) { log.append("No pude devolver tu app: ${e.javaClass.simpleName}\n") }
-                } else keepBehind(prev, pkg, log)
+                try {
+                    val a = packageManager.getLaunchIntentForPackage(prev)
+                    if (a != null) { a.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK); startActivity(a); waitForeground(prev, 900) }
+                    log.append("Devolví «$prev» al frente; la burbuja queda encima.\n")
+                } catch (e: Exception) { log.append("No pude devolver tu app: ${e.javaClass.simpleName}\n") }
             }
-            log.append(if (bubble) "Burbuja creada en ${System.currentTimeMillis() - t0} ms.\n"
-                       else "Ventana del sistema abierta en ${System.currentTimeMillis() - t0} ms. ${describeWindows(pkg)}\n")
+            log.append("Burbuja creada en ${System.currentTimeMillis() - t0} ms.\n")
             return true
         } finally {
-            wantBubble = false
             if (covered) hideCurtain()
         }
     }
@@ -397,23 +377,25 @@ class RyxAccessibility : AccessibilityService() {
         return null
     }
 
-    /** Qué opción del menú del launcher se busca: «Formato libre» o «Burbuja». */
-    @Volatile var wantBubble = false
-
-    private fun findFreeform(extended: Boolean = false): AccessibilityNodeInfo? {
-        val rx = if (wantBubble) BUBBLE else FREEFORM
+    /** La opción «Burbuja» del menú del launcher, si está visible. */
+    private fun findBubbleItem(): AccessibilityNodeInfo? {
         for (r in roots()) {
             val stack = ArrayDeque<AccessibilityNodeInfo>()
             stack.add(r)
             var guard = 0
             while (stack.isNotEmpty() && guard++ < 800) {
                 val n = stack.removeLast()
-                val t = nodeText(n)
-                if (n.isVisibleToUser && (rx.containsMatchIn(t) || (extended && t.length < 40 && FREEFORM_ALT.containsMatchIn(t)))) return n
+                if (n.isVisibleToUser && BUBBLE.containsMatchIn(nodeText(n))) return n
                 for (i in 0 until n.childCount) n.getChild(i)?.let { stack.add(it) }
             }
         }
         return null
+    }
+
+    private fun waitBubbleItem(ms: Long): AccessibilityNodeInfo? {
+        var r: AccessibilityNodeInfo? = null
+        waitUntil(ms, 60) { r = findBubbleItem(); r != null }
+        return r
     }
 
     private fun gesture(p: Path, dur: Long): Boolean {
@@ -454,23 +436,43 @@ class RyxAccessibility : AccessibilityService() {
         return gesture(pointOf(n), 60)
     }
 
+    /** Toca el nodo en sí (sin subir a un padre clicable). */
+    private fun tapExact(n: AccessibilityNodeInfo): Boolean =
+        (n.isClickable && n.performAction(AccessibilityNodeInfo.ACTION_CLICK)) || gesture(pointOf(n), 50)
+
+    /** Espera a que la app indicada esté al frente (hasta [ms] milisegundos). */
+    private fun waitForeground(pkg: String, ms: Long): Boolean {
+        val end = System.currentTimeMillis() + ms
+        while (System.currentTimeMillis() < end) {
+            if (rootInActiveWindow?.packageName?.toString() == pkg) return true
+            pause(80)
+        }
+        return false
+    }
+
+    private fun waitUntil(ms: Long, step: Long = 100, cond: () -> Boolean): Boolean {
+        val end = System.currentTimeMillis() + ms
+        while (System.currentTimeMillis() < end) { if (cond()) return true; pause(step) }
+        return cond()
+    }
+
     /**
-     * Va al inicio, busca el icono de la app (en la pantalla o en el cajón), lo mantiene pulsado y toca «Formato libre».
+     * Va al inicio, busca el icono de la app (en la pantalla o en el cajón), lo mantiene pulsado y toca «Burbuja».
      * Bloquea el hilo: llamar fuera del hilo principal. Devuelve true si llegó a pulsar la opción.
      */
     private fun viaHome(label: String, log: StringBuilder): Boolean {
-        log.append("Camino 1 · pantalla de inicio. Launcher: ${homePackage() ?: "?"} · busco el icono de «$label»\n")
+        log.append("Launcher: ${homePackage() ?: "?"} · busco el icono de «$label»\n")
         performGlobalAction(GLOBAL_ACTION_HOME)
         var icon: AccessibilityNodeInfo? = null
-        waitUntil(1400, 70) { icon = findLabel(label); icon != null }       // sondeo: sigue en cuanto aparece el icono
+        waitUntil(1400, 60) { icon = findLabel(label); icon != null }       // sondeo: sigue en cuanto aparece el icono
         if (icon == null) {
             log.append("No está en la pantalla de inicio; abro el cajón de apps.\n")
             swipeUp(0.88f, 0.35f)
-            waitUntil(900, 70) { icon = findLabel(label); icon != null }
+            waitUntil(900, 60) { icon = findLabel(label); icon != null }
             var tries = 0
             while (icon == null && tries < 12) {
                 swipeUp(0.78f, 0.28f)
-                waitUntil(450, 70) { icon = findLabel(label); icon != null }
+                waitUntil(450, 60) { icon = findLabel(label); icon != null }
                 tries++
             }
         }
@@ -485,197 +487,19 @@ class RyxAccessibility : AccessibilityService() {
             if (cur.isLongClickable) done = cur.performAction(AccessibilityNodeInfo.ACTION_LONG_CLICK)
             cur = cur.parent; k++
         }
-        var item = waitFreeform(1200, false)
+        var item = waitBubbleItem(800)
         if (item == null) {
             log.append("El menú no salió; pruebo con un gesto de mantener pulsado.\n")
-            gesture(pointOf(ic), 650)
-            item = waitFreeform(1200, false)
+            gesture(pointOf(ic), 600)
+            item = waitBubbleItem(1000)
         }
         if (item == null) {
-            log.append("No apareció «Formato libre» en el menú del launcher.\n")
+            log.append("No apareció «Burbuja» en el menú del launcher (¿tu launcher no la trae?).\n")
             performGlobalAction(GLOBAL_ACTION_BACK); return false
         }
         val ok = clickNode(item)
         log.append(if (ok) "Pulsé «${nodeText(item)}» en el menú del launcher.\n" else "No pude pulsar la opción del menú.\n")
         return ok
-    }
-
-    private fun findAllLabel(label: String): List<AccessibilityNodeInfo> {
-        val out = ArrayList<AccessibilityNodeInfo>()
-        for (r in roots()) {
-            val list = try { r.findAccessibilityNodeInfosByText(label) } catch (e: Exception) { null } ?: continue
-            list.filter { n -> n.isVisibleToUser && nodeText(n).startsWith(label, true) }.forEach { out.add(it) }
-        }
-        return out
-    }
-
-    /** Espera a que la app indicada esté al frente (hasta [ms] milisegundos). */
-    private fun waitForeground(pkg: String, ms: Long): Boolean {
-        val end = System.currentTimeMillis() + ms
-        while (System.currentTimeMillis() < end) {
-            if (rootInActiveWindow?.packageName?.toString() == pkg) return true
-            pause(150)
-        }
-        return false
-    }
-
-    /** true si en el último intento hubo que abrir la app a pantalla completa antes (entonces tu app anterior hay que restaurarla). */
-    @Volatile var launchedFirst = false
-
-    private fun waitUntil(ms: Long, step: Long = 100, cond: () -> Boolean): Boolean {
-        val end = System.currentTimeMillis() + ms
-        while (System.currentTimeMillis() < end) { if (cond()) return true; pause(step) }
-        return cond()
-    }
-
-    private fun waitFreeform(ms: Long, extended: Boolean = true): AccessibilityNodeInfo? {
-        var r: AccessibilityNodeInfo? = null
-        waitUntil(ms) { r = findFreeform(extended); r != null }
-        return r
-    }
-
-    /** ¿Seguimos en Recientes (launcher o SystemUI al frente)? */
-    private fun inRecents(): Boolean {
-        val p = try { rootInActiveWindow?.packageName?.toString() } catch (e: Exception) { null }
-        return p != null && (p == homePackage() || p == "com.android.systemui")
-    }
-
-    private fun area(n: AccessibilityNodeInfo): Int { val r = Rect(); n.getBoundsInScreen(r); return r.width() * r.height() }
-
-    /** Elementos de Recientes con el nombre de la app, del más pequeño (el icono) al más grande (la tarjeta). */
-    private fun recentsCandidates(label: String): List<AccessibilityNodeInfo> {
-        val seen = HashSet<String>()
-        return findAllLabel(label).filter { n -> val r = Rect(); n.getBoundsInScreen(r); seen.add(r.flattenToString()) }
-            .sortedBy { area(it) }
-    }
-
-    /** Toca el nodo en sí (sin subir a un padre clicable, que sería la tarjeta y abriría la app). */
-    private fun tapExact(n: AccessibilityNodeInfo): Boolean =
-        (n.isClickable && n.performAction(AccessibilityNodeInfo.ACTION_CLICK)) || gesture(pointOf(n), 50)
-
-    /** Pequeños elementos (iconos) dentro o junto a una tarjeta de Recientes, de arriba a abajo y de izquierda a derecha. */
-    private fun iconGuesses(card: AccessibilityNodeInfo): List<AccessibilityNodeInfo> {
-        val m = resources.displayMetrics
-        val limit = (m.widthPixels * m.heightPixels * 0.04).toInt()
-        val out = ArrayList<AccessibilityNodeInfo>()
-        val cr = Rect(); card.getBoundsInScreen(cr)
-        // Solo lo que cae dentro de ESTA tarjeta o justo encima (cabecera con el icono): nunca iconos de otras apps
-        val zone = Rect(cr.left, cr.top - (m.heightPixels * 0.12f).toInt(), cr.right, cr.bottom)
-        val scopes = listOfNotNull(card.parent ?: card)
-        val seen = HashSet<String>()
-        for (sc in scopes) {
-            val stack = ArrayDeque<AccessibilityNodeInfo>(); stack.add(sc); var g = 0
-            while (stack.isNotEmpty() && g++ < 300) {
-                val n = stack.removeLast()
-                val r = Rect(); n.getBoundsInScreen(r)
-                if (n.isVisibleToUser && r.width() > 20 && r.height() > 20 && r.width() * r.height() < limit &&
-                    zone.contains(r.centerX(), r.centerY()) && seen.add(r.flattenToString())) out.add(n)
-                for (i in 0 until n.childCount) n.getChild(i)?.let { stack.add(it) }
-            }
-        }
-        return out.sortedWith(compareBy({ val r = Rect(); it.getBoundsInScreen(r); r.top }, { val r = Rect(); it.getBoundsInScreen(r); r.left })).take(4)
-    }
-
-    /** Árbol visible del launcher, para el registro cuando falla (clase · texto · clicable · posición). */
-    private fun treeDump(log: StringBuilder) {
-        val lines = ArrayList<String>()
-        for (r in roots()) {
-            val stack = ArrayDeque<AccessibilityNodeInfo>(); stack.add(r); var g = 0
-            while (stack.isNotEmpty() && g++ < 400 && lines.size < 40) {
-                val n = stack.removeLast()
-                if (n.isVisibleToUser) {
-                    val b = Rect(); n.getBoundsInScreen(b)
-                    val t = nodeText(n)
-                    if (t.isNotEmpty() || n.isClickable)
-                        lines.add("${n.className?.toString()?.substringAfterLast('.') ?: "?"}|${t.take(24)}|${if (n.isClickable) "clic" else "-"}|${b.left},${b.top},${b.right},${b.bottom}")
-                }
-                for (i in 0 until n.childCount) n.getChild(i)?.let { stack.add(it) }
-            }
-        }
-        log.append("Árbol de Recientes: ${lines.joinToString(" ; ")}\n")
-    }
-
-    /** Cierra el menú/Recientes sin sacarte de tu app si ya estás en ella. */
-    private fun closeRecents() {
-        var k = 0
-        while (inRecents() && k++ < 3) { performGlobalAction(GLOBAL_ACTION_BACK); pause(250) }
-    }
-
-    /**
-     * Camino Recientes (mantiene tu app de fondo y NO pasa por la pantalla de inicio):
-     * abre Recientes directamente desde la app en la que estás; si la app destino ya está ahí, toca su icono y «Formato libre».
-     * Solo si no está en Recientes la abre antes. Rápido: espera por sondeo, no con pausas fijas.
-     */
-    private fun viaRecents(pkg: String, label: String, log: StringBuilder): Boolean {
-        launchedFirst = false
-        log.append("Camino Recientes: abro Recientes desde tu app (sin ir al inicio).\n")
-        var opened = false
-        for (round in 0..1) {
-            if (!inRecents()) { performGlobalAction(GLOBAL_ACTION_RECENTS) }
-            waitUntil(1600) { inRecents() }
-            // El carrusel puede tener la app más a un lado: se busca con hasta 3 deslizamientos
-            var cands = recentsCandidates(label)
-            var sw = 0
-            while (cands.isEmpty() && sw < 3) {
-                val m = resources.displayMetrics
-                gesture(Path().apply { moveTo(m.widthPixels * 0.2f, m.heightPixels * 0.5f); lineTo(m.widthPixels * 0.85f, m.heightPixels * 0.5f) }, 250)
-                pause(350); cands = recentsCandidates(label); sw++
-            }
-            if (cands.isNotEmpty()) { opened = true; break }
-            if (round == 0) {
-                log.append("«$label» no está en Recientes; la abro primero.\n")
-                closeRecents()
-                val launch = packageManager.getLaunchIntentForPackage(pkg) ?: return false
-                launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                try { startActivity(launch) } catch (e: Exception) { log.append("No pude abrir la app: ${e.javaClass.simpleName}\n"); return false }
-                launchedFirst = true
-                if (!waitForeground(pkg, 4000)) log.append("La app tardó en ponerse al frente; sigo igualmente.\n")
-                pause(350)
-                performGlobalAction(GLOBAL_ACTION_RECENTS)
-                waitUntil(1600) { inRecents() }
-            }
-        }
-        if (!opened) { log.append("No encontré «$label» en Recientes.\n"); closeRecents(); return false }
-
-        // Se tocan primero los iconos pequeños de la tarjeta; la tarjeta grande abriría la app.
-        val screenArea = resources.displayMetrics.let { it.widthPixels * it.heightPixels }
-        var taps = 0
-        var queue: List<AccessibilityNodeInfo> = emptyList()
-        var qi = 0
-        while (taps < 5) {
-            if (!inRecents()) {      // Recientes se cerró (se abrió la app): se reabre
-                performGlobalAction(GLOBAL_ACTION_RECENTS); waitUntil(1500) { inRecents() }
-                queue = emptyList(); qi = 0
-            }
-            if (qi >= queue.size) {
-                val cands = recentsCandidates(label)
-                if (taps == 0) log.append("Elementos «$label» en Recientes: ${cands.size}\n")
-                if (cands.isEmpty()) break
-                val first = cands.first()
-                queue = if (area(first) > screenArea * 0.04) iconGuesses(first) + cands else cands
-                if (taps == 0) log.append("Candidatos a icono: ${queue.size}\n")
-                qi = 0
-                if (queue.isEmpty()) break
-            }
-            val target = queue[qi++]
-            tapExact(target)
-            taps++
-            var item = waitFreeform(1100)
-            if (item == null) {      // algunos launchers sacan el menú con mantener pulsado
-                var cur: AccessibilityNodeInfo? = target; var k = 0
-                while (cur != null && k < 3) { if (cur.isLongClickable && cur.performAction(AccessibilityNodeInfo.ACTION_LONG_CLICK)) break; cur = cur.parent; k++ }
-                item = waitFreeform(800)
-            }
-            if (item != null) {
-                val ok = clickNode(item)
-                log.append(if (ok) "Pulsé «${nodeText(item)}» en Recientes.\n" else "No pude pulsar la opción en Recientes.\n")
-                return ok
-            }
-            if (inRecents()) { treeDump(log); performGlobalAction(GLOBAL_ACTION_BACK); pause(250) }   // cierra un menú sin la opción
-        }
-        log.append("Recientes no mostró «Formato libre».\n")
-        closeRecents()
-        return false
     }
 
     /** Textos visibles de otras apps, para el registro cuando algo falla (así se ve qué ve Ryx en tu launcher). */
@@ -692,28 +516,5 @@ class RyxAccessibility : AccessibilityService() {
             }
         }
         log.append("Textos que ve Ryx ahora: ${if (seen.isEmpty()) "ninguno (¿el launcher oculta su contenido?)" else seen.joinToString(" | ")}\n")
-    }
-
-    /**
-     * Prueba primero el camino elegido y, si falla, el otro. Con [keepApp] va primero por Recientes para no sacarte de tu app.
-     * Llamar fuera del hilo principal.
-     */
-    fun launchViaLauncher(pkg: String, label: String, log: StringBuilder, keepApp: Boolean = true): Boolean {
-        launchedFirst = false
-        // Se recuerda qué camino funcionó en esta ROM para no perder tiempo con el que falla
-        val homeFirst = !keepApp || Prefs.fwRoute(this) != 1
-        if (homeFirst) {
-            if (viaHome(label, log)) { Prefs.setFwRoute(this, 2); return true }
-            performGlobalAction(GLOBAL_ACTION_HOME); pause(500)
-            if (viaRecents(pkg, label, log)) { Prefs.setFwRoute(this, 1); return true }
-        } else {
-            if (viaRecents(pkg, label, log)) { Prefs.setFwRoute(this, 1); return true }
-            log.append("Recientes no sirvió en esta ROM; uso el camino del inicio.\n")
-            performGlobalAction(GLOBAL_ACTION_HOME); pause(500)
-            if (viaHome(label, log)) { Prefs.setFwRoute(this, 2); return true }
-        }
-        dump(log)
-        performGlobalAction(GLOBAL_ACTION_HOME)
-        return false
     }
 }
