@@ -403,17 +403,30 @@ class MainActivity : Activity() {
         }
         val sp = subPage
         if (sp != null) {
-            val back = LinearLayout(this).apply {
+            val heroColor = when (sp) {
+                "history" -> 0xFF6A62E8.toInt()
+                "demon" -> 0xFFFF9F0A.toInt()
+                else -> 0xFF2DAA55.toInt()
+            }
+            val heroTitle = when (sp) { "history" -> "Historial"; "demon" -> "Demon"; else -> "Permisos" }
+            val heroSub = when (sp) {
+                "history" -> "Todo lo que pasa por la isla, buscable y exportable"
+                "demon" -> "Pruebas de la isla, aparte del resto de la app"
+                else -> "Accesos que Ryx necesita para trabajar"
+            }
+            val hero = LinearLayout(this).apply {
                 orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
+                setPadding(px(14), px(14), px(14), px(14))
+                background = heroBg(heroColor)
                 setOnClickListener { subPage = null; render() }
             }
-            back.addView(icon("back", 24, Glass.TEXT))
-            back.addView(label(when (sp) {
-                "history" -> "Historial"
-                "demon" -> "Demon"
-                else -> "Permisos"
-            }, 20f, R.color.text, true), LinearLayout.LayoutParams(0, WRAP, 1f).apply { marginStart = px(12) })
-            page.addView(back, lp(4))
+            hero.addView(tileIcon("back", (heroColor and 0x00FFFFFF) or 0x66000000, Color.WHITE),
+                LinearLayout.LayoutParams(px(44), px(44)).apply { marginEnd = px(14) })
+            val ht = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+            ht.addView(label(heroTitle, 21f, R.color.text, true))
+            ht.addView(label(heroSub, 12f, R.color.muted))
+            hero.addView(ht, LinearLayout.LayoutParams(0, WRAP, 1f))
+            page.addView(hero, lp(6))
             when (sp) {
                 "history" -> buildHistory(page)
                 "demon" -> buildDemon(page)
@@ -484,13 +497,27 @@ class MainActivity : Activity() {
         return c
     }
 
+    /** Fondo degradado para las cabeceras: del color de la sección hacia el fondo oscuro, con un borde fino. */
+    private fun heroBg(color: Int): android.graphics.drawable.Drawable {
+        val rgb = color and 0x00FFFFFF
+        val body = android.graphics.drawable.GradientDrawable(
+            android.graphics.drawable.GradientDrawable.Orientation.TL_BR,
+            intArrayOf((rgb or 0x55000000), (rgb or 0x18000000), 0x14000000)).apply { cornerRadius = px(28).toFloat() }
+        val shine = android.graphics.drawable.GradientDrawable(
+            android.graphics.drawable.GradientDrawable.Orientation.TOP_BOTTOM,
+            intArrayOf(0x1FFFFFFF, 0x00FFFFFF)).apply { cornerRadius = px(28).toFloat() }
+        val rim = android.graphics.drawable.GradientDrawable().apply {
+            cornerRadius = px(28).toFloat(); setColor(0); setStroke(px(1), (rgb or 0x66000000))
+        }
+        return android.graphics.drawable.LayerDrawable(arrayOf(body, shine, rim))
+    }
+
     /** Cabecera grande de pestaña, con color propio: da a cada sección un aspecto moderno y distinto. */
     private fun pageHero(p: LinearLayout, iconName: String, color: Int, title: String, sub: String) {
         val box = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
             setPadding(px(18), px(18), px(18), px(18))
-            background = Glass.pill(this@MainActivity,
-                (color and 0x00FFFFFF) or 0x2E000000, (color and 0x00FFFFFF) or 0x66000000, 28f)
+            background = heroBg(color)
         }
         box.addView(tileIcon(iconName, color, Color.WHITE),
             LinearLayout.LayoutParams(px(52), px(52)).apply { marginEnd = px(16) })
@@ -499,6 +526,54 @@ class MainActivity : Activity() {
         t.addView(label(sub, 12.5f, R.color.muted))
         box.addView(t, LinearLayout.LayoutParams(0, WRAP, 1f))
         p.addView(box, lp(14))
+    }
+
+    /** Texto de registro en un recuadro oscuro y seleccionable. Solo se usa dentro de las hojas de detalle. */
+    private fun logBlock(text: String): View {
+        val box = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            background = Glass.pill(this@MainActivity, 0xE60C0E13.toInt(), 0x33FFFFFF, 16f)
+            setPadding(px(14), px(12), px(14), px(12))
+        }
+        box.addView(TextView(this).apply {
+            this.text = text
+            textSize = 12f
+            setTextColor(0xFFD6E6DC.toInt())
+            typeface = Typeface.MONOSPACE
+            setTextIsSelectable(true)
+            setLineSpacing(px(3).toFloat(), 1f)
+        })
+        return box
+    }
+
+    /**
+     * Tarjeta de diagnóstico con aspecto profesional: NUNCA muestra el registro en crudo, para no ensuciar la pantalla.
+     * Ofrece «Ver detalle» (hoja con el texto) y «Copiar».
+     */
+    private fun diagCard(p: LinearLayout, iconName: String, color: Int, title: String, summary: String, log: String) {
+        if (log.isEmpty()) return
+        val c = card()
+        val r = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
+        r.addView(tileIcon(iconName, (color and 0x00FFFFFF) or 0x33000000, color),
+            LinearLayout.LayoutParams(px(44), px(44)).apply { marginEnd = px(12) })
+        val t = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        t.addView(label(title, 16.5f, R.color.text, true))
+        t.addView(label(summary, 12.5f, R.color.muted))
+        r.addView(t, LinearLayout.LayoutParams(0, WRAP, 1f))
+        c.addView(r)
+        val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+        row.addView(button("Ver detalle", false) {
+            sheet(title) { b ->
+                b.addView(logBlock(log))
+                b.addView(label("Cópialo si vas a reportar un fallo.", 12f, R.color.muted), lp(8))
+            }
+        }, LinearLayout.LayoutParams(0, WRAP, 1f).apply { marginEnd = px(5) })
+        row.addView(button("Copiar", false) {
+            (getSystemService(CLIPBOARD_SERVICE) as ClipboardManager).setPrimaryClip(ClipData.newPlainText("ryx", log))
+            toast("Registro copiado")
+        }, LinearLayout.LayoutParams(0, WRAP, 1f).apply { marginStart = px(5) })
+        c.addView(row, lp(12))
+        p.addView(c, lp(10))
     }
 
     // ---------------- INICIO ----------------
@@ -578,7 +653,13 @@ class MainActivity : Activity() {
             }
             p.addView(c, lp(10))
         }
-        p.addView(button("Demon · pruebas de la isla", false) { subPage = "demon"; render() }, lp(14))
+        // Accesos directos a los menús de primer nivel (Historial y Demon), igual que en Ajustes.
+        val shortcuts = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+        shortcuts.addView(button("Historial", false) { subPage = "history"; render() },
+            LinearLayout.LayoutParams(0, WRAP, 1f).apply { marginEnd = px(5) })
+        shortcuts.addView(button("Demon", false) { subPage = "demon"; render() },
+            LinearLayout.LayoutParams(0, WRAP, 1f).apply { marginStart = px(5) })
+        p.addView(shortcuts, lp(14))
     }
 
     /** Sección «Demon»: todas las pruebas de la isla, aparte del resto de la app. */
@@ -898,8 +979,8 @@ class MainActivity : Activity() {
         only.addView(rowWithSwitch("Mostrar con el teléfono bloqueado", "", Prefs.lockScreen(this)) { Prefs.setLockScreen(this, it) })
         only.addView(label("Llamadas, multimedia, navegación y alarmas se quedan en el sistema para no romper sus controles. " +
             "Sin ocultar los avisos emergentes, Android puede mostrar el aviso un instante antes de que la isla lo quite.", 12f, R.color.muted), lp(8))
-        val nd = Prefs.notifDiag(this)
-        if (nd.isNotEmpty()) only.addView(label("Últimos avisos:\n$nd", 11f, R.color.muted).apply { typeface = Typeface.MONOSPACE }, lp(8))
+        diagCard(p, "signal", 0xFF3F7BEA.toInt(), "Diagnóstico del puente",
+            "Últimos avisos que cruzaron entre el sistema y la isla, con el detalle a un toque.", Prefs.notifDiag(this))
 
         val ic = titled(p, "Iconos de la isla", "Del sistema o modificados")
         ic.addView(segmented(listOf("Sistema", "Notificación", "Monocromo"), Prefs.iconMode(this), true) { Prefs.setIconMode(this, it) }, lp(10))
@@ -1067,14 +1148,9 @@ class MainActivity : Activity() {
             if (!RyxAccessibility.isEnabled(this)) askAccessibility { go() } else go()
         }, lp(8))
 
-        val log = Prefs.lastLog(this)
-        if (log.isNotEmpty()) {
-            val d = titled(p, "Último diagnóstico")
-            d.addView(label(log, 11f, R.color.muted).apply { typeface = Typeface.MONOSPACE }, lp(8))
-            d.addView(button("Copiar registro", false) {
-                (getSystemService(CLIPBOARD_SERVICE) as ClipboardManager).setPrimaryClip(ClipData.newPlainText("ryx", log)); toast("Registro copiado")
-            }, lp(8))
-        }
+        diagCard(p, "code", 0xFF6A62E8.toInt(), "Diagnóstico",
+            "Estado real de la última apertura en ventana libre. Se muestra en detalle, sin llenar la pantalla.",
+            Prefs.lastLog(this))
     }
 
     private fun statusRow(parent: LinearLayout, name: String, value: String, ok: Boolean) {
@@ -1103,16 +1179,19 @@ class MainActivity : Activity() {
     private fun buildSettings(p: LinearLayout) {
         pageHero(p, "settings", 0xFF2DAA55.toInt(), "Ajustes", "Permisos, copias, historial y pruebas")
         val n = Prefs.histAll(this).size
+        heading(p, "APARIENCIA")
         item(p, "palette", 0xFF7B5CE0.toInt(), "Tema de la app", "Color de acento de la aplicación", Glass.theme.label) { themeDialog() }
-        item(p, "history", 0xFF6A62E8.toInt(), "Historial de notificaciones", "Ordenado por aplicación, con su icono", "$n") { subPage = "history"; render() }
         item(p, "bolt", 0xFFFF9F0A.toInt(), "Demon", "Todas las pruebas de la isla, en un solo lugar", "") { subPage = "demon"; render() }
-        item(p, "shield", 0xFF2DAA55.toInt(), "Permisos", "Superposición, acceso a notificaciones, batería", "") { subPage = "perms"; render() }
+        heading(p, "DATOS")
+        item(p, "history", 0xFF6A62E8.toInt(), "Historial de notificaciones", "Ordenado por aplicación, con su icono", "$n") { subPage = "history"; render() }
         item(p, "backup", 0xFF3F7BEA.toInt(), "Copia de seguridad", "Exporta o importa todos los ajustes", "") { backupDialog() }
         item(p, "upload", 0xFF2D8CCB.toInt(), "Copia en la nube",
             "Historial y ajustes en Google Drive u otra carpeta", if (Backup.configured(this)) "Activa" else "") { cloudDialog() }
+        heading(p, "SISTEMA")
+        item(p, "shield", 0xFF2DAA55.toInt(), "Permisos", "Superposición, acceso a notificaciones, batería", "") { subPage = "perms"; render() }
         item(p, "download", 0xFF2DAA55.toInt(), "Buscar actualizaciones", "Consulta la última versión en GitHub",
             "v${BuildConfig.VERSION_NAME}") { checkUpdates(true) }
-        item(p, "code", 0xFF5F6B80.toInt(), "Opciones de desarrollador", "Registro de la ventana flotante", "") { devDialog() }
+        item(p, "code", 0xFF5F6B80.toInt(), "Opciones de desarrollador", "Diagnóstico avanzado y pruebas internas", "") { devDialog() }
         item(p, "info", 0xFF5F6B80.toInt(), "Acerca de", "Versión y créditos", "") {
             dialog("Acerca de Ryx Island", "Ryx Island v${BuildConfig.VERSION_NAME}\nCreador: David Joel\n\nLa interfaz está inspirada en Smart Island, " +
                 "de Animesh Gupta (licencia GPL-3.0): github.com/agupta07505/SmartIsland, y en Hyper Bridge.\n\n" +
@@ -1138,6 +1217,16 @@ class MainActivity : Activity() {
         top.addView(button("Borrar historial", false) { Prefs.clearHist(this); histQuery = ""; histFilter = ""; render() }, lp(10))
         p.addView(top, lp(8))
 
+        // Menú del historial (igual que el de Demon): separa Aplicaciones y Sistema en un solo toque.
+        val view = when (histFilter) { "__sys__" -> 2; "" -> 0; else -> 1 }
+        val menu = card()
+        menu.addView(label("Menú del historial", 16f, R.color.text, true))
+        menu.addView(segmented(listOf("Todo", "Aplicaciones", "Sistema"), view) { i ->
+            histFilter = when (i) { 1 -> "__apps__"; 2 -> "__sys__"; else -> "" }
+        }, lp(10))
+        menu.addView(label("Elige qué quieres ver: los avisos de tus apps y los del sistema van separados, como en la isla.", 12f, R.color.muted), lp(8))
+        p.addView(menu, lp(8))
+
         // Buscador: texto libre + filtro por aplicación (o Sistema)
         val search = card()
         search.addView(label("Buscar", 16f, R.color.text, true))
@@ -1156,13 +1245,16 @@ class MainActivity : Activity() {
                 setOnClickListener { histFilter = id; render() }
             }, LinearLayout.LayoutParams(WRAP, WRAP).apply { marginEnd = px(8) })
         }
-        addF("", "Todas", Glass.ACCENT)
-        if (nSys > 0) addF("__sys__", "Sistema", 0xFF2DAA55.toInt())
-        all.filter { !Sys.isSystemPkg(it.pkg) }.groupBy { it.pkg }
-            .entries.sortedByDescending { e -> e.value.size }.take(12)
-            .forEach { (pkg, _) -> addF(pkg, appNameOf(pkg), 0xFF6A62E8.toInt()) }
-        chips.addView(crow)
-        search.addView(chips, lp(4))
+        if (view != 2) {
+            all.filter { !Sys.isSystemPkg(it.pkg) }.groupBy { it.pkg }
+                .entries.sortedByDescending { e -> e.value.size }.take(12)
+                .forEach { (pkg, _) -> addF(pkg, appNameOf(pkg), 0xFF6A62E8.toInt()) }
+            if (crow.childCount > 0) {
+                search.addView(label("Filtrar por aplicación", 13f, R.color.muted, true), lp(8))
+                chips.addView(crow)
+                search.addView(chips, lp(4))
+            }
+        }
         search.addView(button("Descargar como .html", true) { exportHtml() }, lp(12))
         search.addView(label("Se descarga TODO el texto (aunque aquí se recorte) y las imágenes, en un archivo que abre cualquier navegador.",
             12f, R.color.muted), lp(6))
@@ -1213,6 +1305,7 @@ class MainActivity : Activity() {
         val q = histQuery.trim().lowercase()
         var items = Prefs.histAll(this)
         if (histFilter == "__sys__") items = items.filter { Sys.isSystemPkg(it.pkg) }
+        else if (histFilter == "__apps__") items = items.filter { !Sys.isSystemPkg(it.pkg) }
         else if (histFilter.isNotEmpty()) items = items.filter { it.pkg == histFilter }
         if (q.isNotEmpty()) items = items.filter { it.title.lowercase().contains(q) || it.text.lowercase().contains(q) }
         return items
@@ -1590,7 +1683,7 @@ class MainActivity : Activity() {
 
     private fun devDialog() = sheet("Opciones de desarrollador") { b ->
         b.addView(label("Registro de la última apertura en ventana flotante:", 13f, R.color.muted))
-        b.addView(label(Prefs.lastLog(this).ifEmpty { "Todavía no hay registro. Haz una prueba en la pestaña Ventana." }, 12f, R.color.text), lp(8))
+        b.addView(logBlock(Prefs.lastLog(this).ifEmpty { "Todavía no hay registro. Haz una prueba en la pestaña Ventana." }), lp(8))
         b.addView(button("Copiar registro", false) {
             (getSystemService(CLIPBOARD_SERVICE) as ClipboardManager).setPrimaryClip(ClipData.newPlainText("ryx", Prefs.lastLog(this))); toast("Registro copiado")
         }, lp(8))

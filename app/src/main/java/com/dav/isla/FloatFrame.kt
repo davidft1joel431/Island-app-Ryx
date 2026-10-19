@@ -24,14 +24,18 @@ import kotlin.math.abs
 /**
  * Barra de Ryx pegada a la ventana libre: arriba para moverla, abajo para cambiar su tamaño.
  *
- * SEGUIMIENTO REAL: la fuente de verdad es la ventana real que ve accesibilidad. El servicio avisa en cada cambio de
- * ventanas (RyxAccessibility → [onWindowsChanged]) y, además, hay un sondeo de respaldo cada 400 ms. La barra se coloca
- * siempre sobre los límites reales (no sobre los pedidos), así que también sigue a la ventana si la mueve el sistema.
+ * FLUIDEZ (como las burbujas del sistema): mientras arrastras NO se toca la ventana real. Se dibuja un MARCO FANTASMA
+ * (translúcido) que sigue al dedo a la velocidad de la pantalla (60/120 Hz), junto con la barra, así el gesto es
+ * instantáneo y nunca se traba. Al SOLTAR, la ventana real se coloca en segundo plano con un pequeño deslizamiento
+ * (unos pocos pasos) para que «llegue» a su sitio en lugar de aparecer de golpe.
  *
- * MOVER / REDIMENSIONAR DE VERDAD: mientras arrastras, los nuevos límites se mandan a la ventana real al ritmo de la pantalla
- * (un envío por fotograma, solo el último; si el sistema tarda más, espera lo que tarde) y la barra se redibuja una vez por fotograma. Con Shizuku/root ya activos se usa `cmd activity task resize`; sin ellos, se vuelve a pedir
- * la ventana a Android con los nuevos límites (misma variante que la abrió, sin ventana nueva). Después de cada envío se
- * LEE la ventana real: si la ROM no la movió, tras 3 fallos seguidos se avisa y la barra deja de fingir que la mueve.
+ * SEGUIMIENTO REAL: en reposo la fuente de verdad es la ventana real que ve accesibilidad. El servicio avisa en cada cambio
+ * de ventanas (RyxAccessibility → [onWindowsChanged]) y hay un sondeo de respaldo. La barra se coloca sobre los límites
+ * reales, así que también sigue a la ventana si la mueve el sistema.
+ *
+ * MOVER DE VERDAD: con Shizuku/root se usa `cmd activity task resize`; sin ellos se vuelve a pedir la ventana a Android
+ * con los nuevos límites. Después de cada envío se LEE la ventana real: si la ROM no la movió, tras 3 fallos seguidos
+ * se avisa y la barra deja de fingir que la mueve.
  */
 object FloatFrame {
     private val main = Handler(Looper.getMainLooper())
@@ -44,6 +48,9 @@ object FloatFrame {
     private var grip: View? = null
     private var hp: WindowManager.LayoutParams? = null
     private var gp: WindowManager.LayoutParams? = null
+    private var ghost: View? = null                              // marco fantasma: sigue al dedo al instante
+    private var ghostP: WindowManager.LayoutParams? = null
+    private var ghostShown = false
     private val r = Rect()          // lo que se dibuja: los límites reales (o los del dedo mientras arrastras)
     private val start = Rect()
     private var downX = 0f
@@ -119,6 +126,7 @@ object FloatFrame {
                 PixelFormat.TRANSLUCENT).apply { gravity = Gravity.TOP or Gravity.START; cutoutAlways() }
             bar.setOnTouchListener(drag(true)); g.setOnTouchListener(drag(false))
             handle = bar; grip = g
+            ensureGhost(app)
             place()
             try { w.addView(bar, hp); w.addView(g, gp) } catch (e: Exception) { hide(); return@post }
 
@@ -143,10 +151,11 @@ object FloatFrame {
         generation++
         bg.removeCallbacksAndMessages(null)
         pending = null; syncQueued = false; dragging = false
+        hideGhost()
         val w = wm
         try { handle?.let { w?.removeView(it) } } catch (e: Exception) {}
         try { grip?.let { w?.removeView(it) } } catch (e: Exception) {}
-        handle = null; grip = null
+        handle = null; grip = null; ghost = null; ghostP = null
     }
 
     private fun place() {
@@ -154,8 +163,42 @@ object FloatFrame {
         val sh = c.resources.displayMetrics.heightPixels
         hp?.let { it.width = r.width(); it.x = r.left; it.y = if (r.top >= it.height) r.top - it.height else r.top }
         gp?.let { it.width = r.width(); it.x = r.left; it.y = if (r.bottom + it.height <= sh) r.bottom else r.bottom - it.height }
+        ghostP?.let { it.width = r.width(); it.height = r.height(); it.x = r.left; it.y = r.top }
         try { handle?.let { wm?.updateViewLayout(it, hp) } } catch (e: Exception) {}
         try { grip?.let { wm?.updateViewLayout(it, gp) } } catch (e: Exception) {}
+        if (ghostShown) try { ghost?.let { wm?.updateViewLayout(it, ghostP) } } catch (e: Exception) {}
+    }
+
+    // ───────────────────────────── Marco fantasma ─────────────────────────────
+
+    /** Crea (una vez) el marco fantasma que sigue al dedo mientras arrastras. */
+    private fun ensureGhost(app: Context) {
+        if (ghost != null) return
+        ghost = View(app).apply {
+            background = GradientDrawable().apply {
+                setColor(0x227B5CE0)
+                setStroke(dp(app, 2), 0xCC8C7BFF.toInt())
+                cornerRadius = dp(app, 18).toFloat()
+            }
+        }
+        ghostP = WindowManager.LayoutParams(r.width(), r.height(), WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
+            OVL_FLAGS or WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE, PixelFormat.TRANSLUCENT).apply {
+            gravity = Gravity.TOP or Gravity.START; cutoutAlways()
+        }
+    }
+
+    private fun showGhost() {
+        val w = wm ?: return
+        val g = ghost ?: return
+        val gp2 = ghostP ?: return
+        if (ghostShown) return
+        try { w.addView(g, gp2); ghostShown = true } catch (e: Exception) {}
+    }
+
+    private fun hideGhost() {
+        val w = wm; val g = ghost
+        if (ghostShown && w != null && g != null) try { w.removeView(g) } catch (e: Exception) {}
+        ghostShown = false
     }
 
     // Con el dedo llegan más movimientos que fotogramas (120 Hz de tacto vs 60 Hz de pantalla): se redibuja UNA vez por fotograma
@@ -224,7 +267,11 @@ object FloatFrame {
         val c = ctx ?: return@OnTouchListener false
         val m = c.resources.displayMetrics
         when (e.actionMasked) {
-            MotionEvent.ACTION_DOWN -> { downX = e.rawX; downY = e.rawY; start.set(r); dragging = true; true }
+            MotionEvent.ACTION_DOWN -> {
+                downX = e.rawX; downY = e.rawY; start.set(r); dragging = true
+                if (!moverBroken) { showGhost(); place() }                 // aparece el marco fantasma en su sitio
+                true
+            }
             MotionEvent.ACTION_MOVE -> {
                 if (moverBroken) return@OnTouchListener true           // esta ROM no deja moverla: la barra se queda con la ventana
                 val dx = (e.rawX - downX).toInt(); val dy = (e.rawY - downY).toInt()
@@ -238,35 +285,61 @@ object FloatFrame {
                     val bb = maxOf(start.bottom + dy, start.top + dp(c, 220))
                     r.set(start.left, start.top, rr, bb)
                 }
-                placeOnFrame(); push(); true
+                // Solo se mueve el marco fantasma (y la barra), a la velocidad de la pantalla. La ventana REAL no se toca
+                // hasta soltar: así el gesto es instantáneo como el de las burbujas y no hay tirones por el binder.
+                placeOnFrame(); true
             }
             MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
                 dragging = false
+                hideGhost()
                 place()
                 lockUntil = System.currentTimeMillis() + 900
-                if (!moverBroken && !sameRect(r, start)) push()
+                if (!moverBroken && !sameRect(r, start)) push(glide = true)   // al soltar, la ventana «llega» en segundo plano
                 true
             }
             else -> false
         }
     }
 
-    /** Manda los límites a la ventana real. Si llegan varios movimientos seguidos, solo se envía el último. */
-    private fun push() {
-        pending = Rect(r)
+    /**
+     * Manda los límites a la ventana real, SIEMPRE en segundo plano. Tras soltar, en lugar de un salto se hace un pequeño
+     * «deslizamiento» (unos pocos pasos interpolados): la ventana llega a su sitio en vez de aparecer de golpe. Si llegan
+     * más movimientos mientras tanto, solo se envía el último.
+     */
+    private fun push(glide: Boolean = false) {
+        val target = Rect(r)
+        pending = target
         if (worker) return
         val c = ctx ?: return
         worker = true
         val gen = generation
         val usePriv = priv; val id = taskId; val pk = pkgName; val cu = cloneUser; val uidN = userIdN
-        // Ritmo REALISTA: un comando no cabe en un fotograma, así que se manda uno cada ~70 ms (con privilegios, que van por
-        // el shell root vivo) o cada ~260 ms (sin privilegios, donde mover la ventana implica relanzarla). La barra sí se
-        // dibuja a la velocidad de la pantalla, así que el gesto se siente fluido aunque la ventana vaya un poco por detrás.
-        val gap = if (usePriv && id.isNotEmpty()) 70L else 260L
+        // Ritmo de comandos: ~50 ms con privilegios (van por el shell root vivo) o ~240 ms sin ellos (mover implica relanzar).
+        val gap = if (usePriv && id.isNotEmpty()) 50L else 240L
         val from = Rect(start)                      // ventana real antes de este movimiento (para saber si obedeció)
         Thread {
             var last: Rect? = null
             try {
+                if (glide && !sameRect(from, target, 6)) {
+                    pending = null                    // lo manda el deslizamiento, que ya termina en el destino
+                    val steps = if (usePriv && id.isNotEmpty()) 5 else 2
+                    for (i in 1..steps) {
+                        if (generation != gen) break
+                        val f = i.toFloat() / steps
+                        val q = Rect(
+                            (from.left + (target.left - from.left) * f).toInt(),
+                            (from.top + (target.top - from.top) * f).toInt(),
+                            (from.right + (target.right - from.right) * f).toInt(),
+                            (from.bottom + (target.bottom - from.bottom) * f).toInt())
+                        if (usePriv && id.isNotEmpty()) FloatingWindow.resizeTask(c, id, q) else {
+                            val qq = if (nudge) Rect(q).also { it.right += (nudgeTick++ and 1) } else q
+                            FloatingWindow.reposition(c, pk, qq, cu, uidN)
+                        }
+                        last = q
+                        if (i < steps) try { Thread.sleep(gap) } catch (e: InterruptedException) { break }
+                    }
+                }
+                // Lo que haya quedado pendiente (p.ej. un arrastre nuevo durante el deslizamiento) se manda igual.
                 while (generation == gen) {
                     val p = pending ?: break
                     pending = null
