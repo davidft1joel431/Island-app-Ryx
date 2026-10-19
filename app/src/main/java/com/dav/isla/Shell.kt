@@ -99,6 +99,18 @@ object Shell {
         Pair(-1, "Shizuku: ${e.javaClass.simpleName} ${e.message ?: ""}".trim())
     }
 
-    fun setHeadsUp(c: Context, enabled: Boolean): Pair<Int, String> =
-        run(c, "settings put global heads_up_notifications_enabled ${if (enabled) 1 else 0}")
+    /**
+     * Activa/oculta los avisos emergentes (heads-up) del sistema. Con WRITE_SECURE_SETTINGS (el mismo permiso del desbloqueo de ventanas;
+     * se concede UNA vez y se queda, con ADB o con Shizuku/root que Ryx usa solo para dárselo) se escribe directo, sin Shizuku ni root.
+     * Sin ese permiso, se intenta con Shizuku/root.
+     */
+    fun setHeadsUp(c: Context, enabled: Boolean): Pair<Int, String> {
+        val v = if (enabled) 1 else 0
+        try {
+            if (!FreeformUnlock.hasPerm(c) && privileged(c)) run(c, "pm grant ${c.packageName} ${FreeformUnlock.PERM}")
+            if (FreeformUnlock.hasPerm(c) &&
+                android.provider.Settings.Global.putInt(c.contentResolver, "heads_up_notifications_enabled", v)) return Pair(0, "ok")
+        } catch (e: Throwable) {}
+        return run(c, "settings put global heads_up_notifications_enabled $v")
+    }
 }

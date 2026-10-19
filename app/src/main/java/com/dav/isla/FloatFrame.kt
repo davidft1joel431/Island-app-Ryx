@@ -66,6 +66,8 @@ object FloatFrame {
     private var moverFails = 0
     private var moverBroken = false
     private var warned = false
+    private var nudge = false           // la ROM ignora un movimiento que no cambia el tamaño: se pide con 1 px de diferencia
+    private var nudgeTick = 0
 
     private const val OVL_FLAGS = WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
         WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS
@@ -80,6 +82,7 @@ object FloatFrame {
             hide()
             ctx = app; taskId = id; pkgName = pkg; title = label; priv = false; r.set(bounds); cloneUser = user; userIdN = userId
             misses = 0; fullCount = 0; moverFails = 0; moverBroken = false; warned = false; lockUntil = 0L
+            nudge = Prefs.fwMoveNudge(app)
             val w = app.getSystemService(Context.WINDOW_SERVICE) as WindowManager
             wm = w
             val gen = generation
@@ -231,8 +234,9 @@ object FloatFrame {
                 if (moverBroken) return@OnTouchListener true           // esta ROM no deja moverla: la barra se queda con la ventana
                 val dx = (e.rawX - downX).toInt(); val dy = (e.rawY - downY).toInt()
                 if (move) {
-                    val l = (start.left + dx).coerceIn(-start.width() + dp(c, 80), m.widthPixels - dp(c, 80))
-                    val t = (start.top + dy).coerceIn(dp(c, 34), m.heightPixels - dp(c, 80))
+                    // Dentro de la pantalla: si el destino se sale, la ROM lo recorta y la ventana parece no obedecer
+                    val l = (start.left + dx).coerceIn(0, maxOf(0, m.widthPixels - start.width()))
+                    val t = (start.top + dy).coerceIn(dp(c, 34), maxOf(dp(c, 34), m.heightPixels - start.height()))
                     r.set(l, t, l + start.width(), t + start.height())
                 } else {
                     val rr = maxOf(start.right + dx, start.left + dp(c, 180))
@@ -261,6 +265,7 @@ object FloatFrame {
         val gen = generation
         val usePriv = priv; val id = taskId; val pk = pkgName; val cu = cloneUser
         val frame = frameMs(c)
+        val from = Rect(start)                      // ventana real antes de este movimiento (para saber si obedeció)
         Thread {
             var last: Rect? = null
             try {
@@ -268,34 +273,72 @@ object FloatFrame {
                     val p = pending ?: break
                     pending = null
                     val t0 = SystemClock.uptimeMillis()
-                    if (usePriv && id.isNotEmpty()) FloatingWindow.resizeTask(c, id, p) else FloatingWindow.reposition(c, pk, p, cu)
+                    if (usePriv && id.isNotEmpty()) FloatingWindow.resizeTask(c, id, p) else {
+                        // Algunas ROM aceptan cambiar el tamaño pero ignoran un movimiento con el mismo tamaño: alternar 1 px lo evita
+                        val q = if (nudge) Rect(p).also { it.right += (nudgeTick++ and 1) } else p
+                        FloatingWindow.reposition(c, pk, q, cu)
+                    }
                     last = p
                     // Ritmo de la pantalla: se descuenta lo que ya tardó el envío (antes se esperaban 60 ms FIJOS después de cada uno)
                     val wait = frame - (SystemClock.uptimeMillis() - t0)
                     if (wait > 0) try { Thread.sleep(wait) } catch (e: InterruptedException) { break }
                 }
             } finally { worker = false }
-            last?.let { l -> bg.postDelayed({ verify(l, gen) }, 380) }
+            last?.let { l -> bg.postDelayed({ verify(l, from, gen) }, 380) }
         }.start()
     }
 
-    /** ¿La ventana real llegó a lo pedido? Tras 3 fallos seguidos se avisa y se deja de intentar mover. */
-    private fun verify(target: Rect, gen: Int) {
+    /** Suma de las diferencias de los cuatro bordes. */
+    private fun edgeDist(a: Rect, b: Rect) =
+        abs(a.left - b.left) + abs(a.top - b.top) + abs(a.right - b.right) + abs(a.bottom - b.bottom)
+
+    /** Anota en «Último diagnóstico» (Ajustes → Ventana) lo que pidió la barra y lo que hizo la ventana real. */
+    private fun note(line: String) {
+        val c = ctx ?: return
+        try { Prefs.setLastLog(c, Prefs.lastLog(c).trimEnd() + "\n" + line) } catch (e: Throwable) {}
+    }
+
+    /**
+     * ¿La ventana real obedeció? Se compara con el punto de partida: si fue hacia lo pedido y quedó más cerca, obedece aunque la ROM
+     * haya recortado el destino (p. ej. para que quepa en pantalla). Solo cuenta como «no se mueve» si casi no se movió.
+     * Primer fallo: se reintenta pidiéndola con 1 px de diferencia; tras 3 fallos seguidos se avisa y se deja de intentar.
+     */
+    private fun verify(target: Rect, from: Rect, gen: Int) {
         if (generation != gen || dragging) return
         val svc = RyxAccessibility.instance ?: return
         val real = svc.windowBounds(pkgName) ?: return
-        val ok = sameRect(real, target, maxOf(24, target.width() / 20))
+        val tol = maxOf(24, target.width() / 20)
+        val need = edgeDist(from, target)
+        if (need <= 4 * tol) return                                   // movimiento diminuto: no se puede juzgar
+        val got = edgeDist(from, real)
+        val miss = edgeDist(real, target)
+        val obeys = miss <= 4 * tol || (got * 2 >= need && miss < need)
+        val ignored = got * 4 < need
         main.post {
             if (generation != gen) return@post
-            if (ok) { moverFails = 0; return@post }
-            if (++moverFails >= 3 && !moverBroken) {
+            val c = ctx
+            if (obeys) {
+                if (moverFails > 0 || nudge) note("Mover: la ventana real obedeció (pedí $target · antes $from · quedó $real · retoque de 1 px: ${if (nudge) "sí" else "no"}).")
+                if (nudge && moverFails > 0 && c != null) Prefs.setFwMoveNudge(c, true)
+                moverFails = 0; return@post
+            }
+            if (!ignored) return@post                                  // se movió a medias (animación lenta): no es un fallo
+            moverFails++
+            note("Mover: la ventana real NO obedeció (fallo $moverFails). Pedí $target · antes $from · quedó $real · retoque de 1 px: ${if (nudge) "sí" else "no"}.")
+            if (!nudge && moverFails == 1) {
+                // Primer fallo: mismo destino, pero con 1 px de diferencia de tamaño
+                nudge = true
+                r.set(target); start.set(real); lockUntil = System.currentTimeMillis() + 900
+                place(); push()
+                return@post
+            }
+            if (moverFails >= 3 && !moverBroken) {
                 moverBroken = true
                 r.set(real); place()
-                val c = ctx
                 if (c != null && !warned) {
                     warned = true
                     Toast.makeText(c, "Esta ROM no mueve la ventana real sin Shizuku. La barra se queda pegada a la ventana; " +
-                        "cambia su tamaño en Ajustes → Ventana.", Toast.LENGTH_LONG).show()
+                        "cambia su tamaño en Ajustes → Ventana. (El detalle quedó en «Último diagnóstico».)", Toast.LENGTH_LONG).show()
                 }
             }
         }

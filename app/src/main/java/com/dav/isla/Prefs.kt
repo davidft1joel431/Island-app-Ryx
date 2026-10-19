@@ -230,6 +230,12 @@ object Prefs {
     fun setFwKind(c: Context, v: Int) = sp(c).edit().putInt("fw_kind", v).apply()
     fun fwKeepApp(c: Context): Boolean = sp(c).getBoolean("fw_keep_app", true)
     fun setFwKeepApp(c: Context, v: Boolean) = sp(c).edit().putBoolean("fw_keep_app", v).apply()
+    /** La ROM ignora un movimiento que no cambia el tamaño: se pide con 1 px de diferencia (se aprende cuando funciona). */
+    fun fwMoveNudge(c: Context): Boolean = sp(c).getBoolean("fw_move_nudge", false)
+    fun setFwMoveNudge(c: Context, v: Boolean) = sp(c).edit().putBoolean("fw_move_nudge", v).apply()
+    /** Últimas decisiones sobre los avisos del sistema (qué tomó la isla y por qué dejó otros), para diagnosticar. */
+    fun notifDiag(c: Context): String = sp(c).getString("notif_diag", "") ?: ""
+    fun setNotifDiag(c: Context, s: String) = sp(c).edit().putString("notif_diag", s.takeLast(1500)).apply()
     fun a11yAsked(c: Context): Boolean = sp(c).getBoolean("a11y_asked", false)
     fun setA11yAsked(c: Context, v: Boolean) = sp(c).edit().putBoolean("a11y_asked", v).apply()
     fun restoreAsked(c: Context): Boolean = sp(c).getBoolean("restore_asked", false)
