@@ -243,7 +243,15 @@ class NotifListener : NotificationListenerService() {
     override fun onNotificationPosted(sbn: StatusBarNotification) {
         if (sbn.packageName == packageName) return
         val n = sbn.notification
-        if ((n.flags and Notification.FLAG_GROUP_SUMMARY) != 0) return
+        if ((n.flags and Notification.FLAG_GROUP_SUMMARY) != 0) {
+            // El resumen de un grupo («3 mensajes nuevos» de WhatsApp…) no entra a la isla, pero tampoco debe quedarse en el panel:
+            // era la notificación de la ROM que seguía apareciendo aunque el mensaje ya lo mostrara la isla.
+            val su = if (sbn.userId >= 0) sbn.userId else myUser
+            val why = keepReason(sbn, n, readingNow(sbn.packageName, su))
+            if (why == null) { try { cancelNotification(sbn.key) } catch (e: Exception) {} }
+            noteDecision(sbn, su, true, why)
+            return
+        }
         var title: CharSequence? = n.extras.getCharSequence(Notification.EXTRA_TITLE)
         var text: CharSequence? = n.extras.getCharSequence(Notification.EXTRA_TEXT)
         if (title == null && text == null) return
@@ -255,9 +263,10 @@ class NotifListener : NotificationListenerService() {
 
         // 0) SOLO LA ISLA: si ella va a mostrarla, el aviso del sistema se quita YA (antes de guardar o preparar nada)
         //    para que apenas llegue a verse. Llamadas, multimedia, navegación, alarmas y progresos se quedan en el sistema.
-        val takeOver = Prefs.islandOn(this) && Prefs.blockSystem(this) && Settings.canDrawOverlays(this) &&
-            sbn.packageName !in Prefs.blocked(this) && !sbn.isOngoing && sbn.isClearable && !keepInSystem(n) && !hiddenNow() && !reading
+        val why = keepReason(sbn, n, reading)
+        val takeOver = why == null
         if (takeOver) { try { cancelNotification(sbn.key) } catch (e: Exception) {} }
+        noteDecision(sbn, uid, false, why)
 
         // Palabras ocultas (privacidad): se reemplaza el contenido
         val words = Prefs.hiddenWords(this)
@@ -355,6 +364,34 @@ class NotifListener : NotificationListenerService() {
         cardIndex = if (keep >= 0) keep else 0
         if (keep < 0) { if (detail) resetDetail(); bindCard(cards[cardIndex]) }
         updateBadge(); updateCount()
+    }
+
+    /** null = la isla toma el aviso y lo quita del sistema. Si no, el motivo por el que se queda en el sistema (también para el diagnóstico). */
+    private fun keepReason(sbn: StatusBarNotification, n: Notification, reading: Boolean): String? = when {
+        !Prefs.islandOn(this) -> "la isla está apagada"
+        !Prefs.blockSystem(this) -> "«Bloquear notificaciones del sistema» está apagado"
+        !Settings.canDrawOverlays(this) -> "falta el permiso de superposición"
+        sbn.packageName in Prefs.blocked(this) -> "app excluida de la isla"
+        sbn.isOngoing -> "aviso en curso"
+        !sbn.isClearable -> "Android no deja quitarlo"
+        keepInSystem(n) -> "categoría ${n.category} (se queda en el sistema)"
+        hiddenNow() -> "isla oculta (bloqueo, juego o app elegida)"
+        reading -> "estás dentro de esa app"
+        else -> null
+    }
+
+    private val diagLines = ArrayList<String>()
+
+    /** Guarda las últimas decisiones sobre avisos del sistema; se ven en Puente → Solo la isla. */
+    private fun noteDecision(sbn: StatusBarNotification, uid: Int, summary: Boolean, why: String?) {
+        val t = java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.getDefault()).format(java.util.Date())
+        val who = sbn.packageName + (if (isClone(uid)) " (clon)" else "") + (if (summary) " [resumen]" else "")
+        val line = "$t $who → " + (if (why == null) "isla; quité el aviso del sistema" else "se queda en el sistema: $why")
+        synchronized(diagLines) {
+            diagLines.add(line)
+            while (diagLines.size > 6) diagLines.removeAt(0)
+            Prefs.setNotifDiag(this, diagLines.joinToString("\n"))
+        }
     }
 
     /** Llamadas, multimedia y navegación se quedan en el sistema para no romper sus controles. */
@@ -1355,29 +1392,32 @@ class NotifListener : NotificationListenerService() {
         if (pi != null && FloatingWindow.sendPending(this, pi, false, null)) return
         // Es un clon y no hay destino guardado: se abre SU copia, nunca la original
         if (cloneUser != null) { openClone(pkg, cloneUser, userId); return }
+        // Es la original de una app que tiene clon: se lanza indicando SU espacio para que la ROM no elija el clon
+        if (hasClone(pkg) && openClone(pkg, android.os.Process.myUserHandle(), myUser, quiet = true)) return
         val launch = packageManager.getLaunchIntentForPackage(pkg) ?: return
         launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         try { startActivity(launch) } catch (e: Exception) {}
     }
 
     /** Abre la copia (clon) de la app en su propio espacio. Si no se puede, avisa; jamás abre la original en su lugar. Fuera del hilo principal. */
-    private fun openClone(pkg: String, user: android.os.UserHandle, userId: Int) {
+    private fun openClone(pkg: String, user: android.os.UserHandle, userId: Int, quiet: Boolean = false): Boolean {
         // 1) API pública del sistema para lanzar la app principal de otro espacio
         try {
             val la = getSystemService(LAUNCHER_APPS_SERVICE) as android.content.pm.LauncherApps
             val comp = la.getActivityList(pkg, user).firstOrNull()?.componentName
-            if (comp != null) { la.startMainActivity(comp, user, null, null); return }
+            if (comp != null) { la.startMainActivity(comp, user, null, null); return true }
         } catch (e: Exception) {}
         // 2) Con Shizuku/root: mismo lanzamiento indicando el espacio del clon
         try {
             if (Shell.privileged(this)) {
                 val r = Shell.run(this, "am start --user $userId -a android.intent.action.MAIN -c android.intent.category.LAUNCHER -p $pkg")
-                if (r.first == 0 && !r.second.contains("Error", true)) return
+                if (r.first == 0 && !r.second.contains("Error", true)) return true
             }
         } catch (e: Exception) {}
-        main.post {
+        if (!quiet) main.post {
             android.widget.Toast.makeText(this, "No pude abrir el clon (esta ROM no deja lanzarlo sin Shizuku/root)", android.widget.Toast.LENGTH_LONG).show()
         }
+        return false
     }
 
     // ---------- Destino de los eventos del sistema ----------

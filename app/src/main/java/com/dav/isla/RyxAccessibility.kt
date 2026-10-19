@@ -87,17 +87,54 @@ class RyxAccessibility : AccessibilityService() {
         val flags = Intent.FLAG_ACTIVITY_NEW_TASK or (if (v == 2 || reuse) 0 else Intent.FLAG_ACTIVITY_MULTIPLE_TASK)
         if (pi != null) {
             pi.send(this, 0, Intent().addFlags(flags), null, null, null, bundle)
-        } else if (user != null && pkg.isNotEmpty()) {
-            // Clon (app dual): se lanza SU copia en su espacio; el intent normal abriría la original
+        } else if (pkg.isNotEmpty() && (user != null || hasOtherSpace(pkg))) {
+            // Clon (app dual): se lanza SU copia en su espacio; el intent normal abriría la original.
+            // Y si la app TIENE clon, la ORIGINAL también se lanza indicando su espacio (el principal): con un startActivity normal
+            // la ROM decide sola entre las dos copias y puede abrir el clon en lugar de la original.
+            val target = user ?: android.os.Process.myUserHandle()
             val la = getSystemService(Context.LAUNCHER_APPS_SERVICE) as LauncherApps
-            val comp = la.getActivityList(pkg, user).firstOrNull()?.componentName ?: return false
-            la.startMainActivity(comp, user, null, bundle)
+            val acts = la.getActivityList(pkg, target)
+            val want = if (user == null) launch.component else null
+            val comp = acts.firstOrNull { want != null && it.componentName == want }?.componentName
+                ?: acts.firstOrNull()?.componentName ?: return false
+            la.startMainActivity(comp, target, null, bundle)
         } else {
             launch.flags = flags
             startActivity(launch, bundle)
         }
         true
     } catch (e: Throwable) { false }
+
+    private val spaceCache = java.util.concurrent.ConcurrentHashMap<String, Pair<Boolean, Long>>()
+
+    /** ¿[pkg] está también en otro espacio (clon / app dual)? Con caché de 60 s: se pregunta en cada movimiento de la ventana. */
+    private fun hasOtherSpace(pkg: String): Boolean {
+        val now = System.currentTimeMillis()
+        spaceCache[pkg]?.let { if (now - it.second < 60_000L) return it.first }
+        val r = try {
+            val um = getSystemService(Context.USER_SERVICE) as android.os.UserManager
+            val la = getSystemService(Context.LAUNCHER_APPS_SERVICE) as LauncherApps
+            val me = android.os.Process.myUserHandle()
+            um.userProfiles.any { it != me && la.getActivityList(pkg, it).isNotEmpty() }
+        } catch (e: Throwable) { false }
+        spaceCache[pkg] = Pair(r, now)
+        return r
+    }
+
+    /**
+     * Si la app tiene clon y se pidió la ORIGINAL, lo anota en el registro. «Acceso de uso» solo ve el espacio principal:
+     * si ahí aparece [pkg] al frente, lo que se abrió es la original; si no, puede haberse abierto el clon.
+     */
+    private fun checkSpace(pkg: String, user: android.os.UserHandle?, pi: PendingIntent?, log: StringBuilder) {
+        if (user != null || pi != null || !hasOtherSpace(pkg)) return
+        if (!Foreground.hasAccess(this)) {
+            log.append("Espacio: esta app tiene clon. Activa «Acceso de uso» para que Ryx confirme que abrió la ORIGINAL.\n"); return
+        }
+        pause(300)
+        val fg = Foreground.pkg(this)
+        log.append(if (fg == pkg) "Espacio: se abrió la ORIGINAL (confirmado con Acceso de uso).\n"
+            else "Espacio: NO pude confirmar la original (al frente en tu espacio: ${fg ?: "nada"}); puede haberse abierto el clon.\n")
+    }
 
     /** Medidas reales de las ventanas de [pkg] y de la pantalla, para el registro (así se ve si quedó flotante o completa). */
     fun describeWindows(pkg: String): String {
@@ -219,7 +256,11 @@ class RyxAccessibility : AccessibilityService() {
             val sent = fire(v, launch?.let { Intent(it) } ?: Intent(), pi, b, pkg = pkg, user = user)
             if (!sent) { log.append("Variante ${v + 1} · ${VARIANTS[v]}: no se pudo lanzar.\n"); continue }
             when (waitFloating(pkg, 1500)) {
-                true -> { log.append("Variante ${v + 1} · ${VARIANTS[v]}: ventana libre verificada. ${describeWindows(pkg)}\n"); Prefs.setFwVariant(this, v); return true }
+                true -> {
+                    log.append("Variante ${v + 1} · ${VARIANTS[v]}: ventana libre verificada. ${describeWindows(pkg)}\n"); Prefs.setFwVariant(this, v)
+                    checkSpace(pkg, user, pi, log)
+                    return true
+                }
                 null -> { log.append("Variante ${v + 1} · ${VARIANTS[v]}: lanzada (no pude verificar si es libre; mira la pantalla).\n"); return true }
                 false -> {
                     log.append("Variante ${v + 1} · ${VARIANTS[v]}: la ROM la abrió a pantalla completa.\n")
@@ -381,13 +422,23 @@ class RyxAccessibility : AccessibilityService() {
 
     private fun nodeText(n: AccessibilityNodeInfo): String = (n.text ?: n.contentDescription ?: "").toString().trim()
 
+    private val CLONEISH = Regex("dual|clon|clone|gemel|twin|duplic|segundo espacio|second space", RegexOption.IGNORE_CASE)
+
+    /** El icono de [label]. Si el launcher tiene dos (original y clon), gana el de nombre exacto y sin pinta de clon. */
     private fun findLabel(label: String): AccessibilityNodeInfo? {
+        var best: AccessibilityNodeInfo? = null
+        var bestScore = -1
         for (r in roots()) {
             val list = try { r.findAccessibilityNodeInfosByText(label) } catch (e: Exception) { null } ?: continue
-            val hit = list.firstOrNull { n -> n.isVisibleToUser && nodeText(n).startsWith(label, true) }
-            if (hit != null) return hit
+            for (n in list) {
+                if (!n.isVisibleToUser) continue
+                val t = nodeText(n)
+                if (!t.startsWith(label, true)) continue
+                val score = (if (t.equals(label, true)) 2 else 0) + (if (CLONEISH.containsMatchIn(t)) 0 else 1)
+                if (score > bestScore) { best = n; bestScore = score }
+            }
         }
-        return null
+        return best
     }
 
     /** La opción «Burbuja» del menú del launcher, si está visible. */

@@ -715,16 +715,25 @@ class MainActivity : Activity() {
         val only = titled(p, "Solo la isla", "La isla registra y muestra; el sistema se calla")
         only.addView(rowWithSwitch("Bloquear notificaciones del sistema", "Quita la del panel cuando la isla la muestra",
             Prefs.blockSystem(this)) { Prefs.setBlockSystem(this, it) })
-        only.addView(rowWithSwitch("Ocultar avisos emergentes (Shizuku/root)", "Evita el aviso que baja desde arriba",
+        only.addView(rowWithSwitch("Ocultar avisos emergentes", "Evita que baje el aviso de la ROM antes de la isla (permiso de una sola vez)",
             Prefs.hideHeadsUp(this)) { v ->
             Thread { val r = Shell.setHeadsUp(this, !v); runOnUiThread {
-                if (r.first == 0) Prefs.setHideHeadsUp(this, v) else { toast("No se pudo (¿root denegado?)"); render() } } }.start()
+                if (r.first == 0) Prefs.setHideHeadsUp(this, v) else {
+                    try { (getSystemService(CLIPBOARD_SERVICE) as ClipboardManager).setPrimaryClip(ClipData.newPlainText("ryx", FreeformUnlock.adbCommand(this))) } catch (e: Exception) {}
+                    dialog("Falta un permiso (una sola vez)",
+                        "Para ocultar el aviso emergente de la ROM, Ryx necesita el permiso WRITE_SECURE_SETTINGS. Es el mismo del desbloqueo de ventanas, " +
+                        "se concede una vez y se queda (no hace falta Shizuku después):\n\n" +
+                        "• Con ADB (ya copié el comando al portapapeles):\n${FreeformUnlock.adbCommand(this)}\n\n" +
+                        "• O inicia Shizuku/root una vez y vuelve a activar este interruptor: Ryx se da el permiso a sí mismo.")
+                    render() } } }.start()
         })
         only.addView(rowWithSwitch("Quitar lo que ya leí", "Al abrir la app o cancelarse el aviso, sale de la isla y no vuelve",
             Prefs.autoRead(this)) { Prefs.setAutoRead(this, it) })
         only.addView(rowWithSwitch("Mostrar con el teléfono bloqueado", "", Prefs.lockScreen(this)) { Prefs.setLockScreen(this, it) })
         only.addView(label("Llamadas, multimedia, navegación y alarmas se quedan en el sistema para no romper sus controles. " +
-            "Sin root, Android puede mostrar el aviso un instante antes de que la isla lo quite.", 12f, R.color.muted), lp(8))
+            "Sin ocultar los avisos emergentes, Android puede mostrar el aviso un instante antes de que la isla lo quite.", 12f, R.color.muted), lp(8))
+        val nd = Prefs.notifDiag(this)
+        if (nd.isNotEmpty()) only.addView(label("Últimos avisos:\n$nd", 11f, R.color.muted).apply { typeface = Typeface.MONOSPACE }, lp(8))
 
         val ic = titled(p, "Iconos de la isla", "Del sistema o modificados")
         ic.addView(segmented(listOf("Sistema", "Notificación", "Monocromo"), Prefs.iconMode(this), true) { Prefs.setIconMode(this, it) }, lp(10))
