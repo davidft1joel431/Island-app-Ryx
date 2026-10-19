@@ -34,6 +34,11 @@ jobs:
           tag_name: v${{ steps.ver.outputs.v }}
           name: Ryx Island v${{ steps.ver.outputs.v }}
           body: |
+            - Historial con secciones: ahora separa las notificaciones de las APLICACIONES de los avisos del SISTEMA (Batería, Wi-Fi, Red, Bluetooth…), cada sección con su encabezado, su color y su contador.
+            - Batería a tiempo real: los avisos de batería ya no se apuntan cuatro veces ni mal; se leen del sistema en el momento y se unen en UNA sola tarjeta con el nivel actual. El historial muestra un recuadro de batería en vivo.
+            - Interfaz: más color y profundidad (fondo con tres brillos, tarjetas con doble borde y acento), 3 temas nuevos (Menta, Atardecer y Medianoche) y 18 colores rápidos.
+            - Diseño: 3 estilos más de isla (Océano, Rubí y Menta) y dos secciones nuevas («Acento de la app» y «Tipografía»).
+            - Gestos: la distancia para deslizar es fija: 50 dp.
             - Clonados: Ryx ahora reconoce las apps clonadas (app dual / segundo espacio) con su propia clave «paquete@espacio»; «Aplicaciones» lista cada copia por separado, con su insignia, y puedes silenciar o bloquear una copia sin afectar a la otra.
             - Clonados: se detectan por la notificación de la copia, por los perfiles del sistema y, con Shizuku/root, por los usuarios que la ROM tenga (los clonados ocultos de MIUI/OPPO/Realme). Nunca se adivinan listando paquetes ajenos.
             - Formato libre: nueva variante con Shizuku/root (`am start --windowingMode 5`) que se usa primero cuando hay privilegios y se coloca al píxel con `cmd activity task resize`; sirve en ROMs que ignoran las opciones de Android.

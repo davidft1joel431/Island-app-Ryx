@@ -22,7 +22,10 @@ object Glass {
         AppTheme("ocean", "Océano", 0xFF4DA3FF.toInt(), 0x304DA3FF, 0x2600D4C8),
         AppTheme("forest", "Bosque", 0xFF4ADE80.toInt(), 0x3040D87A, 0x26F2C94C),
         AppTheme("violet", "Violeta", 0xFFB388FF.toInt(), 0x30B388FF, 0x264DA3FF),
-        AppTheme("rose", "Rosa", 0xFFFF6B9A.toInt(), 0x30FF6B9A, 0x26FFB84D)
+        AppTheme("rose", "Rosa", 0xFFFF6B9A.toInt(), 0x30FF6B9A, 0x26FFB84D),
+        AppTheme("mint", "Menta", 0xFF2EE6C5.toInt(), 0x302EE6C5, 0x264DA3FF),
+        AppTheme("sunset", "Atardecer", 0xFFFF7A59.toInt(), 0x30FF7A59, 0x30B388FF),
+        AppTheme("midnight", "Medianoche", 0xFF7C89FF.toInt(), 0x307C89FF, 0x2600D4C8)
     )
     var theme: AppTheme = THEMES[0]
         private set
@@ -44,7 +47,7 @@ object Glass {
     fun page(c: Context): Drawable {
         val d = c.resources.displayMetrics
         val base = GradientDrawable(GradientDrawable.Orientation.TL_BR,
-            intArrayOf(0xFF181B22.toInt(), 0xFF101218.toInt(), 0xFF08090C.toInt()))
+            intArrayOf(0xFF1A1E27.toInt(), 0xFF12151C.toInt(), 0xFF07080B.toInt()))
         val glow = GradientDrawable().apply {
             gradientType = GradientDrawable.RADIAL_GRADIENT
             setGradientCenter(0.95f, 0.0f)
@@ -57,21 +60,32 @@ object Glass {
             gradientRadius = d.widthPixels * 0.8f
             colors = intArrayOf(theme.glow2, theme.glow2 and 0x00FFFFFF)
         }
-        return LayerDrawable(arrayOf(base, glow, glow2))
+        val glow3 = GradientDrawable().apply {
+            gradientType = GradientDrawable.RADIAL_GRADIENT
+            setGradientCenter(0.5f, -0.1f)
+            gradientRadius = d.widthPixels * 0.45f
+            colors = intArrayOf(accentA(0x22), accentA(0x00))
+        }
+        return LayerDrawable(arrayOf(base, glow, glow2, glow3))
     }
 
     fun card(c: Context, radiusDp: Float = 26f, strong: Boolean = false): Drawable {
         val r = dp(c, radiusDp)
         val body = GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM,
-            if (strong) intArrayOf(0xB03A4050.toInt(), 0xCC15171E.toInt())
-            else intArrayOf(0x70373C4A, 0x99161820.toInt())).apply { cornerRadius = r }
-        val rim = GradientDrawable().apply {
-            cornerRadius = r; setColor(0); setStroke(maxOf(1, dp(c, 1.1f).toInt()), 0x55FFFFFF)
-        }
+            if (strong) intArrayOf(0xB83A4050.toInt(), 0xD4161920.toInt())
+            else intArrayOf(0x7A373C4A, 0xA0161820.toInt())).apply { cornerRadius = r }
         val shine = GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM,
-            intArrayOf(0x22FFFFFF, 0x00FFFFFF)).apply { cornerRadius = r }
-        val l = LayerDrawable(arrayOf(body, shine, rim))
+            intArrayOf(0x26FFFFFF, 0x00FFFFFF)).apply { cornerRadius = r }
+        val rim = GradientDrawable().apply {
+            cornerRadius = r; setColor(0); setStroke(maxOf(1, dp(c, 1.1f).toInt()), 0x66FFFFFF)
+        }
+        // Segunda línea interior con el color de acento: da profundidad y ata la tarjeta al tema elegido.
+        val accentRim = GradientDrawable().apply {
+            cornerRadius = r; setColor(0); setStroke(maxOf(1, dp(c, 0.8f).toInt()), accentA(0x33))
+        }
+        val l = LayerDrawable(arrayOf(body, shine, rim, accentRim))
         val i = dp(c, 1f).toInt(); l.setLayerInset(1, i, i, i, i)
+        val j = dp(c, 2.2f).toInt(); l.setLayerInset(3, j, j, j, j)
         return l
     }
 

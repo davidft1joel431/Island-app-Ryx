@@ -1,11 +1,26 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <!-- Base -->
     <color name="bg">#13151B</color>
     <color name="card">#20232B</color>
+    <color name="text">#F5F6F8</color>
+    <color name="muted">#A9AEBB</color>
+
+    <!-- Acentos -->
     <color name="gold">#FF8A4C</color>
     <color name="green">#3DDC84</color>
     <color name="red">#FF6B6B</color>
-    <color name="text">#F5F6F8</color>
-    <color name="muted">#A9AEBB</color>
+    <color name="blue">#4DA3FF</color>
+    <color name="violet">#B388FF</color>
+    <color name="mint">#2EE6C5</color>
+
+    <!-- Secciones del historial -->
+    <color name="sec_apps">#6A62E8</color>
+    <color name="sec_system">#2DAA55</color>
+    <color name="sec_battery">#30D158</color>
+    <color name="sec_wifi">#0A84FF</color>
+    <color name="sec_net">#40C8E0</color>
+    <color name="sec_bt">#5E5CE6</color>
+
     <color name="ic_launcher_background">#10162A</color>
 </resources>
