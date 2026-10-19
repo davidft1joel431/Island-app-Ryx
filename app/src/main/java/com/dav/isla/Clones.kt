@@ -2,10 +2,10 @@ package com.dav.isla
 
 import android.content.Context
 import android.content.pm.LauncherApps
-import android.content.pm.UserInfo
 import android.os.Looper
 import android.os.Process
 import android.os.UserHandle
+import android.os.UserInfo
 import android.os.UserManager
 
 /**
