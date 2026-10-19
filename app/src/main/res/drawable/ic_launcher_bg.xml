@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Fondo del icono de Ryx: un degradado diagonal del azul profundo de la marca.
+     Da relieve al icono adaptativo (antes era un color plano). El primer plano
+     (mipmap/ic_launcher_foreground) se mantiene; solo cambia el fondo. -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <gradient
+        android:angle="315"
+        android:centerColor="#141B36"
+        android:endColor="#0A0E1C"
+        android:startColor="#232E5C"
+        android:type="linear" />
+</shape>

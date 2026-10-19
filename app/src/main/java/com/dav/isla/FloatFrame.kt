@@ -91,8 +91,7 @@ object FloatFrame {
             val bar = LinearLayout(app).apply {
                 orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
                 background = GradientDrawable().apply {
-                    val rad = dp(app, 16).toFloat(); cornerRadii = floatArrayOf(rad, rad, rad, rad, 0f, 0f, 0f, 0f)
-                    setColor(0xF0181B22.toInt()); setStroke(dp(app, 1), 0x55FFFFFF)
+                    val rad = dp(app, 14).toFloat(); cornerRadii = floatArrayOf(rad, rad, rad, rad, 0f, 0f, 0f, 0f); setColor(0xE615171C.toInt())
                 }
                 setPadding(dp(app, 14), 0, dp(app, 4), 0)
             }
@@ -264,7 +263,7 @@ object FloatFrame {
         val c = ctx ?: return
         worker = true
         val gen = generation
-        val usePriv = priv; val id = taskId; val pk = pkgName; val cu = cloneUser
+        val usePriv = priv; val id = taskId; val pk = pkgName; val cu = cloneUser; val uidN = userIdN
         val frame = frameMs(c)
         val from = Rect(start)                      // ventana real antes de este movimiento (para saber si obedeció)
         Thread {
@@ -277,7 +276,7 @@ object FloatFrame {
                     if (usePriv && id.isNotEmpty()) FloatingWindow.resizeTask(c, id, p) else {
                         // Algunas ROM aceptan cambiar el tamaño pero ignoran un movimiento con el mismo tamaño: alternar 1 px lo evita
                         val q = if (nudge) Rect(p).also { it.right += (nudgeTick++ and 1) } else p
-                        FloatingWindow.reposition(c, pk, q, cu)
+                        FloatingWindow.reposition(c, pk, q, cu, uidN)
                     }
                     last = p
                     // Ritmo de la pantalla: se descuenta lo que ya tardó el envío (antes se esperaban 60 ms FIJOS después de cada uno)

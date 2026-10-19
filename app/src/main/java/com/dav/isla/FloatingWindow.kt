@@ -36,6 +36,11 @@ object FloatingWindow {
         sb.append("\nLa ROM declara ventanas libres: ${if (has) "SÍ" else "NO"}\n")
         sb.append("\n${FreeformUnlock.status(c)}\n")
         sb.append("\nServicio de accesibilidad: ${if (RyxAccessibility.isEnabled(c)) "activo" else "apagado"}\n")
+        sb.append("Método con privilegios (Shizuku/root): ${if (Shell.privileged(c)) "disponible · ${Shell.label(c)}" else "no disponible"}\n")
+        val v = Prefs.fwVariant(c)
+        sb.append("Método de apertura recordado: ${if (v in RyxAccessibility.VARIANTS.indices) "${v + 1} · ${RyxAccessibility.VARIANTS[v]}" else "sin calibrar (se prueba al abrir)"}\n")
+        if (Build.VERSION.SDK_INT >= 36)
+            sb.append("\nAndroid 16+: esta ROM puede traer ventanas de escritorio por pantalla; si el formato libre falla, revisa «Escritorio» en Opciones de desarrollador.\n")
         if (!FreeformUnlock.unlocked(c))
             sb.append("\nActiva «Permitir ventanas de forma libre» y «Forzar que las actividades sean redimensionables» en Opciones de desarrollador " +
                 "(o usa el botón «Desbloquear apps no redimensionables»).")
@@ -68,7 +73,7 @@ object FloatingWindow {
         }
         val b = bounds(c)
         log.append("Ventana pedida: ${b.left},${b.top} → ${b.right},${b.bottom}\n")
-        val ok = svc.launchSmartIsland(pkg, pi, b, log, user)
+        val ok = svc.launchSmartIsland(pkg, pi, b, log, user, userId)
         if (ok && Prefs.fwFrame(c)) {
             FloatFrame.show(c, "", b, pkg, appLabel(c, pkg) + if (user != null) " · clon" else "", user, userId)
             log.append("Barra de Ryx: mostrada sobre la ventana (mover, cambiar tamaño y cerrar).\n")
@@ -108,21 +113,22 @@ object FloatingWindow {
         // Con clon hay dos tareas del mismo paquete: se toma la del espacio correcto (la línea trae «U=<espacio>»)
         return out.lines().mapNotNull { ln ->
             val id = Regex("#(\\d+)").find(ln)?.groupValues?.get(1)?.toIntOrNull() ?: return@mapNotNull null
-            val u = Regex("(?:\\bU=|userId=)(\\d+)").find(ln)?.groupValues?.get(1)?.toIntOrNull()
+            val u = Regex("U=(\\d+)").find(ln)?.groupValues?.get(1)?.toIntOrNull()
             if (userId >= 0 && u != null && u != userId) null else id
         }.maxOrNull()?.toString() ?: ""
     }
 
     /** Vuelve a pedir la ventana libre en otra posición/tamaño sin ventana nueva (Android reutiliza la tarea). */
-    fun reposition(c: Context, pkg: String, r: Rect, user: android.os.UserHandle? = null) {
-        RyxAccessibility.instance?.relaunchBounds(pkg, r, user)
+    fun reposition(c: Context, pkg: String, r: Rect, user: android.os.UserHandle? = null, userId: Int = -1) {
+        RyxAccessibility.instance?.relaunchBounds(pkg, r, user, userId)
     }
 
-    /** Mueve/redimensiona una tarea ya abierta (solo con Shizuku o root). */
-    fun resizeTask(c: Context, id: String, r: Rect) {
+    /** Mueve/redimensiona una tarea ya abierta (solo con Shizuku o root). Devuelve true si el comando respondió sin error. */
+    fun resizeTask(c: Context, id: String, r: Rect): Boolean {
         // `am` arranca una VM entera (lento): solo se usa si `cmd` falla, no siempre
-        Shell.run(c, "cmd activity task resize $id ${r.left} ${r.top} ${r.right} ${r.bottom} || " +
+        val out = Shell.run(c, "cmd activity task resize $id ${r.left} ${r.top} ${r.right} ${r.bottom} || " +
             "am task resize $id ${r.left} ${r.top} ${r.right} ${r.bottom}")
+        return out.first == 0 && !out.second.contains("Error", true)
     }
 
     /** Quita la restricción de APIs internas solo para poder pedir el modo ventana libre. */

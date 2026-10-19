@@ -17,7 +17,7 @@ object Prefs {
     fun hideHeadsUp(c: Context): Boolean = sp(c).getBoolean("hide_headsup", false)
     fun setHideHeadsUp(c: Context, v: Boolean) = sp(c).edit().putBoolean("hide_headsup", v).apply()
 
-    fun style(c: Context): String = sp(c).getString("style", "liquid") ?: "liquid"
+    fun style(c: Context): String = sp(c).getString("style", "hyperos") ?: "hyperos"
     fun setStyle(c: Context, v: String) = sp(c).edit().putString("style", v).apply()
 
     fun yOffsetDp(c: Context): Int = sp(c).getInt("y_dp", 8)
@@ -77,6 +77,16 @@ object Prefs {
     fun allowedApps(c: Context): Set<String>? = sp(c).getStringSet("blocked", null)
     fun blocked(c: Context): Set<String> = sp(c).getStringSet("blocked", emptySet()) ?: emptySet()
     fun setBlocked(c: Context, v: Set<String>) = sp(c).edit().putStringSet("blocked", v).apply()
+
+    // ---- Clonados conocidos (por copia, "paquete@usuario") ----
+    // Se aprenden de las notificaciones y de los perfiles del sistema. Sirven para
+    // que «Aplicaciones» muestre cada copia, incluidas las de un segundo espacio
+    // o perfil de trabajo que no aparecen en el cajón de apps.
+    fun knownClones(c: Context): Set<String> = sp(c).getStringSet("known_clones", emptySet()) ?: emptySet()
+    fun addKnownClone(c: Context, key: String) {
+        val cur = knownClones(c).toMutableSet()
+        if (cur.add(key)) sp(c).edit().putStringSet("known_clones", cur).apply()
+    }
     fun fontBold(c: Context): Boolean = sp(c).getBoolean("font_bold", true)
     fun setFontBold(c: Context, v: Boolean) = sp(c).edit().putBoolean("font_bold", v).apply()
 
@@ -222,9 +232,6 @@ object Prefs {
     /** Variante de apertura directa que funcionó en esta ROM (-1 = sin calibrar). */
     fun fwVariant(c: Context): Int = sp(c).getInt("fw_variant", -1)
     fun setFwVariant(c: Context, v: Int) = sp(c).edit().putInt("fw_variant", v).apply()
-    /** 2 = calibración de 0.9.23 (el orden de variantes cambió; las anteriores no sirven). */
-    fun fwVariantGen(c: Context): Int = sp(c).getInt("fw_vgen", 0)
-    fun setFwVariantGen(c: Context, v: Int) = sp(c).edit().putInt("fw_vgen", v).apply()
     /** Activar solo «Forzar que las actividades sean redimensionables» antes de abrir (necesita WRITE_SECURE_SETTINGS, concedido una vez por ADB). */
     fun fwUnlock(c: Context): Boolean = sp(c).getBoolean("fw_unlock", true)
     fun setFwUnlock(c: Context, v: Boolean) = sp(c).edit().putBoolean("fw_unlock", v).apply()
