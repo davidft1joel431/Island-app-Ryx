@@ -47,7 +47,10 @@ class RyxAccessibility : AccessibilityService() {
         private val BUBBLE = Regex("burbuja|bubble", RegexOption.IGNORE_CASE)
     }
 
-    override fun onServiceConnected() { instance = this }
+    override fun onServiceConnected() {
+        instance = this
+        Glass.applyTheme(this)
+    }
     override fun onUnbind(intent: Intent?): Boolean { hideCurtain(); instance = null; return super.onUnbind(intent) }
     /** Cambios de ventanas (mover, redimensionar, cerrar): la barra de Ryx se entera al instante y se pega a la ventana real. */
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
@@ -68,29 +71,54 @@ class RyxAccessibility : AccessibilityService() {
     // se comprueba con las ventanas que ve accesibilidad y se prueban variantes; la que funciona se recuerda.
     // ─────────────────────────────────────────────────────────────────────────────────────────────
 
-    private val VARIANTS = listOf("estándar (clave windowingMode)", "con pantalla 0", "sin ventana nueva", "método interno")
+    private val VARIANTS = listOf(
+        "interno + tarea nueva",
+        "interno reutilizando la tarea",
+        "shell windowingMode 5",
+        "clave heredada"
+    )
 
-    private fun fire(v: Int, launch: Intent, pi: PendingIntent?, b: Rect, reuse: Boolean = false,
-                     pkg: String = "", user: android.os.UserHandle? = null): Boolean = try {
+    /** La calibración anterior (0.9.22) numeraba las variantes al revés: se ignora hasta que esta versión acierta. */
+    private fun savedVariant(): Int = if (Prefs.fwVariantGen(this) < 2) -1 else Prefs.fwVariant(this)
+    private fun rememberVariant(v: Int) {
+        Prefs.setFwVariantGen(this, 2)
+        Prefs.setFwVariant(this, v)
+    }
+
+    private fun freeformBundle(v: Int, b: Rect): android.os.Bundle {
+        try { org.lsposed.hiddenapibypass.HiddenApiBypass.addHiddenApiExemptions("L") } catch (e: Throwable) {}
         val opts = ActivityOptions.makeBasic()
-        try { opts.setLaunchBounds(b) } catch (e: Throwable) {}
-        if (v == 1) try { opts.setLaunchDisplayId(0) } catch (e: Throwable) {}
         if (Build.VERSION.SDK_INT >= 34) try {
             opts.setPendingIntentBackgroundActivityStartMode(ActivityOptions.MODE_BACKGROUND_ACTIVITY_START_ALLOWED)
         } catch (e: Throwable) {}
-        if (v == 3) try {
-            org.lsposed.hiddenapibypass.HiddenApiBypass.addHiddenApiExemptions("L")
-            ActivityOptions::class.java.getMethod("setLaunchWindowingMode", Int::class.javaPrimitiveType).invoke(opts, 5)
-        } catch (e: Throwable) {}
+        try { opts.setLaunchDisplayId(0) } catch (e: Throwable) {}
+        // La variante heredada no llama al método interno: algunas ROM A12 se cierran si lo ven.
+        if (v != 3) {
+            try {
+                ActivityOptions::class.java.getMethod("setLaunchWindowingMode", Int::class.javaPrimitiveType).invoke(opts, 5)
+            } catch (e: Throwable) {}
+            try {
+                ActivityOptions::class.java.getMethod("setLaunchActivityWindowingMode", Int::class.javaPrimitiveType).invoke(opts, 5)
+            } catch (e: Throwable) {}
+        }
+        try { opts.setLaunchBounds(b) } catch (e: Throwable) {}
         val bundle = opts.toBundle() ?: android.os.Bundle()
-        if (v != 3) bundle.putInt("android.activity.windowingMode", 5)
-        val flags = Intent.FLAG_ACTIVITY_NEW_TASK or (if (v == 2 || reuse) 0 else Intent.FLAG_ACTIVITY_MULTIPLE_TASK)
+        bundle.putInt("android.activity.windowingMode", 5)
+        bundle.putInt("android.activity.activityWindowingMode", 5)
+        bundle.putParcelable("android.activity.launchBounds", b)
+        return bundle
+    }
+
+    private fun fire(v: Int, launch: Intent, pi: PendingIntent?, b: Rect, reuse: Boolean = false,
+                     pkg: String = "", user: android.os.UserHandle? = null): Boolean = try {
+        val bundle = freeformBundle(v, b)
+        val flags = Intent.FLAG_ACTIVITY_NEW_TASK or (if (v == 1 || reuse) 0 else Intent.FLAG_ACTIVITY_MULTIPLE_TASK)
         if (pi != null) {
             pi.send(this, 0, Intent().addFlags(flags), null, null, null, bundle)
         } else if (pkg.isNotEmpty() && (user != null || hasOtherSpace(pkg))) {
             // Clon (app dual): se lanza SU copia en su espacio; el intent normal abriría la original.
-            // Y si la app TIENE clon, la ORIGINAL también se lanza indicando su espacio (el principal): con un startActivity normal
-            // la ROM decide sola entre las dos copias y puede abrir el clon en lugar de la original.
+            // Y si la app TIENE clon, la ORIGINAL también se lanza indicando su espacio: con un startActivity normal
+            // la ROM decide sola entre las dos copias y puede abrir el clon.
             val target = user ?: android.os.Process.myUserHandle()
             val la = getSystemService(Context.LAUNCHER_APPS_SERVICE) as LauncherApps
             val acts = la.getActivityList(pkg, target)
@@ -105,21 +133,41 @@ class RyxAccessibility : AccessibilityService() {
         true
     } catch (e: Throwable) { false }
 
-    private val spaceCache = java.util.concurrent.ConcurrentHashMap<String, Pair<Boolean, Long>>()
-
-    /** ¿[pkg] está también en otro espacio (clon / app dual)? Con caché de 60 s: se pregunta en cada movimiento de la ventana. */
-    private fun hasOtherSpace(pkg: String): Boolean {
-        val now = System.currentTimeMillis()
-        spaceCache[pkg]?.let { if (now - it.second < 60_000L) return it.first }
-        val r = try {
-            val um = getSystemService(Context.USER_SERVICE) as android.os.UserManager
-            val la = getSystemService(Context.LAUNCHER_APPS_SERVICE) as LauncherApps
-            val me = android.os.Process.myUserHandle()
-            um.userProfiles.any { it != me && la.getActivityList(pkg, it).isNotEmpty() }
-        } catch (e: Throwable) { false }
-        spaceCache[pkg] = Pair(r, now)
-        return r
+    /** `am start --windowingMode 5` es el camino que sí respetan muchas ROM A16/A17 cuando el bundle se ignora. */
+    private fun fireShell(pkg: String, b: Rect, userId: Int, log: StringBuilder): Boolean {
+        if (!Shell.privileged(this)) return false
+        val comp = mainComponent(pkg, userId)
+        val userArg = if (userId >= 0) "--user $userId" else ""
+        val start = if (comp != null) "am start $userArg --windowingMode 5 -n $comp"
+            else "am start $userArg --windowingMode 5 -a android.intent.action.MAIN -c android.intent.category.LAUNCHER -p $pkg"
+        val r = Shell.run(this, start)
+        log.append("Shell: $start → ${r.first} ${r.second.take(160)}\n")
+        if (r.first != 0 || r.second.contains("Error", true)) return false
+        pause(180)
+        val tid = FloatingWindow.findTaskId(this, pkg, userId)
+        if (tid.isNotEmpty()) {
+            val z = Shell.run(this, "cmd activity task resize $tid ${b.left} ${b.top} ${b.right} ${b.bottom} || am task resize $tid ${b.left} ${b.top} ${b.right} ${b.bottom}")
+            log.append("Redimensionado tarea $tid: ${z.first}\n")
+        }
+        return true
     }
+
+    private fun mainComponent(pkg: String, userId: Int): String? {
+        val my = android.os.Process.myUserHandle().identifier
+        val uid = if (userId >= 0) userId else my
+        try {
+            val la = getSystemService(Context.LAUNCHER_APPS_SERVICE) as LauncherApps
+            val comp = la.getActivityList(pkg, android.os.UserHandle.of(uid)).firstOrNull()?.componentName
+            if (comp != null) return comp.flattenToShortString()
+        } catch (e: Throwable) {}
+        packageManager.getLaunchIntentForPackage(pkg)?.component?.let { return it.flattenToShortString() }
+        if (!Shell.privileged(this)) return null
+        val r = Shell.run(this, "cmd package resolve-activity --brief --user $uid -a android.intent.action.MAIN -c android.intent.category.LAUNCHER $pkg")
+        return r.second.lineSequence().map { it.trim() }.lastOrNull { '/' in it && "Error" !in it && "No activity" !in it }
+    }
+
+    /** ¿[pkg] está también en otro espacio (clon / app dual)? */
+    private fun hasOtherSpace(pkg: String): Boolean = try { Apps.hasClone(this, pkg) } catch (e: Throwable) { false }
 
     /**
      * Si la app tiene clon y se pidió la ORIGINAL, lo anota en el registro. «Acceso de uso» solo ve el espacio principal:
@@ -169,13 +217,14 @@ class RyxAccessibility : AccessibilityService() {
             val launch = packageManager.getLaunchIntentForPackage(pkg)
             if (launch == null && pi == null && user == null) { log.append("No se encontró la actividad principal.\n"); return false }
             val ok = if (almostFull) {
-                val v = Prefs.fwVariant(this).let { if (it in VARIANTS.indices) it else 0 }
-                log.append("Ventana casi a pantalla completa: un solo intento (variante ${v + 1}).\n")
+                val v = savedVariant().let { if (it in VARIANTS.indices && it != 2) it else 0 }
+                log.append("Ventana casi a pantalla completa: un solo intento (variante ${v + 1} · ${VARIANTS[v]}).\n")
                 fire(v, Intent(launch ?: Intent()), pi, b, pkg = pkg, user = user)
             } else if (launch != null || user != null) {
                 launchFreeformDirect(pkg, pi, b, log, user)
             } else {
-                fire(Prefs.fwVariant(this).let { if (it in VARIANTS.indices) it else 0 }, Intent(), pi, b)
+                val v = savedVariant().let { if (it in VARIANTS.indices && it != 2) it else 0 }
+                fire(v, Intent(), pi, b)
             }
             log.append("Tiempo total: ${System.currentTimeMillis() - t0} ms. ${describeWindows(pkg)}\n")
             ok
@@ -209,8 +258,10 @@ class RyxAccessibility : AccessibilityService() {
         // El intent de la app se guarda: preguntarlo a Android en cada movimiento restaba fluidez
         val launch = if (user != null) Intent()
             else (launchCache[pkg] ?: packageManager.getLaunchIntentForPackage(pkg)?.also { launchCache[pkg] = it }) ?: return false
-        val v = Prefs.fwVariant(this).let { if (it in VARIANTS.indices) it else 0 }   // la misma variante que abrió la ventana
-        return fire(v, Intent(launch), null, b, reuse = true, pkg = pkg, user = user)
+        val v = savedVariant().let { if (it in VARIANTS.indices) it else 0 }
+        val uid = user?.identifier ?: -1
+        if (v == 2 && fireShell(pkg, b, uid, StringBuilder())) return true
+        return fire(if (v == 2) 1 else v, Intent(launch), null, b, reuse = true, pkg = pkg, user = user)
     }
     private val launchCache = java.util.concurrent.ConcurrentHashMap<String, Intent>()
 
@@ -250,18 +301,30 @@ class RyxAccessibility : AccessibilityService() {
     fun launchFreeformDirect(pkg: String, pi: PendingIntent?, b: Rect, log: StringBuilder, user: android.os.UserHandle? = null): Boolean {
         val launch = packageManager.getLaunchIntentForPackage(pkg)
         if (launch == null && user == null) { log.append("No se encontró la actividad principal.\n"); return false }
-        val cached = Prefs.fwVariant(this)
-        val order = if (cached in VARIANTS.indices) listOf(cached) + VARIANTS.indices.filter { it != cached } else VARIANTS.indices.toList()
+        val cached = savedVariant()
+        val prefer = if (Build.VERSION.SDK_INT >= 35) listOf(0, 1, 2, 3) else listOf(3, 0, 1, 2)
+        val order = if (cached in VARIANTS.indices) listOf(cached) + prefer.filter { it != cached } else prefer
+        val uid = when {
+            user != null -> user.identifier
+            hasOtherSpace(pkg) -> android.os.Process.myUserHandle().identifier
+            else -> -1
+        }
         for (v in order) {
-            val sent = fire(v, launch?.let { Intent(it) } ?: Intent(), pi, b, pkg = pkg, user = user)
-            if (!sent) { log.append("Variante ${v + 1} · ${VARIANTS[v]}: no se pudo lanzar.\n"); continue }
+            if (v == 2) {
+                if (pi != null) { log.append("Variante ${v + 1} · ${VARIANTS[v]}: omitida (hay un destino de notificación, no la pantalla principal).\n"); continue }
+                if (!Shell.privileged(this)) { log.append("Variante ${v + 1} · ${VARIANTS[v]}: sin Shizuku ni root.\n"); continue }
+                if (!fireShell(pkg, b, uid, log)) continue
+            } else {
+                val sent = fire(v, launch?.let { Intent(it) } ?: Intent(), pi, b, pkg = pkg, user = user)
+                if (!sent) { log.append("Variante ${v + 1} · ${VARIANTS[v]}: no se pudo lanzar.\n"); continue }
+            }
             when (waitFloating(pkg, 1500)) {
                 true -> {
-                    log.append("Variante ${v + 1} · ${VARIANTS[v]}: ventana libre verificada. ${describeWindows(pkg)}\n"); Prefs.setFwVariant(this, v)
+                    log.append("Variante ${v + 1} · ${VARIANTS[v]}: ventana libre verificada. ${describeWindows(pkg)}\n"); rememberVariant(v)
                     checkSpace(pkg, user, pi, log)
                     return true
                 }
-                null -> { log.append("Variante ${v + 1} · ${VARIANTS[v]}: lanzada (no pude verificar si es libre; mira la pantalla).\n"); return true }
+                null -> { log.append("Variante ${v + 1} · ${VARIANTS[v]}: lanzada (no pude verificar si es libre; mira la pantalla).\n"); rememberVariant(v); return true }
                 false -> {
                     log.append("Variante ${v + 1} · ${VARIANTS[v]}: la ROM la abrió a pantalla completa.\n")
                     if (pi != null) pause(250)

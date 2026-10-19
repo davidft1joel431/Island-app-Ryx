@@ -63,10 +63,10 @@ object Glass {
     fun card(c: Context, radiusDp: Float = 26f, strong: Boolean = false): Drawable {
         val r = dp(c, radiusDp)
         val body = GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM,
-            if (strong) intArrayOf(0xB03A4050.toInt(), 0xCC15171E.toInt())
-            else intArrayOf(0x70373C4A, 0x99161820.toInt())).apply { cornerRadius = r }
+            if (strong) intArrayOf(0xF02E3442.toInt(), 0xF814161C.toInt())
+            else intArrayOf(0xC0363C4C.toInt(), 0xEE14171E.toInt())).apply { cornerRadius = r }
         val rim = GradientDrawable().apply {
-            cornerRadius = r; setColor(0); setStroke(maxOf(1, dp(c, 1.1f).toInt()), 0x55FFFFFF)
+            cornerRadius = r; setColor(0); setStroke(maxOf(1, dp(c, 1f).toInt()), 0x38FFFFFF)
         }
         val shine = GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM,
             intArrayOf(0x22FFFFFF, 0x00FFFFFF)).apply { cornerRadius = r }

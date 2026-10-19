@@ -23,6 +23,16 @@ data class IslandStyle(
 )
 
 object Styles {
+    // Cristal fino de Android 17: menos masa, borde de luz y esquinas continuas.
+    val LIQUID = IslandStyle(
+        id = "liquid", label = "A17 · Liquid",
+        bgTop = 0xD42C3342.toInt(), bgBottom = 0xC010141C.toInt(),
+        strokeColor = 0xA6FFFFFF.toInt(), strokeDp = 1f, highlight = 0x73FFFFFF,
+        cornerDp = 28f, iconCircle = false, iconCornerDp = 13f, iconDp = 36,
+        showAppName = false, expandedWidthDp = 336, titleSp = 14.5f, bodySp = 12.5f,
+        padH = 14, padV = 11
+    )
+
     // Imitacion de "Liquid Glass": fondo translucido, borde claro y brillo superior.
     val HYPEROS = IslandStyle(
         id = "hyperos", label = "HyperOS · Liquid Glass",
@@ -122,7 +132,7 @@ object Styles {
         padH = 14, padV = 12, textColor = 0xFF14161C.toInt(), subColor = 0xCC3A3F4A.toInt()
     )
 
-    val ALL = listOf(HYPEROS, IOS, SAMSUNG, CLASSIC, AURORA, NEON, AMBAR, BOSQUE, MINIMAL, CLARO)
+    val ALL = listOf(LIQUID, HYPEROS, IOS, SAMSUNG, CLASSIC, AURORA, NEON, AMBAR, BOSQUE, MINIMAL, CLARO)
 
     fun byId(id: String): IslandStyle = ALL.firstOrNull { it.id == id } ?: HYPEROS
 }
