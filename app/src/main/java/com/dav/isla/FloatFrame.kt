@@ -9,7 +9,9 @@ import android.os.Build
 import android.os.Handler
 import android.os.HandlerThread
 import android.os.Looper
+import android.os.SystemClock
 import android.provider.Settings
+import android.view.Choreographer
 import android.view.Gravity
 import android.view.MotionEvent
 import android.view.View
@@ -26,8 +28,8 @@ import kotlin.math.abs
  * ventanas (RyxAccessibility → [onWindowsChanged]) y, además, hay un sondeo de respaldo cada 400 ms. La barra se coloca
  * siempre sobre los límites reales (no sobre los pedidos), así que también sigue a la ventana si la mueve el sistema.
  *
- * MOVER / REDIMENSIONAR DE VERDAD: mientras arrastras, los nuevos límites se mandan a la ventana real cada ~60 ms
- * (solo se envía el último). Con Shizuku/root ya activos se usa `cmd activity task resize`; sin ellos, se vuelve a pedir
+ * MOVER / REDIMENSIONAR DE VERDAD: mientras arrastras, los nuevos límites se mandan a la ventana real al ritmo de la pantalla
+ * (un envío por fotograma, solo el último; si el sistema tarda más, espera lo que tarde) y la barra se redibuja una vez por fotograma. Con Shizuku/root ya activos se usa `cmd activity task resize`; sin ellos, se vuelve a pedir
  * la ventana a Android con los nuevos límites (misma variante que la abrió, sin ventana nueva). Después de cada envío se
  * LEE la ventana real: si la ROM no la movió, tras 3 fallos seguidos se avisa y la barra deja de fingir que la mueve.
  */
@@ -50,6 +52,8 @@ object FloatFrame {
     private var pkgName = ""
     private var title = ""
     private var priv = false
+    private var cloneUser: android.os.UserHandle? = null      // si la ventana es de un CLON, su espacio
+    private var userIdN = -1
 
     @Volatile private var generation = 0
     @Volatile private var lockUntil = 0L
@@ -68,12 +72,13 @@ object FloatFrame {
 
     private fun dp(c: Context, v: Int) = (v * c.resources.displayMetrics.density).toInt()
 
-    fun show(c: Context, id: String, bounds: Rect, pkg: String = "", label: String = "") {
+    fun show(c: Context, id: String, bounds: Rect, pkg: String = "", label: String = "",
+             user: android.os.UserHandle? = null, userId: Int = -1) {
         val app = c.applicationContext
         main.post {
             if (!Settings.canDrawOverlays(app)) return@post
             hide()
-            ctx = app; taskId = id; pkgName = pkg; title = label; priv = false; r.set(bounds)
+            ctx = app; taskId = id; pkgName = pkg; title = label; priv = false; r.set(bounds); cloneUser = user; userIdN = userId
             misses = 0; fullCount = 0; moverFails = 0; moverBroken = false; warned = false; lockUntil = 0L
             val w = app.getSystemService(Context.WINDOW_SERVICE) as WindowManager
             wm = w
@@ -115,7 +120,7 @@ object FloatFrame {
             try { w.addView(bar, hp); w.addView(g, gp) } catch (e: Exception) { hide(); return@post }
 
             if (pkg.isNotEmpty() && RyxAccessibility.instance != null) {
-                bg.postDelayed({ syncNow(gen) }, 250)            // primera lectura: se corrige a los límites reales
+                bg.postDelayed({ syncNow(gen) }, 150)            // primera lectura: se corrige a los límites reales
                 bg.postDelayed(pollRun(gen), 650)                // respaldo si la ROM no manda el evento de cambio
             } else main.postDelayed({ if (generation == gen) hide() }, 120_000L)   // sin verificación: se quitan solas a los 2 min
 
@@ -123,7 +128,7 @@ object FloatFrame {
             if (pkg.isNotEmpty()) Thread {
                 try {
                     if (Shell.privileged(app)) {
-                        val tid = if (id.isNotEmpty()) id else FloatingWindow.findTaskId(app, pkg)
+                        val tid = if (id.isNotEmpty()) id else FloatingWindow.findTaskId(app, pkg, userIdN)
                         if (tid.isNotEmpty() && generation == gen) { taskId = tid; priv = true }
                     }
                 } catch (e: Throwable) {}
@@ -149,6 +154,22 @@ object FloatFrame {
         try { handle?.let { wm?.updateViewLayout(it, hp) } } catch (e: Exception) {}
         try { grip?.let { wm?.updateViewLayout(it, gp) } } catch (e: Exception) {}
     }
+
+    // Con el dedo llegan más movimientos que fotogramas (120 Hz de tacto vs 60 Hz de pantalla): se redibuja UNA vez por fotograma
+    private var framePosted = false
+    private val frameCb = Choreographer.FrameCallback { framePosted = false; place() }
+    private fun placeOnFrame() {
+        if (framePosted) return
+        framePosted = true
+        Choreographer.getInstance().postFrameCallback(frameCb)
+    }
+
+    /** Duración de un fotograma de la pantalla (16 ms a 60 Hz, 8 ms a 120 Hz). */
+    @Suppress("DEPRECATION")
+    private fun frameMs(c: Context): Long = try {
+        val hz = (c.getSystemService(Context.WINDOW_SERVICE) as WindowManager).defaultDisplay.refreshRate
+        (1000f / hz).toLong().coerceIn(6L, 20L)
+    } catch (e: Throwable) { 16L }
 
     private fun WindowManager.LayoutParams.cutoutAlways() {
         if (Build.VERSION.SDK_INT >= 28) layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS
@@ -218,10 +239,11 @@ object FloatFrame {
                     val bb = maxOf(start.bottom + dy, start.top + dp(c, 220))
                     r.set(start.left, start.top, rr, bb)
                 }
-                place(); push(); true
+                placeOnFrame(); push(); true
             }
             MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
                 dragging = false
+                place()
                 lockUntil = System.currentTimeMillis() + 900
                 if (!moverBroken && !sameRect(r, start)) push()
                 true
@@ -237,16 +259,20 @@ object FloatFrame {
         val c = ctx ?: return
         worker = true
         val gen = generation
-        val usePriv = priv; val id = taskId; val pk = pkgName
+        val usePriv = priv; val id = taskId; val pk = pkgName; val cu = cloneUser
+        val frame = frameMs(c)
         Thread {
             var last: Rect? = null
             try {
                 while (generation == gen) {
                     val p = pending ?: break
                     pending = null
-                    if (usePriv && id.isNotEmpty()) FloatingWindow.resizeTask(c, id, p) else FloatingWindow.reposition(c, pk, p)
+                    val t0 = SystemClock.uptimeMillis()
+                    if (usePriv && id.isNotEmpty()) FloatingWindow.resizeTask(c, id, p) else FloatingWindow.reposition(c, pk, p, cu)
                     last = p
-                    try { Thread.sleep(if (usePriv) 20 else 60) } catch (e: InterruptedException) { break }
+                    // Ritmo de la pantalla: se descuenta lo que ya tardó el envío (antes se esperaban 60 ms FIJOS después de cada uno)
+                    val wait = frame - (SystemClock.uptimeMillis() - t0)
+                    if (wait > 0) try { Thread.sleep(wait) } catch (e: InterruptedException) { break }
                 }
             } finally { worker = false }
             last?.let { l -> bg.postDelayed({ verify(l, gen) }, 380) }

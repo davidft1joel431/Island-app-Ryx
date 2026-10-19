@@ -86,12 +86,62 @@ class NotifListener : NotificationListenerService() {
         val count: Int = 1, val lines: List<String> = emptyList(), val sig: String = "",
         val time: Long = System.currentTimeMillis(),
         val target: String? = null,      // eventos del sistema: pantalla de Ajustes a la que lleva al tocarlo
-        val label: String? = null        // eventos del sistema: nombre en lugar del de la app
+        val label: String? = null,       // eventos del sistema: nombre en lugar del de la app
+        val userId: Int = -1,            // espacio de la app (clon / app dual); -1 = el principal
+        val user: android.os.UserHandle? = null
     )
-    private fun nameOf(c: Card): String = c.label ?: appLabel(c.pkg)
+    private fun nameOf(c: Card): String = c.label ?: appLabel(c.pkg, c.user, c.userId)
     private val cards = ArrayList<Card>()
     /** Último destino (chat) de cada app, para abrirlo exactamente al tocar la tarjeta. */
     private val intents = HashMap<String, android.app.PendingIntent>()
+
+    // ---------- Apps clonadas (apps duales / segundo espacio de la ROM) ----------
+    // El clon y el original comparten paquete: lo que los distingue es el espacio de usuario de la notificación.
+    private val myUser: Int by lazy { android.os.Process.myUid() / 100000 }
+    private val ANY_USER = -2
+    private fun norm(u: Int) = if (u < 0) myUser else u
+    private fun isClone(u: Int) = u >= 0 && u != myUser
+    /** Clave de la app: el paquete a secas para la original; «paquete@espacio» para su clon. */
+    private fun appKey(pkg: String, u: Int) = if (isClone(u)) "$pkg@$u" else pkg
+    /** Paquete → espacio donde ya se vio una notificación de su clon. */
+    private val cloneSeen = HashMap<String, Int>()
+    private val cloneCache = HashMap<String, Pair<Boolean, Long>>()
+
+    /** ¿Esta app existe también en otro espacio (clon)? Se sabe por una notificación vista o por los perfiles del sistema. */
+    private fun hasClone(pkg: String): Boolean {
+        if (cloneSeen.containsKey(pkg)) return true
+        val now = System.currentTimeMillis()
+        cloneCache[pkg]?.let { if (now - it.second < 60_000L) return it.first }
+        val r = try {
+            val um = getSystemService(USER_SERVICE) as android.os.UserManager
+            val la = getSystemService(LAUNCHER_APPS_SERVICE) as android.content.pm.LauncherApps
+            val me = android.os.Process.myUserHandle()
+            um.userProfiles.any { it != me && la.getActivityList(pkg, it).isNotEmpty() }
+        } catch (e: Exception) { false }
+        cloneCache[pkg] = Pair(r, now)
+        return r
+    }
+
+    /**
+     * Qué copia de [pkg] tienes delante: [ANY_USER] si solo hay una, el id del espacio si se distingue, null si hay clon y no se sabe.
+     * «Acceso de uso» solo ve las apps del espacio principal: si ahí está al frente es la original; si no y accesibilidad ve la app, es el clon.
+     */
+    private fun frontUserOf(pkg: String): Int? {
+        if (!hasClone(pkg)) return ANY_USER
+        if (!Foreground.hasAccess(this)) return null
+        if (Foreground.pkg(this) == pkg) return myUser
+        return cloneSeen[pkg]
+    }
+
+    /** Quita de la isla lo de la app que tienes delante; con clon, solo el de la copia correcta (se espera un instante a que «Acceso de uso» se ponga al día). */
+    private fun readFront(pkg: String, minAge: Long) {
+        if (!hasClone(pkg)) { markRead(pkg, minAge = minAge); return }
+        main.postDelayed({
+            if (usingNow() != pkg) return@postDelayed
+            val u = frontUserOf(pkg) ?: return@postDelayed
+            markRead(pkg, minAge = minAge, user = if (u == ANY_USER) null else u)
+        }, 600)
+    }
     private var cardIndex = 0
     private val currentPkg: String? get() = cards.getOrNull(cardIndex)?.pkg
 
@@ -115,8 +165,11 @@ class NotifListener : NotificationListenerService() {
     } catch (e: Exception) { null }
 
     /** ¿Estás dentro de esa app ahora? Entonces lo que llegue de ella ya lo estás leyendo ahí. */
-    private fun readingNow(pkg: String): Boolean =
-        Prefs.autoRead(this) && pkg != packageName && usingNow() == pkg
+    private fun readingNow(pkg: String, userId: Int): Boolean {
+        if (!Prefs.autoRead(this) || pkg == packageName || usingNow() != pkg) return false
+        val u = frontUserOf(pkg) ?: return false     // con clon y sin poder distinguir: se muestra como siempre
+        return u == ANY_USER || u == norm(userId)
+    }
 
     /** Cada pocos segundos: quita la isla si entró a un juego y la devuelve (modo permanente) al salir. */
     private val watch = object : Runnable {
@@ -129,7 +182,7 @@ class NotifListener : NotificationListenerService() {
                     // Respaldo: mientras estás dentro de una app, sus avisos que esperaban en la isla ya se leyeron
                     if (cards.any { !it.ephemeral }) {
                         val fg = usingNow()
-                        if (fg != null) markRead(fg, minAge = 1200)
+                        if (fg != null) readFront(fg, 1200)
                     }
                 }
             } catch (e: Exception) {}
@@ -196,7 +249,9 @@ class NotifListener : NotificationListenerService() {
         if (title == null && text == null) return
 
         // Ya estás dentro de esa app (pantalla encendida y desbloqueada): lo estás leyendo ahí, la isla no lo toma
-        val reading = readingNow(sbn.packageName)
+        val uid = if (sbn.userId >= 0) sbn.userId else myUser
+        if (isClone(uid)) cloneSeen[sbn.packageName] = uid
+        val reading = readingNow(sbn.packageName, uid)
 
         // 0) SOLO LA ISLA: si ella va a mostrarla, el aviso del sistema se quita YA (antes de guardar o preparar nada)
         //    para que apenas llegue a verse. Llamadas, multimedia, navegación, alarmas y progresos se quedan en el sistema.
@@ -208,7 +263,7 @@ class NotifListener : NotificationListenerService() {
         val words = Prefs.hiddenWords(this)
         if (words.isNotEmpty()) {
             val all = "${title ?: ""} ${text ?: ""}".lowercase()
-            if (words.any { all.contains(it) }) { title = appLabel(sbn.packageName); text = "Contenido oculto" }
+            if (words.any { all.contains(it) }) { title = appLabel(sbn.packageName, sbn.user, uid); text = "Contenido oculto" }
         }
 
         // Si ya lo leíste y la app lo reenvía igual (pasa al abrir el chat), no vuelve a la isla ni al historial
@@ -232,7 +287,7 @@ class NotifListener : NotificationListenerService() {
         if (hiddenNow()) return          // la notificación del sistema se queda intacta
         if (reading) {                   // ya la estás leyendo dentro de la app: no entra a la isla ni deja esperando lo anterior de esa app
             val rp = sbn.packageName
-            main.post { markRead(rp) }
+            main.post { markRead(rp, user = uid) }
             return
         }
         if (sbn.isOngoing) return
@@ -255,37 +310,39 @@ class NotifListener : NotificationListenerService() {
         }
         if (words.isNotEmpty() && text == "Contenido oculto") full = text
         val ci = n.contentIntent
-        if (ci != null && (n.flags and Notification.FLAG_GROUP_SUMMARY) == 0) intents[sbn.packageName] = ci
-        else if (ci != null && !intents.containsKey(sbn.packageName)) intents[sbn.packageName] = ci
-        show(sbn.packageName, title, text, large, true, true, "app:${sbn.packageName}", false,
+        val ik = appKey(sbn.packageName, uid)      // original y clon tienen su propia tarjeta y su propio destino
+        if (ci != null && (n.flags and Notification.FLAG_GROUP_SUMMARY) == 0) intents[ik] = ci
+        else if (ci != null && !intents.containsKey(ik)) intents[ik] = ci
+        show(sbn.packageName, title, text, large, true, true, "app:$ik", false,
             fallback = small, media = mediaBmp, detailText = full ?: text,
-            sig = "${sbn.key}|$title|$text")
+            sig = "${sbn.key}|$title|$text", user = sbn.user, userId = uid)
     }
 
     /** La notificación se canceló (la leíste, la deslizaste o la app la retiró). Lo que cancela la propia isla no cuenta. */
     override fun onNotificationRemoved(sbn: StatusBarNotification, rankingMap: NotificationListenerService.RankingMap?, reason: Int) {
         if (reason == NotificationListenerService.REASON_LISTENER_CANCEL || reason == NotificationListenerService.REASON_LISTENER_CANCEL_ALL) return
         if (sbn.packageName == packageName) return
-        val pk = sbn.packageName; val key = sbn.key
-        main.post { markRead(pk, key) }
+        val pk = sbn.packageName; val key = sbn.key; val ru = norm(sbn.userId)
+        main.post { markRead(pk, key, user = ru) }
     }
 
     /** Lo llama accesibilidad cuando una app abre una ventana: si tenía avisos esperando en la isla, ya los estás viendo. */
-    fun onAppOpened(pkg: String) { main.post { markRead(pkg, minAge = 1200) } }
+    fun onAppOpened(pkg: String) { main.post { readFront(pkg, 1200) } }
 
     /**
      * Ya lo leíste: la tarjeta sale de la isla y, si la app reenvía la misma, no vuelve.
      * [key] = solo la de esa notificación; [minAge] = no toca las recién llegadas.
      */
-    private fun markRead(pkg: String, key: String? = null, minAge: Long = 0) {
+    private fun markRead(pkg: String, key: String? = null, minAge: Long = 0, user: Int? = null) {
         if (!Prefs.autoRead(this) || pkg == packageName) return
         val now = System.currentTimeMillis()
-        val gone = cards.filter { !it.ephemeral && it.pkg == pkg && now - it.time >= minAge && (key == null || it.sig.startsWith("$key|")) }
+        val gone = cards.filter { !it.ephemeral && it.pkg == pkg && now - it.time >= minAge && (key == null || it.sig.startsWith("$key|")) &&
+            (user == null || norm(it.userId) == norm(user)) }
         if (gone.isEmpty()) return
         gone.forEach { if (it.sig.isNotEmpty()) readSigs[it.sig] = now }
         val shown = cards.getOrNull(cardIndex)
         cards.removeAll(gone.toSet())
-        intents.remove(pkg)
+        gone.forEach { intents.remove(appKey(it.pkg, it.userId)) }
         if (!attached) return
         if (cards.isEmpty()) {
             cardIndex = 0
@@ -703,7 +760,8 @@ class NotifListener : NotificationListenerService() {
         pkg: String, t: CharSequence?, b: CharSequence?, large: Drawable?, autoHide: Boolean = true,
         expand: Boolean = true, key: String = "$pkg|$t", ephemeral: Boolean = false,
         fallback: Drawable? = null, media: Bitmap? = null, detailText: CharSequence? = null,
-        sig: String = "", target: String? = null, label: String? = null, accentOverride: Int? = null
+        sig: String = "", target: String? = null, label: String? = null, accentOverride: Int? = null,
+        user: android.os.UserHandle? = null, userId: Int = -1
     ) {
         main.post {
             if (!::wm.isInitialized || !Settings.canDrawOverlays(this)) return@post
@@ -711,7 +769,10 @@ class NotifListener : NotificationListenerService() {
             buildIsland()
             val v = island ?: return@post
             val params = lp ?: return@post
-            val sysIcon: Drawable? = try { packageManager.getApplicationIcon(pkg) } catch (e: Exception) { null }
+            val baseIcon: Drawable? = try { packageManager.getApplicationIcon(pkg) } catch (e: Exception) { null }
+            // El clon lleva la insignia que le pone la ROM, para distinguirlo del original a simple vista
+            val sysIcon: Drawable? = if (baseIcon != null && isClone(userId) && user != null)
+                (try { packageManager.getUserBadgedIcon(baseIcon, user) } catch (e: Exception) { baseIcon }) else baseIcon
             // Si el sistema no deja leer el icono de la app (HyperOS sin permiso), se usa el de la notificación
             val appIcon: Drawable? = sysIcon ?: large ?: fallback?.let { badgeOf(it) }
             val shown: Drawable? = when {
@@ -742,7 +803,7 @@ class NotifListener : NotificationListenerService() {
             }
             val fullText: CharSequence? = if (lines.size > 1) lines.filter { it.isNotEmpty() }.joinToString("\n") else detailText
             cards.removeAll { it.key == key }
-            cards.add(0, Card(key, pkg, t, b, shown, accent, ephemeral, fullText, media, count, lines, sig, target = target, label = label))
+            cards.add(0, Card(key, pkg, t, b, shown, accent, ephemeral, fullText, media, count, lines, sig, target = target, label = label, userId = userId, user = user))
             val limit = System.currentTimeMillis() - 15 * 60_000L
             cards.removeAll { it.time < limit }
             while (cards.size > 8) cards.removeAt(cards.size - 1)
@@ -1258,10 +1319,17 @@ class NotifListener : NotificationListenerService() {
     }
 
     @Suppress("DEPRECATION")
-    private fun appLabel(pkg: String): String = try {
-        packageManager.getApplicationLabel(packageManager.getApplicationInfo(pkg, 0)).toString()
-    } catch (e: Exception) {
-        pkg.substringAfterLast('.').replaceFirstChar { it.uppercase() }
+    private fun appLabel(pkg: String, user: android.os.UserHandle? = null, userId: Int = -1): String {
+        val base = try {
+            packageManager.getApplicationLabel(packageManager.getApplicationInfo(pkg, 0)).toString()
+        } catch (e: Exception) {
+            pkg.substringAfterLast('.').replaceFirstChar { it.uppercase() }
+        }
+        if (!isClone(userId)) return base
+        // El clon se nombra como lo nombra la ROM («… (clon)», «… (dual)»…); si no cambia el nombre, se le añade «clon»
+        var badged: String? = null
+        if (user != null) try { badged = packageManager.getUserBadgedLabel(base, user).toString() } catch (e: Exception) {}
+        return if (badged != null && badged != base) badged else "$base · clon"
     }
 
     // ---------- Abrir app ----------
@@ -1273,18 +1341,43 @@ class NotifListener : NotificationListenerService() {
         if (card.target != null) { openTarget(card.target); dismissCurrent(); return }
         val pkg = card.pkg
         // Primero se lanza la app (con la isla aún visible) y luego se descarta la tarjeta
-        val pi = intents[pkg]
-        Thread { openApp(pkg, floating, pi, kind) }.start()
+        val pi = intents[appKey(pkg, card.userId)]
+        val user = card.user; val uid = card.userId
+        Thread { openApp(pkg, floating, pi, kind, user, uid) }.start()
         dismissCurrent()
     }
 
-    private fun openApp(pkg: String, freeform: Boolean, pi: android.app.PendingIntent?, kind: Int? = null) {
-        if (freeform) { FloatingWindow.open(this, pkg, pi, kind); return }
+    private fun openApp(pkg: String, freeform: Boolean, pi: android.app.PendingIntent?, kind: Int? = null,
+                        user: android.os.UserHandle? = null, userId: Int = -1) {
+        val cloneUser = if (isClone(userId)) user else null
+        if (freeform) { FloatingWindow.open(this, pkg, pi, kind, cloneUser, norm(userId)); return }
         // Abre la conversación exacta de la notificación; si no hay destino, la pantalla principal de la app
         if (pi != null && FloatingWindow.sendPending(this, pi, false, null)) return
+        // Es un clon y no hay destino guardado: se abre SU copia, nunca la original
+        if (cloneUser != null) { openClone(pkg, cloneUser, userId); return }
         val launch = packageManager.getLaunchIntentForPackage(pkg) ?: return
         launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         try { startActivity(launch) } catch (e: Exception) {}
+    }
+
+    /** Abre la copia (clon) de la app en su propio espacio. Si no se puede, avisa; jamás abre la original en su lugar. Fuera del hilo principal. */
+    private fun openClone(pkg: String, user: android.os.UserHandle, userId: Int) {
+        // 1) API pública del sistema para lanzar la app principal de otro espacio
+        try {
+            val la = getSystemService(LAUNCHER_APPS_SERVICE) as android.content.pm.LauncherApps
+            val comp = la.getActivityList(pkg, user).firstOrNull()?.componentName
+            if (comp != null) { la.startMainActivity(comp, user, null, null); return }
+        } catch (e: Exception) {}
+        // 2) Con Shizuku/root: mismo lanzamiento indicando el espacio del clon
+        try {
+            if (Shell.privileged(this)) {
+                val r = Shell.run(this, "am start --user $userId -a android.intent.action.MAIN -c android.intent.category.LAUNCHER -p $pkg")
+                if (r.first == 0 && !r.second.contains("Error", true)) return
+            }
+        } catch (e: Exception) {}
+        main.post {
+            android.widget.Toast.makeText(this, "No pude abrir el clon (esta ROM no deja lanzarlo sin Shizuku/root)", android.widget.Toast.LENGTH_LONG).show()
+        }
     }
 
     // ---------- Destino de los eventos del sistema ----------
