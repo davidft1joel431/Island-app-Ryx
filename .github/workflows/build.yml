@@ -34,6 +34,12 @@ jobs:
           tag_name: v${{ steps.ver.outputs.v }}
           name: Ryx Island v${{ steps.ver.outputs.v }}
           body: |
+            - Formato libre COMO LAS BURBUJAS: al arrastrar ya no se toca la ventana real. Aparece un MARCO FANTASMA translúcido que sigue al dedo al instante (60/120 Hz) y, al SOLTAR, la ventana se coloca en SEGUNDO PLANO con un pequeño deslizamiento (pasos interpolados): el gesto nunca se traba y la ventana «llega» a su sitio en vez de dar un salto.
+            - Historial como menú: la sección de historial ahora tiene su MENÚ (Todo · Aplicaciones · Sistema), igual que Demon, para separar de un toque los avisos de tus apps de los del sistema. El buscador por texto y la descarga en .html siguen igual.
+            - Interfaz más limpia y profesional: se QUITAN los registros en crudo de la vista normal. Ventana y Puente ahora muestran una tarjeta de DIAGNÓSTICO con «Ver detalle» y «Copiar», sin llenar la pantalla de texto monoespaciado.
+            - Cabeceras rediseñadas con DEGRADADO del color de cada sección (Diseño, Puente, Ajustes e Historial/Demon/Permisos), icono en cuadro y bordes finos.
+            - Ajustes reorganizado en secciones (Apariencia · Datos · Sistema) con encabezados, para que no parezca una lista plana.
+            - Las hojas de detalle muestran el registro en un recuadro oscuro, seleccionable y fácil de copiar.
             - Formato libre FLUIDO: se elimina el arranque de un proceso «su» por fotograma (era la causa de los tirones). Ahora se mantiene UN shell root vivo y el arrastre va a un ritmo realista (~70 ms con privilegios, ~260 ms sin ellos), con la barra pegada al dedo a la velocidad de la pantalla. Mientras arrastras ya no se consulta la ventana real por binder, así el gesto no se atasca.
             - Pedidos: la isla reconoce por su paquete las apps de pedidos (Rappi, PedidosYa, Uber Eats, Glovo, iFood, Wolt, Cornershop…) y de viajes (Uber, DiDi, Cabify…), y muestra su aviso con la etiqueta «Pedido»/«Viaje» y su propio color. Ya no hay un «pedido del sistema» inventado: lo detecta la app real.
             - Demon: las pruebas de eventos se separan en su propia sección «Demon» (desde Inicio y desde Ajustes), con su cabecera propia.
