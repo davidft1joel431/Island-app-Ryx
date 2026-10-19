@@ -6,6 +6,6 @@
     android:canRetrieveWindowContent="true"
     android:canPerformGestures="true"
     android:canTakeScreenshot="true"
-    android:notificationTimeout="100"
+    android:notificationTimeout="0"
     android:settingsActivity="com.dav.isla.MainActivity"
     android:description="@string/a11y_desc" />

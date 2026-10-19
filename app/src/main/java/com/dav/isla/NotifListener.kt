@@ -56,6 +56,9 @@ class NotifListener : NotificationListenerService() {
     }
 
     private val main = Handler(Looper.getMainLooper())
+    private val histExec = java.util.concurrent.Executors.newSingleThreadExecutor()
+    /** Notificaciones que ya leíste (firma → hora): si la app las reenvía iguales, no vuelven a la isla. */
+    private val readSigs = HashMap<String, Long>()
     private val hideTask = Runnable { collapse() }
     private lateinit var wm: WindowManager
     private var lp: WindowManager.LayoutParams? = null
@@ -81,8 +84,11 @@ class NotifListener : NotificationListenerService() {
         val icon: Drawable?, val accent: Int?, val ephemeral: Boolean,
         val detail: CharSequence? = null, val media: Bitmap? = null,
         val count: Int = 1, val lines: List<String> = emptyList(), val sig: String = "",
-        val time: Long = System.currentTimeMillis()
+        val time: Long = System.currentTimeMillis(),
+        val target: String? = null,      // eventos del sistema: pantalla de Ajustes a la que lleva al tocarlo
+        val label: String? = null        // eventos del sistema: nombre en lugar del de la app
     )
+    private fun nameOf(c: Card): String = c.label ?: appLabel(c.pkg)
     private val cards = ArrayList<Card>()
     /** Último destino (chat) de cada app, para abrirlo exactamente al tocar la tarjeta. */
     private val intents = HashMap<String, android.app.PendingIntent>()
@@ -100,6 +106,18 @@ class NotifListener : NotificationListenerService() {
         return fg in apps || (Prefs.hideInGames(this) && Foreground.isGame(this, fg))
     }
 
+    /** App que estás usando ahora mismo (pantalla encendida y desbloqueada), o null si no se puede saber. */
+    private fun usingNow(): String? = try {
+        val pm = getSystemService(POWER_SERVICE) as PowerManager
+        val km = getSystemService(KEYGUARD_SERVICE) as android.app.KeyguardManager
+        if (!pm.isInteractive || km.isKeyguardLocked) null
+        else RyxAccessibility.instance?.currentPackage() ?: Foreground.pkg(this)
+    } catch (e: Exception) { null }
+
+    /** ¿Estás dentro de esa app ahora? Entonces lo que llegue de ella ya lo estás leyendo ahí. */
+    private fun readingNow(pkg: String): Boolean =
+        Prefs.autoRead(this) && pkg != packageName && usingNow() == pkg
+
     /** Cada pocos segundos: quita la isla si entró a un juego y la devuelve (modo permanente) al salir. */
     private val watch = object : Runnable {
         override fun run() {
@@ -108,6 +126,11 @@ class NotifListener : NotificationListenerService() {
                     val hide = hiddenNow()
                     if (hide && attached) removeNow()
                     else if (!hide && !attached && Prefs.permanent(this@NotifListener)) showIdle()
+                    // Respaldo: mientras estás dentro de una app, sus avisos que esperaban en la isla ya se leyeron
+                    if (cards.any { !it.ephemeral }) {
+                        val fg = usingNow()
+                        if (fg != null) markRead(fg, minAge = 1200)
+                    }
                 }
             } catch (e: Exception) {}
             main.postDelayed(this, 2500)
@@ -144,6 +167,7 @@ class NotifListener : NotificationListenerService() {
         removeNow()
         restoreHeadsUp()
         instance = null
+        histExec.shutdown()
         super.onDestroy()
     }
 
@@ -171,6 +195,15 @@ class NotifListener : NotificationListenerService() {
         var text: CharSequence? = n.extras.getCharSequence(Notification.EXTRA_TEXT)
         if (title == null && text == null) return
 
+        // Ya estás dentro de esa app (pantalla encendida y desbloqueada): lo estás leyendo ahí, la isla no lo toma
+        val reading = readingNow(sbn.packageName)
+
+        // 0) SOLO LA ISLA: si ella va a mostrarla, el aviso del sistema se quita YA (antes de guardar o preparar nada)
+        //    para que apenas llegue a verse. Llamadas, multimedia, navegación, alarmas y progresos se quedan en el sistema.
+        val takeOver = Prefs.islandOn(this) && Prefs.blockSystem(this) && Settings.canDrawOverlays(this) &&
+            sbn.packageName !in Prefs.blocked(this) && !sbn.isOngoing && sbn.isClearable && !keepInSystem(n) && !hiddenNow() && !reading
+        if (takeOver) { try { cancelNotification(sbn.key) } catch (e: Exception) {} }
+
         // Palabras ocultas (privacidad): se reemplaza el contenido
         val words = Prefs.hiddenWords(this)
         if (words.isNotEmpty()) {
@@ -178,25 +211,31 @@ class NotifListener : NotificationListenerService() {
             if (words.any { all.contains(it) }) { title = appLabel(sbn.packageName); text = "Contenido oculto" }
         }
 
+        // Si ya lo leíste y la app lo reenvía igual (pasa al abrir el chat), no vuelve a la isla ni al historial
+        val nowMs = System.currentTimeMillis()
+        readSigs.entries.removeAll { nowMs - it.value > 120_000L }
+        if (readSigs.containsKey("${sbn.key}|$title|$text")) return
+
         val (mediaBmp, mediaKind) = extractMedia(n)
 
         // 1) La isla REGISTRA todo en el historial, por aplicación
         if (Prefs.keepHistory(this) && !sbn.isOngoing) {
-            Prefs.addHist(this, sbn.packageName, title?.toString() ?: "", text?.toString() ?: "",
-                saveBitmap(mediaBmp, mediaKind), mediaKind)
-            Backup.maybeUpload(this)
+            val hp = sbn.packageName; val ht = title?.toString() ?: ""; val hx = text?.toString() ?: ""
+            histExec.execute {      // disco y copia de seguridad fuera del hilo principal: la isla sale antes
+                try { Prefs.addHist(this, hp, ht, hx, saveBitmap(mediaBmp, mediaKind), mediaKind); Backup.maybeUpload(this) } catch (e: Exception) {}
+            }
         }
 
         // 2) Filtros de la isla
         if (!Prefs.islandOn(this)) return
         if (sbn.packageName in Prefs.blocked(this)) return
         if (hiddenNow()) return          // la notificación del sistema se queda intacta
-        if (sbn.isOngoing) return
-
-        // 3) Solo la isla muestra la notificación: se quita la del sistema
-        if (Prefs.blockSystem(this) && sbn.isClearable && !keepInSystem(n)) {
-            try { cancelNotification(sbn.key) } catch (e: Exception) {}
+        if (reading) {                   // ya la estás leyendo dentro de la app: no entra a la isla ni deja esperando lo anterior de esa app
+            val rp = sbn.packageName
+            main.post { markRead(rp) }
+            return
         }
+        if (sbn.isOngoing) return
 
         val large: Drawable? = try { n.getLargeIcon()?.loadDrawable(this) } catch (e: Exception) { null }
         val small: Drawable? = try {
@@ -221,6 +260,44 @@ class NotifListener : NotificationListenerService() {
         show(sbn.packageName, title, text, large, true, true, "app:${sbn.packageName}", false,
             fallback = small, media = mediaBmp, detailText = full ?: text,
             sig = "${sbn.key}|$title|$text")
+    }
+
+    /** La notificación se canceló (la leíste, la deslizaste o la app la retiró). Lo que cancela la propia isla no cuenta. */
+    override fun onNotificationRemoved(sbn: StatusBarNotification, rankingMap: NotificationListenerService.RankingMap?, reason: Int) {
+        if (reason == NotificationListenerService.REASON_LISTENER_CANCEL || reason == NotificationListenerService.REASON_LISTENER_CANCEL_ALL) return
+        if (sbn.packageName == packageName) return
+        val pk = sbn.packageName; val key = sbn.key
+        main.post { markRead(pk, key) }
+    }
+
+    /** Lo llama accesibilidad cuando una app abre una ventana: si tenía avisos esperando en la isla, ya los estás viendo. */
+    fun onAppOpened(pkg: String) { main.post { markRead(pkg, minAge = 1200) } }
+
+    /**
+     * Ya lo leíste: la tarjeta sale de la isla y, si la app reenvía la misma, no vuelve.
+     * [key] = solo la de esa notificación; [minAge] = no toca las recién llegadas.
+     */
+    private fun markRead(pkg: String, key: String? = null, minAge: Long = 0) {
+        if (!Prefs.autoRead(this) || pkg == packageName) return
+        val now = System.currentTimeMillis()
+        val gone = cards.filter { !it.ephemeral && it.pkg == pkg && now - it.time >= minAge && (key == null || it.sig.startsWith("$key|")) }
+        if (gone.isEmpty()) return
+        gone.forEach { if (it.sig.isNotEmpty()) readSigs[it.sig] = now }
+        val shown = cards.getOrNull(cardIndex)
+        cards.removeAll(gone.toSet())
+        intents.remove(pkg)
+        if (!attached) return
+        if (cards.isEmpty()) {
+            cardIndex = 0
+            if (expanded) collapse()
+            else if (!Prefs.permanent(this)) removeNow()
+            else { updateBadge(); updateCount() }
+            return
+        }
+        val keep = if (shown != null && shown !in gone) cards.indexOf(shown) else -1
+        cardIndex = if (keep >= 0) keep else 0
+        if (keep < 0) { if (detail) resetDetail(); bindCard(cards[cardIndex]) }
+        updateBadge(); updateCount()
     }
 
     /** Llamadas, multimedia y navegación se quedan en el sistema para no romper sus controles. */
@@ -318,13 +395,16 @@ class NotifListener : NotificationListenerService() {
 
     private fun showCard(ev: IslandEvent, force: Boolean) {
         val shouldExpand = !force || Prefs.demoExpanded(this)
-        show(packageName, ev.title, ev.body, eventIcon(ev.symbol), ev.short, shouldExpand && Prefs.eventExpand(this, ev.id), "ev:${ev.id}", ev.short)
+        show(packageName, ev.title, ev.body, eventIcon(ev.symbol, ev.color), ev.short, shouldExpand && Prefs.eventExpand(this, ev.id), "ev:${ev.id}", ev.short,
+            target = ev.target ?: "settings", label = ev.label, accentOverride = if (ev.color != 0) ev.color else null)
     }
 
-    /** Icono vectorial del evento sobre un círculo de cristal. */
-    private fun eventIcon(name: String): Drawable? {
+    /** Icono vectorial del evento, blanco sobre un círculo del COLOR propio del evento (verde batería, azul Wi-Fi…). */
+    private fun eventIcon(name: String, color: Int = 0): Drawable? {
         val ic = Glass.icon(this, name, Color.WHITE) ?: return null
-        val bg = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(Glass.accentA(0x33)) }
+        val base = if (color != 0) color else Glass.ACCENT
+        val bg = GradientDrawable(GradientDrawable.Orientation.TL_BR, intArrayOf(IslandLook.lighter(base, 0.28f), base, IslandLook.darker(base, 0.82f)))
+            .apply { shape = GradientDrawable.OVAL }
         return LayerDrawable(arrayOf(bg, ic)).apply { val i = px(8); setLayerInset(1, i, i, i, i) }
     }
 
@@ -467,9 +547,11 @@ class NotifListener : NotificationListenerService() {
         }
         val acts = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL; visibility = View.GONE
-            addView(actionChip("Abrir", true, s) { openCurrent(false) }, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply { marginEnd = px(4) })
-            addView(actionChip("Ventana", false, s) { openCurrent(true) }, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply { marginStart = px(4); marginEnd = px(4) })
-            addView(actionChip("Descartar", false, s) { dismissCurrent() }, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply { marginStart = px(4) })
+            val chipLp = { l: Int, r: Int -> LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply { marginStart = px(l); marginEnd = px(r) } }
+            addView(actionChip("Abrir", true, s) { openCurrent(false) }, chipLp(0, 3))
+            addView(actionChip("Libre", false, s) { openCurrent(true, 0) }, chipLp(3, 3))
+            addView(actionChip("Burbuja", false, s) { openCurrent(true, 1) }, chipLp(3, 3))
+            addView(actionChip("Descartar", false, s) { dismissCurrent() }, chipLp(3, 0))
         }
         detailImg = dImg
         actionsRow = acts
@@ -621,7 +703,7 @@ class NotifListener : NotificationListenerService() {
         pkg: String, t: CharSequence?, b: CharSequence?, large: Drawable?, autoHide: Boolean = true,
         expand: Boolean = true, key: String = "$pkg|$t", ephemeral: Boolean = false,
         fallback: Drawable? = null, media: Bitmap? = null, detailText: CharSequence? = null,
-        sig: String = ""
+        sig: String = "", target: String? = null, label: String? = null, accentOverride: Int? = null
     ) {
         main.post {
             if (!::wm.isInitialized || !Settings.canDrawOverlays(this)) return@post
@@ -639,7 +721,7 @@ class NotifListener : NotificationListenerService() {
                     it.colorFilter = PorterDuffColorFilter(Color.WHITE, PorterDuff.Mode.SRC_IN) } // monocromo
                 else -> appIcon                                                   // el del sistema
             }
-            val accent = if (Prefs.smartColor(this) && pkg != packageName) dominantColor(appIcon) else null
+            val accent = accentOverride ?: if (Prefs.smartColor(this) && pkg != packageName) dominantColor(appIcon) else null
             if (detail) resetDetail()
 
             // Acumulación: la nueva queda al frente y las anteriores esperan a la derecha
@@ -660,7 +742,7 @@ class NotifListener : NotificationListenerService() {
             }
             val fullText: CharSequence? = if (lines.size > 1) lines.filter { it.isNotEmpty() }.joinToString("\n") else detailText
             cards.removeAll { it.key == key }
-            cards.add(0, Card(key, pkg, t, b, shown, accent, ephemeral, fullText, media, count, lines, sig))
+            cards.add(0, Card(key, pkg, t, b, shown, accent, ephemeral, fullText, media, count, lines, sig, target = target, label = label))
             val limit = System.currentTimeMillis() - 15 * 60_000L
             cards.removeAll { it.time < limit }
             while (cards.size > 8) cards.removeAt(cards.size - 1)
@@ -712,7 +794,7 @@ class NotifListener : NotificationListenerService() {
 
     /** Pone el contenido de una tarjeta en la isla. */
     private fun bindCard(c: Card) {
-        appView?.text = appLabel(c.pkg) + if (c.count > 1) " · ${c.count}" else ""
+        appView?.text = nameOf(c) + if (c.count > 1) " · ${c.count}" else ""
         titleView?.text = c.title
         bodyView?.text = c.body
         iconView?.setImageDrawable(c.icon?.constantState?.newDrawable()?.mutate() ?: c.icon
@@ -868,13 +950,40 @@ class NotifListener : NotificationListenerService() {
     private fun doAction(a: Int) {
         when (a) {
             1 -> openCurrent(false)
-            2 -> openCurrent(true)
+            2 -> openCurrent(true)          // ventana según tu ajuste (formato libre o burbuja)
             3 -> dismissCurrent()
             4 -> page(1)
             5 -> page(-1)
             6 -> collapse()
             7 -> enterDetail()
+            8 -> openCurrent(true, 1)       // burbuja
+            9 -> openCurrent(true, 0)       // formato libre
+            10 -> copyCurrent()
+            11 -> muteCurrent()
         }
+    }
+
+    /** Copia el texto de la tarjeta al portapapeles. */
+    private fun copyCurrent() {
+        val c = cards.getOrNull(cardIndex) ?: return
+        val txt = (c.detail ?: c.body ?: c.title)?.toString() ?: return
+        try {
+            (getSystemService(CLIPBOARD_SERVICE) as android.content.ClipboardManager)
+                .setPrimaryClip(android.content.ClipData.newPlainText("Ryx", txt))
+            android.widget.Toast.makeText(this, "Texto copiado", android.widget.Toast.LENGTH_SHORT).show()
+        } catch (e: Exception) {}
+        pulse()
+    }
+
+    /** La isla deja de mostrar esa app (queda en «Apps bloqueadas» de los ajustes). */
+    private fun muteCurrent() {
+        val c = cards.getOrNull(cardIndex) ?: return
+        if (c.pkg == packageName) { dismissCurrent(); return }
+        Prefs.setBlocked(this, Prefs.blocked(this) + c.pkg)
+        android.widget.Toast.makeText(this, "${nameOf(c)}: silenciada en la isla", android.widget.Toast.LENGTH_SHORT).show()
+        cards.removeAll { it.pkg == c.pkg }
+        if (cards.isEmpty()) { collapse(); return }
+        cardIndex = 0; bindCard(cards[0]); updateBadge()
     }
 
     // ---------- Vista de detalle ----------
@@ -887,7 +996,7 @@ class NotifListener : NotificationListenerService() {
         appView?.visibility = if (style.showAppName) View.VISIBLE else View.GONE
         cards.getOrNull(cardIndex)?.let {
             bodyView?.text = it.body
-            appView?.text = appLabel(it.pkg) + if (it.count > 1) " · ${it.count}" else ""
+            appView?.text = nameOf(it) + if (it.count > 1) " · ${it.count}" else ""
         }
         island?.minimumHeight = px(maxOf(style.iconDp + 2 * style.padV, 64))
     }
@@ -900,7 +1009,7 @@ class NotifListener : NotificationListenerService() {
         bodyView?.maxLines = 8
         bodyView?.text = c.detail ?: c.body
         appView?.visibility = View.VISIBLE
-        appView?.text = appLabel(c.pkg) + if (c.count > 1) " · ${c.count} notificaciones" else ""
+        appView?.text = nameOf(c) + if (c.count > 1) " · ${c.count} notificaciones" else ""
         detailImg?.let { if (c.media != null) { it.setImageBitmap(c.media); it.visibility = View.VISIBLE } else it.visibility = View.GONE }
         actionsRow?.visibility = View.VISIBLE
         animateDetail(true)
@@ -1157,20 +1266,52 @@ class NotifListener : NotificationListenerService() {
 
     // ---------- Abrir app ----------
 
-    private fun openCurrent(floating: Boolean) {
-        val pkg = currentPkg ?: return
+    /** [kind]: null = el modo elegido en Ventana; 0 = formato libre; 1 = burbuja. */
+    private fun openCurrent(floating: Boolean, kind: Int? = null) {
+        val card = cards.getOrNull(cardIndex) ?: return
+        // Eventos del sistema (batería, Wi-Fi…): llevan a su pantalla de Ajustes
+        if (card.target != null) { openTarget(card.target); dismissCurrent(); return }
+        val pkg = card.pkg
         // Primero se lanza la app (con la isla aún visible) y luego se descarta la tarjeta
         val pi = intents[pkg]
-        Thread { openApp(pkg, floating, pi) }.start()
+        Thread { openApp(pkg, floating, pi, kind) }.start()
         dismissCurrent()
     }
 
-    private fun openApp(pkg: String, freeform: Boolean, pi: android.app.PendingIntent?) {
-        if (freeform) { FloatingWindow.open(this, pkg, pi); return }
+    private fun openApp(pkg: String, freeform: Boolean, pi: android.app.PendingIntent?, kind: Int? = null) {
+        if (freeform) { FloatingWindow.open(this, pkg, pi, kind); return }
         // Abre la conversación exacta de la notificación; si no hay destino, la pantalla principal de la app
         if (pi != null && FloatingWindow.sendPending(this, pi, false, null)) return
         val launch = packageManager.getLaunchIntentForPackage(pkg) ?: return
         launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         try { startActivity(launch) } catch (e: Exception) {}
+    }
+
+    // ---------- Destino de los eventos del sistema ----------
+
+    private fun targetIntents(k: String): List<Intent> = (when (k) {
+        "wifi" -> listOf(Intent(Settings.ACTION_WIFI_SETTINGS))
+        "bluetooth" -> listOf(Intent(Settings.ACTION_BLUETOOTH_SETTINGS))
+        "battery" -> listOf(Intent(Intent.ACTION_POWER_USAGE_SUMMARY))
+        "saver" -> listOf(Intent(Settings.ACTION_BATTERY_SAVER_SETTINGS))
+        "airplane" -> listOf(Intent(Settings.ACTION_AIRPLANE_MODE_SETTINGS))
+        "data" -> listOf(Intent(Settings.ACTION_DATA_ROAMING_SETTINGS), Intent(Settings.ACTION_WIRELESS_SETTINGS))
+        "vpn" -> listOf(Intent(Settings.ACTION_VPN_SETTINGS))
+        "hotspot" -> listOf(Intent().setClassName("com.android.settings", "com.android.settings.TetherSettings"), Intent(Settings.ACTION_WIRELESS_SETTINGS))
+        "dnd" -> listOf(Intent("android.settings.ZEN_MODE_SETTINGS"), Intent(Settings.ACTION_SOUND_SETTINGS))
+        "privacy" -> listOf(Intent(Settings.ACTION_PRIVACY_SETTINGS))
+        "alarms" -> listOf(Intent(android.provider.AlarmClock.ACTION_SHOW_ALARMS))
+        "downloads" -> listOf(Intent(android.app.DownloadManager.ACTION_VIEW_DOWNLOADS))
+        "calllog" -> listOf(Intent(Intent.ACTION_VIEW).setType(android.provider.CallLog.Calls.CONTENT_TYPE))
+        "dialer" -> listOf(Intent(Intent.ACTION_DIAL))
+        "messages" -> listOf(Intent.makeMainSelectorActivity(Intent.ACTION_MAIN, Intent.CATEGORY_APP_MESSAGING))
+        else -> emptyList()
+    }) + Intent(Settings.ACTION_SETTINGS)
+
+    /** Abre la pantalla del sistema de ese evento; si la ROM no la tiene, los Ajustes generales. */
+    private fun openTarget(k: String) {
+        for (i in targetIntents(k)) {
+            try { i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK); startActivity(i); return } catch (e: Exception) {}
+        }
     }
 }
