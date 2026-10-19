@@ -34,9 +34,12 @@ jobs:
           tag_name: v${{ steps.ver.outputs.v }}
           name: Ryx Island v${{ steps.ver.outputs.v }}
           body: |
-            - Apps clonadas: Dual Apps / espacio 999 (y 95, 10, trabajo) salen como apps distintas, con insignia, y se abren en su espacio.
-            - Formato libre A16/A17: modo interno primero, respaldo `am start --windowingMode 5`, y ajustes de escritorio de desarrollador.
-            - Estilo nuevo «A17 · Liquid», iconos de navegación en trazo y squircle continuo.
+            - Clonados: Ryx ahora reconoce las apps clonadas (app dual / segundo espacio) con su propia clave «paquete@espacio»; «Aplicaciones» lista cada copia por separado, con su insignia, y puedes silenciar o bloquear una copia sin afectar a la otra.
+            - Clonados: se detectan por la notificación de la copia, por los perfiles del sistema y, con Shizuku/root, por los usuarios que la ROM tenga (los clonados ocultos de MIUI/OPPO/Realme). Nunca se adivinan listando paquetes ajenos.
+            - Formato libre: nueva variante con Shizuku/root (`am start --windowingMode 5`) que se usa primero cuando hay privilegios y se coloca al píxel con `cmd activity task resize`; sirve en ROMs que ignoran las opciones de Android.
+            - Formato libre: en Android 16+ se informa del modo «Escritorio» y se lee `desktop_mode` en el diagnóstico; el icono de la app se actualiza a un fondo con degradado.
+            - Interfaz: tira de «Accesos» en Inicio (Avisos, Superposición, Accesibilidad, Shizuku) con un toque para ir a Permisos; logo con anillo y pestaña activa con borde.
+            - Diagnóstico: «Comprobar soporte» muestra el método con privilegios disponible y la variante de apertura recordada.
             - Nuevo modo «Burbuja (Android 17)»: ventana flotante del sistema que se queda sobre tu app, creada pulsando «Burbuja» en el launcher.
             - Barra del sistema en ventanas libres con root/Shizuku (modo escritorio en el teléfono) y apertura «Directo» instantánea por defecto.
             - Isla más sensible: zona táctil ampliada (ya no baja el panel al fallar por poco), toque más tolerante, respuesta inmediata y animaciones más rápidas.

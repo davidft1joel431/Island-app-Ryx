@@ -6,17 +6,17 @@ import android.os.Build
 import android.provider.Settings
 
 /**
- * Desbloqueo de apps «no redimensionables» y del formato libre en Android 16 y 17.
+ * Desbloqueo de apps «no redimensionables» para el formato libre.
  *
- * En A16 el formato libre de teléfono convive con el modo escritorio (`override_desktop_mode_features`).
- * En A17 se suma el modo escritorio por pantalla (`override_desktop_experience_features`) y las apps
- * con target 37 ya no pueden negarse a redimensionar en pantallas grandes; en un teléfono igual hace
- * falta `force_resizable_activities` para las que se declaran fijas.
+ * Android solo pone en ventana libre una app si es redimensionable. Las ROM traen en Opciones de desarrollador
+ * «Forzar que las actividades sean redimensionables» (Settings.Global.force_resizable_activities): con eso activo,
+ * el sistema trata TODAS las apps como redimensionables y las deja entrar en ventana libre.
  *
  * Android aplica estos ajustes en caliente (WindowManager los observa), sin reiniciar.
- * Escribirlos desde Ryx necesita WRITE_SECURE_SETTINGS, concedido UNA vez:
+ * Escribirlos desde Ryx necesita el permiso WRITE_SECURE_SETTINGS, que se concede UNA vez:
  *   - solo, si Shizuku o root están disponibles (Ryx se lo da a sí mismo con `pm grant`), o
  *   - con un comando de ADB (ver [adbCommand]).
+ * Sin ese permiso no se puede escribir, y queda activarlo a mano en Opciones de desarrollador.
  */
 object FreeformUnlock {
     const val PERM = "android.permission.WRITE_SECURE_SETTINGS"
@@ -24,24 +24,16 @@ object FreeformUnlock {
     /** Los dos ajustes imprescindibles: ventanas libres + forzar redimensionable. */
     private val CORE = listOf("enable_freeform_support", "force_resizable_activities")
 
-    /**
-     * A16/A17. El modo escritorio se apoya en freeform; activar el override de desarrollador
-     * hace que la ROM acepte ventanas libres aunque la pantalla sea menor de 600 dp.
-     * `force_desktop_mode_on_external_displays` cubre el escritorio al conectar un monitor.
-     */
-    private val DESKTOP = listOf(
-        "enable_non_resizable_multi_window",
-        "override_desktop_mode_features",
-        "override_desktop_experience_features",
-        "force_desktop_mode_on_external_displays"
-    )
-
-    private val ALL = (CORE + DESKTOP).distinct()
+    /** Todo lo que se activa (el resto ayuda en ROM recientes con multiventana de apps no redimensionables). */
+    private val ALL = CORE + listOf("enable_non_resizable_multi_window", "freeform_window_management")
 
     fun hasPerm(c: Context): Boolean = c.checkSelfPermission(PERM) == PackageManager.PERMISSION_GRANTED
 
     private fun read(c: Context, k: String): String? =
         try { Settings.Global.getString(c.contentResolver, k) } catch (e: Throwable) { null }
+
+    private fun readSecure(c: Context, k: String): String? =
+        try { Settings.Secure.getString(c.contentResolver, k) } catch (e: Throwable) { null }
 
     /** true si ya están activos los dos ajustes imprescindibles. */
     fun unlocked(c: Context): Boolean = CORE.all { read(c, it) == "1" }
@@ -51,17 +43,14 @@ object FreeformUnlock {
     /** Estado legible para la pantalla y el registro. */
     fun status(c: Context): String {
         val sb = StringBuilder()
-        sb.append("API ${Build.VERSION.SDK_INT} · ${if (Build.VERSION.SDK_INT >= 37) "Android 17" else if (Build.VERSION.SDK_INT >= 36) "Android 16" else "anterior"}\n")
         ALL.forEach { sb.append("$it = ${read(c, it) ?: "sin definir"}\n") }
+        // Android 16+ añade el modo escritorio por pantalla; se informa (solo lectura, no se escribe).
+        if (Build.VERSION.SDK_INT >= 36) {
+            sb.append("desktop_mode = ${readSecure(c, "desktop_mode") ?: "sin definir"}\n")
+            sb.append("force_desktop_mode_on_external_displays = ${read(c, "force_desktop_mode_on_external_displays") ?: "sin definir"}\n")
+        }
         sb.append("Permiso WRITE_SECURE_SETTINGS: ${if (hasPerm(c)) "concedido" else "no concedido"}")
         return sb.toString()
-    }
-
-    private fun writeAll(c: Context) {
-        for (k in ALL) {
-            try { Settings.Global.putInt(c.contentResolver, k, 1) } catch (e: Throwable) {}
-            try { Settings.Global.putString(c.contentResolver, k, "1") } catch (e: Throwable) {}
-        }
     }
 
     /**
@@ -74,25 +63,28 @@ object FreeformUnlock {
             log.append("Desbloqueo de apps no redimensionables: apagado en Ryx.\n")
             return unlocked(c)
         }
-        if (unlocked(c) && !force) {
+        if (unlocked(c)) {
             log.append("Apps no redimensionables: desbloqueadas (force_resizable_activities = 1).\n")
             return true
         }
-        if (hasPerm(c)) writeAll(c)
+        // 1) Con el permiso: se escribe directamente, sin Shizuku ni root
+        if (hasPerm(c)) {
+            for (k in ALL) try { Settings.Global.putString(c.contentResolver, k, "1") } catch (e: Throwable) {}
+        }
+        // 2) Sin permiso pero con Shizuku/root ya activos: se concede el permiso a sí mismo y se escribe por shell
         if (!unlocked(c) && Shell.privileged(c)) {
             val cmd = "pm grant ${c.packageName} $PERM; " + ALL.joinToString("; ") { "settings put global $it 1" }
             val r = Shell.run(c, cmd)
             log.append("Desbloqueo con ${Shell.label(c)}: código ${r.first}\n")
-            if (hasPerm(c)) writeAll(c)
         }
         val ok = unlocked(c)
         log.append(
-            if (ok) "Formato libre listo (freeform + redimensionable"
-                + (if (Build.VERSION.SDK_INT >= 36) " + modo escritorio A16/A17" else "")
-                + "). Se aplica sin reiniciar.\n"
+            if (ok) "Apps no redimensionables: desbloqueadas ahora (se aplica sin reiniciar).\n"
             else "No pude desbloquear las apps no redimensionables: falta el permiso. Concédelo una vez con «${adbCommand(c)}» " +
                 "(o inicia Shizuku) o activa «Forzar que las actividades sean redimensionables» en Opciones de desarrollador.\n"
         )
+        if (Build.VERSION.SDK_INT >= 36)
+            log.append("Android 16+: si el formato libre se abre a pantalla completa, prueba el modo «Escritorio» de Opciones de desarrollador (ventanas por pantalla).\n")
         return ok
     }
 }

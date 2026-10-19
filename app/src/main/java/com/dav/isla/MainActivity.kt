@@ -14,6 +14,7 @@ import android.graphics.Outline
 import android.graphics.Typeface
 import android.graphics.drawable.ColorDrawable
 import android.graphics.drawable.Drawable
+import android.graphics.drawable.GradientDrawable
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -22,6 +23,7 @@ import android.provider.Settings
 import android.text.Editable
 import android.text.TextWatcher
 import android.view.Gravity
+import android.view.HapticFeedbackConstants
 import android.view.View
 import android.view.ViewOutlineProvider
 import android.view.Window
@@ -61,8 +63,17 @@ class MainActivity : Activity() {
     private val deadListener = Shizuku.OnBinderDeadListener { runOnUiThread { render() } }
     private var appsBox: LinearLayout? = null
     private val iconCache = HashMap<String, Drawable?>()
-    private var appListCache: List<AppEntry>? = null
-    private val appList: List<AppEntry> get() = appListCache ?: Apps.list(this).also { appListCache = it }
+    private var appListCache: List<Pair<String, String>>? = null
+    private val appList: List<Pair<String, String>> get() = appListCache ?: run {
+        val pm = packageManager
+        val base = pm.queryIntentActivities(Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER), 0)
+            .map { it.activityInfo.packageName to it.loadLabel(pm).toString() }
+            .filter { it.first != packageName }
+            .distinctBy { it.first }
+        // Cada copia clonada (app dual / segundo espacio) es una entrada más, con su clave «paquete@espacio»
+        val clones = Clones.cloneEntries(this).map { it.key to it.label }.filter { it.first != packageName }
+        (base + clones).sortedBy { it.second.lowercase() }
+    }.also { appListCache = it }
     private val appsPerm = "com.android.permission.GET_INSTALLED_APPS"
     /** Solo HyperOS/MIUI definen este permiso; en ROMs AOSP no existe y no se pide. */
     private fun hasAppsPerm() = try { packageManager.getPermissionInfo(appsPerm, 0); true } catch (e: Exception) { false }
@@ -94,16 +105,25 @@ class MainActivity : Activity() {
             orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
             setPadding(px(22), px(16), px(22), px(10))
         }
-        head.addView(ImageView(this).apply {
+        val logoBox = FrameLayout(this).apply {
+            setPadding(px(3), px(3), px(3), px(3))
+            background = GradientDrawable().apply {
+                shape = GradientDrawable.OVAL
+                setColor(0x00000000)
+                setStroke(px(2), Glass.accentA(0x88))
+            }
+        }
+        logoBox.addView(ImageView(this).apply {
             setImageResource(R.drawable.logo); scaleType = ImageView.ScaleType.CENTER_CROP
             outlineProvider = object : ViewOutlineProvider() {
                 override fun getOutline(view: View, o: Outline) { o.setOval(0, 0, view.width, view.height) }
             }
             clipToOutline = true
-        }, LinearLayout.LayoutParams(px(50), px(50)))
+        }, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT))
+        head.addView(logoBox, LinearLayout.LayoutParams(px(54), px(54)))
         val names = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         names.addView(label("Ryx", 28f, R.color.text, true).apply { letterSpacing = -0.02f })
-        names.addView(label("Island · A16 / A17", 13f, R.color.muted))
+        names.addView(label("Island · por David Joel", 13f, R.color.muted))
         head.addView(names, LinearLayout.LayoutParams(0, WRAP, 1f).apply { marginStart = px(14) })
         activePill = label("", 13f, R.color.green, true).apply { setPadding(px(14), px(7), px(14), px(7)) }
         head.addView(activePill)
@@ -135,16 +155,6 @@ class MainActivity : Activity() {
             Prefs.setA11yAsked(this, true); askAccessibility()
         }
         if (System.currentTimeMillis() - Prefs.updLast(this) > 12 * 3600_000L) checkUpdates(false)
-        Thread {
-            try {
-                val all = Apps.scanDeep(this, probeRoot = false)
-                runOnUiThread {
-                    appListCache = all
-                    iconCache.clear()
-                    if (tab == 2 && subPage == null && appsBox != null) fillApps()
-                }
-            } catch (e: Throwable) {}
-        }.start()
     }
 
     private val REQ_TREE = 71
@@ -362,8 +372,11 @@ class MainActivity : Activity() {
             val b = LinearLayout(this).apply {
                 orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER
                 setPadding(0, px(8), 0, px(8))
-                if (sel) background = Glass.pill(this@MainActivity, Glass.accentA(0x33), 0, 26f)
-                setOnClickListener { tab = i; subPage = null; render() }
+                if (sel) background = Glass.pill(this@MainActivity, Glass.accentA(0x33), Glass.accentA(0x66), 26f)
+                setOnClickListener {
+                    performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+                    tab = i; subPage = null; render()
+                }
             }
             b.addView(icon(ic, 22, colr))
             b.addView(label(name, 11f, R.color.text, true).apply { setTextColor(colr); gravity = Gravity.CENTER })
@@ -455,6 +468,7 @@ class MainActivity : Activity() {
         p.addView(segmented(listOf("Vertical", "Horizontal"), if (landscapeView) 1 else 0) {
             landscapeView = it == 1; render()
         }, lp(12))
+        statusStrip(p)
 
         Events.GROUPS.forEach { g ->
             val on = g.events.count { Prefs.eventOnFor(this, it.id, landscapeView) }
@@ -523,6 +537,32 @@ class MainActivity : Activity() {
         buildTest(p)
     }
 
+    /** Tira de accesos rápidos: lleva a Permisos con un toque, mostrando en verde lo que ya está concedido. */
+    private fun statusStrip(p: LinearLayout) {
+        val c = card()
+        c.addView(label("Accesos", 15f, R.color.text, true))
+        val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; setPadding(0, px(10), 0, 0) }
+        val chips = listOf(
+            "Avisos" to notifEnabled(),
+            "Encima" to Settings.canDrawOverlays(this),
+            "A11y" to RyxAccessibility.isEnabled(this),
+            "Shizuku" to Shell.shizukuGranted())
+        chips.forEach { (t, ok) ->
+            row.addView(TextView(this).apply {
+                text = (if (ok) "● " else "○ ") + t
+                gravity = Gravity.CENTER; textSize = 13f
+                setTypeface(typeface, Typeface.BOLD)
+                setTextColor(if (ok) 0xFF3DDC84.toInt() else Glass.MUTED)
+                setPadding(px(10), px(8), px(10), px(8))
+                background = Glass.pill(this@MainActivity, if (ok) 0x1A3DDC84 else 0x14FFFFFF,
+                    if (ok) 0x883DDC84.toInt() else 0x33FFFFFF, 18f)
+                setOnClickListener { subPage = "perms"; render() }
+            }, LinearLayout.LayoutParams(0, WRAP, 1f).apply { marginStart = px(3); marginEnd = px(3) })
+        }
+        c.addView(row)
+        c.addView(label("Toca para abrir Permisos. En verde, lo que ya está concedido.", 12f, R.color.muted), lp(8))
+        p.addView(c, lp(10))
+    }
 
     // ---------------- Probar eventos (dentro de Isla) ----------------
 
@@ -629,9 +669,8 @@ class MainActivity : Activity() {
             if (!Foreground.hasAccess(this)) { toast("Concede primero el acceso de uso"); askUsageAccess() }
             pickApps("Ocultar la isla en…", Prefs.hideApps(this)) { Prefs.setHideApps(this, it) }
         }, lp(10))
-        vi.addView(label("Las apps clonadas (Dual Apps, espacio 999 y similares) salen aparte del original. " +
-            "Un juego se detecta si la app se declara como juego. Si alguno no se detecta, agrégalo aquí. " +
-            "El primer plano no dice el espacio: si marcas solo el clon, la isla se oculta cuando esa app está delante.", 12f, R.color.muted), lp(8))
+        vi.addView(label("Un juego se detecta si la app se declara como juego (la mayoría de los instalados desde Play Store). " +
+            "Si alguno no se detecta, agrégalo en «Ocultar en apps concretas».", 12f, R.color.muted), lp(8))
 
         val ge = titled(p, "Gestos", "Con la isla abierta. Si hay varias notificaciones, se acumulan a la derecha.")
         gestureRow(ge, "Tocar", Prefs.gTap(this)) { Prefs.setGTap(this, it) }
@@ -765,85 +804,56 @@ class MainActivity : Activity() {
         val pr = titled(p, "Privacidad", "Palabras que se ocultan en la isla y en el historial")
         pr.addView(editText("palabra1, palabra2…", Prefs.hiddenWordsRaw(this)) { Prefs.setHiddenWords(this, it) }, lp(8))
 
-        val ap = titled(p, "Apps", "Original y clon por separado. Apaga las que no quieras en la isla")
-        ap.addView(editText("Buscar app o clon…", appQuery) { q -> appQuery = q; fillApps() }, lp(8))
-        ap.addView(button("Buscar apps clonadas", false) {
-            toast("Buscando en los espacios de la ROM…")
-            Thread {
-                val all = try { Apps.scanDeep(this, probeRoot = true) } catch (e: Throwable) { Apps.list(this) }
-                val n = all.count { it.clone }
-                runOnUiThread {
-                    appListCache = all
-                    iconCache.clear()
-                    fillApps()
-                    toast(if (n == 0) "No vi clones. Abre el clon una vez o activa Shizuku y vuelve a buscar." else "Clonadas reconocidas: $n")
-                }
-            }.start()
-        }, lp(8))
+        val ap = titled(p, "Apps", "Apague las que no quiera ver en la isla (cada copia clonada se controla por separado)")
+        ap.addView(editText("Buscar app…", appQuery) { q -> appQuery = q; fillApps() }, lp(8))
         val box = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         appsBox = box
         ap.addView(box, lp(6))
         fillApps()
     }
 
-    private fun appIcon(e: AppEntry): Drawable? = iconCache.getOrPut(e.key) { Apps.icon(this, e) }
+    private fun appIcon(key: String): Drawable? = iconCache.getOrPut(key) {
+        try {
+            val (pkg, uid) = Clones.splitKey(key)
+            val base = packageManager.getApplicationIcon(pkg)
+            // La copia clonada lleva la insignia que le pone la ROM (nombre/icono), para distinguirla del original
+            if (Clones.isClone(uid)) packageManager.getUserBadgedIcon(base, Clones.handle(uid)) else base
+        } catch (e: Exception) { null }
+    }
+
+    /** Etiqueta pequeña para distinguir una copia clonada del original. */
+    private fun cloneChip(text: String) = TextView(this).apply {
+        this.text = text; textSize = 11f; gravity = Gravity.CENTER
+        setTextColor(Glass.ACCENT); typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+        setPadding(px(8), px(3), px(8), px(3))
+        background = Glass.pill(this@MainActivity, Glass.accentA(0x26), Glass.accentA(0x66), 12f)
+    }
 
     private fun fillApps() {
         val box = appsBox ?: return
         box.removeAllViews()
         val q = appQuery.trim().lowercase()
-        val all = appList
-        val list = all.filter { e ->
-            q.isEmpty() || e.label.lowercase().contains(q) || e.pkg.lowercase().contains(q) || (e.clone && "clon".contains(q))
-        }
-        val clones = all.count { it.clone }
-        box.addView(label(
-            if (clones == 0) "Todavía no hay clonadas en la lista. Pulsa «Buscar apps clonadas» o abre el clon para que llegue un aviso."
-            else "$clones clonadas reconocidas, cada una con su propio interruptor.",
-            12f, R.color.muted), lp(4))
-        val shown = if (q.isEmpty()) {
-            val head = list.take(40)
-            head + list.filter { it.clone && it !in head }
-        } else list
-        shown.forEach { e ->
-            val on = !Apps.matches(Prefs.blocked(this), e.pkg, e.userId)
+        val list = appList.filter { q.isEmpty() || it.second.lowercase().contains(q) }
+        val blocked = Prefs.blocked(this)
+        list.take(40).forEach { (key, name) ->
+            val uid = Clones.splitKey(key).second
+            val clone = Clones.isClone(uid)
             val r = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
-            r.addView(cloneIcon(e), LinearLayout.LayoutParams(px(40), px(40)).apply { marginEnd = px(12) })
+            r.addView(ShapedImageView(this).apply {
+                shape = Prefs.iconShape(this@MainActivity); setImageDrawable(appIcon(key)); scaleType = ImageView.ScaleType.CENTER_CROP
+            }, LinearLayout.LayoutParams(px(38), px(38)).apply { marginEnd = px(12) })
             val t = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
-            t.addView(label(e.label, 15f, R.color.text, true).apply { maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END })
-            if (e.clone) t.addView(label("${e.pkg}  ·  espacio ${e.userId}", 11f, R.color.gold).apply {
-                maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END
-            })
+            t.addView(label(name, 15f, R.color.text, true).apply { maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END })
+            if (clone) t.addView(cloneChip("copia clonada · espacio $uid"),
+                LinearLayout.LayoutParams(WRAP, WRAP).apply { topMargin = px(4) })
             r.addView(t, LinearLayout.LayoutParams(0, WRAP, 1f))
-            r.addView(makeSwitch(on) { enable ->
-                val s = Prefs.blocked(this).toMutableSet()
-                Apps.materialize(s, all)
-                if (enable) s.remove(e.key) else s.add(e.key)
-                Prefs.setBlocked(this, s)
+            r.addView(makeSwitch(key !in blocked) { on ->
+                val s = Prefs.blocked(this).toMutableSet(); if (on) s.remove(key) else s.add(key); Prefs.setBlocked(this, s)
             })
             box.addView(r, lp(8))
         }
-        if (q.isEmpty() && list.size > shown.size) box.addView(label("Mostrando ${shown.size} de ${list.size}. Escribe para buscar.", 12f, R.color.muted), lp(8))
+        if (list.size > 40) box.addView(label("Mostrando 40 de ${list.size}. Escribe para buscar.", 12f, R.color.muted), lp(8))
         if (list.isEmpty()) box.addView(label("No hay apps con ese nombre.", 13f, R.color.muted), lp(8))
-    }
-
-    /** Icono con la insignia «2» si es un clon (la ROM a veces no pone la suya). */
-    private fun cloneIcon(e: AppEntry): View = FrameLayout(this).apply {
-        addView(ShapedImageView(this@MainActivity).apply {
-            shape = Prefs.iconShape(this@MainActivity)
-            setImageDrawable(appIcon(e))
-            scaleType = ImageView.ScaleType.CENTER_CROP
-        }, FrameLayout.LayoutParams(px(38), px(38), Gravity.CENTER_VERTICAL))
-        if (e.clone) addView(TextView(this@MainActivity).apply {
-            text = "2"; textSize = 9f; gravity = Gravity.CENTER
-            setTextColor(0xFF1A1008.toInt())
-            typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
-            background = android.graphics.drawable.GradientDrawable().apply {
-                shape = android.graphics.drawable.GradientDrawable.OVAL
-                setColor(Glass.ACCENT)
-                setStroke(px(1), 0xFF101218.toInt())
-            }
-        }, FrameLayout.LayoutParams(px(16), px(16), Gravity.BOTTOM or Gravity.END))
     }
 
     private fun editText(hint: String, value: String, onChange: (String) -> Unit) = EditText(this).apply {
@@ -868,8 +878,9 @@ class MainActivity : Activity() {
             "la PRIMERA vez Ryx pulsa por ti «Burbuja» en el menú de tu launcher (con una captura de tu pantalla como cortina). " +
             "Después la burbuja queda en pantalla y Ryx solo toca su icono: instantáneo, sin cortina y sin salir de tu app. Hasta 5 burbujas a la vez."
             else
-            "«Formato libre»: en Android 16 y 17 Ryx pide la ventana con el modo interno (windowingMode 5) y, si la ROM lo ignora y tienes Shizuku o root, con `am start --windowingMode 5`. " +
-            "Se abre encima de tu app, sin inicio ni Recientes. Con la ventana de la notificación abre el chat exacto. Los clones se abren en su espacio, no en el original.",
+            "«Formato libre»: Ryx pide la ventana al sistema con tu tamaño desde accesibilidad. Se abre al instante encima de tu app, " +
+            "sin inicio, sin Recientes y sin cortina. Con la ventana de la notificación abre el chat exacto. Ryx dibuja su propia barra para moverla. " +
+            "Con Shizuku/root, además, puede lanzarla con `am start --windowingMode 5` y colocarla al píxel: funciona incluso si tu ROM ignora las opciones de Android.",
             12f, R.color.muted), lp(6))
         so.addView(label(if (RyxAccessibility.isEnabled(this)) "Servicio de accesibilidad: activo ✔" else
             "Servicio de accesibilidad: apagado. Actívalo para usar este método.", 12f, R.color.text), lp(8))
@@ -883,9 +894,9 @@ class MainActivity : Activity() {
 
         if (kind == 0) {
             val un = titled(p, "Apps no redimensionables", "ROM: ${Build.DISPLAY} · Android ${Build.VERSION.RELEASE}")
-            un.addView(label("En Android 16 y 17, además de «Forzar que las actividades sean redimensionables», Ryx activa el modo escritorio de desarrollador " +
-                "(override_desktop_mode_features y, en A17, override_desktop_experience_features). Se aplica sin reiniciar. " +
-                "NO hace falta Shizuku ni root si lo activas a mano en Opciones de desarrollador. El botón solo lo automatiza, y para ello necesita un permiso concedido una vez (ADB).",
+            un.addView(label("Algunas apps dicen que no se pueden redimensionar y Android no las deja flotar. «Forzar que las actividades sean redimensionables» " +
+                "(Opciones de desarrollador) salta esa regla, y Android la aplica sin reiniciar. NO hace falta Shizuku ni root: basta con activar a mano " +
+                "«Permitir ventanas de forma libre» y esa opción. El botón de abajo solo lo automatiza, y para ello necesita un permiso concedido una vez (ADB).",
                 12f, R.color.muted), lp(6))
             un.addView(rowWithSwitch("Desbloquear automáticamente", "Activa esos ajustes antes de abrir la ventana", Prefs.fwUnlock(this)) { Prefs.setFwUnlock(this, it) })
             un.addView(label(if (FreeformUnlock.unlocked(this)) "Estado: desbloqueadas ✔" else "Estado: bloqueadas (falta activarlo)", 12f, R.color.text), lp(6))
@@ -920,25 +931,15 @@ class MainActivity : Activity() {
 
         val t = titled(p, "Probar")
         val test = Prefs.fwTestPkg(this)
-        val picked = appList.firstOrNull { it.key == test } ?: appList.firstOrNull { it.pkg == test && !it.clone }
-        val name = picked?.label ?: if (test.isEmpty()) "Ninguna app elegida" else test
+        val name = appList.firstOrNull { it.first == test }?.second ?: "Ninguna app elegida"
         t.addView(label("App de prueba: $name", 14f, R.color.text), lp(8))
-        t.addView(button("Elegir app", false) { pickOneApp { key -> Prefs.setFwTestPkg(this, key); render() } }, lp(8))
+        t.addView(button("Elegir app", false) { pickOneApp { pkg -> Prefs.setFwTestPkg(this, pkg); render() } }, lp(8))
         t.addView(button("▶ Probar ahora", true) {
             val key = Prefs.fwTestPkg(this)
             if (key.isEmpty()) { toast("Elige primero una app"); return@button }
-            val entry = appList.firstOrNull { it.key == key } ?: appList.firstOrNull { it.pkg == key && !it.clone }
-            val pkg = entry?.pkg ?: Apps.parse(key).first
             val go = {
                 toast("Abriendo…")
-                Thread {
-                    val log = FloatingWindow.open(
-                        this, pkg,
-                        user = if (entry?.clone == true) entry.user else null,
-                        userId = if (entry?.clone == true) entry.userId else -1
-                    )
-                    runOnUiThread { render(); dialog("Resultado de la prueba", log) }
-                }.start()
+                Thread { val log = openTestApp(key); runOnUiThread { render(); dialog("Resultado de la prueba", log) } }.start()
                 Unit
             }
             if (!RyxAccessibility.isEnabled(this)) askAccessibility { go() } else go()
@@ -962,10 +963,17 @@ class MainActivity : Activity() {
     }
 
     private fun pickOneApp(onPick: (String) -> Unit) {
-        val names = appList.map { it.label }.toTypedArray()
+        val names = appList.map { it.second }.toTypedArray()
         glass(AlertDialog.Builder(this).setTitle("Elegir app")
-            .setItems(names) { _, i -> onPick(appList[i].key) }
+            .setItems(names) { _, i -> onPick(appList[i].first) }
             .setNegativeButton("Cancelar", null).show())
+    }
+
+    /** Abre la app de prueba a partir de su clave («paquete» o «paquete@espacio» si es un clon). Fuera del hilo principal. */
+    private fun openTestApp(key: String): String {
+        val (pkg, uid) = Clones.splitKey(key)
+        val clone = Clones.isClone(uid)
+        return FloatingWindow.open(this, pkg, null, null, if (clone) Clones.handle(uid) else null, if (clone) uid else -1)
     }
 
     // ---------------- AJUSTES ----------------
@@ -1008,9 +1016,7 @@ class MainActivity : Activity() {
                 setOnClickListener { if (open) expandedGroups.add(key) else expandedGroups.remove(key); render() }
             }
             h.addView(ShapedImageView(this).apply {
-                shape = Prefs.iconShape(this@MainActivity)
-                setImageDrawable(try { packageManager.getApplicationIcon(pkg) } catch (e: Exception) { null })
-                scaleType = ImageView.ScaleType.CENTER_CROP
+                shape = Prefs.iconShape(this@MainActivity); setImageDrawable(appIcon(pkg)); scaleType = ImageView.ScaleType.CENTER_CROP
             }, LinearLayout.LayoutParams(px(42), px(42)).apply { marginEnd = px(12) })
             val t = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
             t.addView(label(appName, 17f, R.color.text, true))
@@ -1165,9 +1171,9 @@ class MainActivity : Activity() {
         }, lp(8))
         b.addView(button("Probar iconos de apps", false) {
             val pm = packageManager; val sb = StringBuilder()
-            val all = Apps.list(this)
-            sb.append("Apps visibles para Ryx: ${all.size}\nClonadas: ${all.count { it.clone }}\nAcceso a notificaciones: ${if (notifEnabled()) "sí" else "no"}\n\n")
-            val pkgs = (all.filter { it.clone }.take(3).map { it.pkg } + Prefs.histAll(this).map { it.pkg }.distinct().take(4) + listOf("com.android.settings")).distinct()
+            val n = pm.queryIntentActivities(Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER), 0).size
+            sb.append("Apps visibles para Ryx: $n\nAcceso a notificaciones: ${if (notifEnabled()) "sí" else "no"}\n\n")
+            val pkgs = (Prefs.histAll(this).map { it.pkg }.distinct().take(4) + listOf("com.android.settings", packageName)).distinct()
             pkgs.forEach { pkg ->
                 sb.append(try {
                     val d = pm.getApplicationIcon(pkg); "$pkg\n  OK ${d.javaClass.simpleName} ${d.intrinsicWidth}x${d.intrinsicHeight}"
@@ -1214,13 +1220,16 @@ class MainActivity : Activity() {
     }
 
     private fun pickApps(title: String, current: Set<String>, max: Int = 999, onDone: (Set<String>) -> Unit) {
-        val apps = Apps.list(this)
-        val sel = BooleanArray(apps.size) { Apps.matches(current, apps[it].pkg, apps[it].userId) }
+        val pm = packageManager
+        val intent = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
+        val apps = pm.queryIntentActivities(intent, 0)
+            .map { it.activityInfo.packageName to it.loadLabel(pm).toString() }
+            .distinctBy { it.first }.sortedBy { it.second.lowercase() }
+        val sel = BooleanArray(apps.size) { apps[it].first in current }
         glass(AlertDialog.Builder(this).setTitle(title)
-            .setMultiChoiceItems(apps.map { it.label }.toTypedArray(), sel) { _, i, v -> sel[i] = v }
+            .setMultiChoiceItems(apps.map { it.second }.toTypedArray(), sel) { _, i, v -> sel[i] = v }
             .setPositiveButton("Guardar") { _, _ ->
-                val chosen = apps.filterIndexed { i, _ -> sel[i] }
-                val r = chosen.map { it.key }.take(max).toSet()
+                val r = apps.filterIndexed { i, _ -> sel[i] }.map { it.first }.take(max).toSet()
                 onDone(r); render()
             }.setNegativeButton("Cancelar", null).show())
     }

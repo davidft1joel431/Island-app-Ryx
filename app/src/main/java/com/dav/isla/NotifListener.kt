@@ -97,17 +97,17 @@ class NotifListener : NotificationListenerService() {
 
     // ---------- Apps clonadas (apps duales / segundo espacio de la ROM) ----------
     // El clon y el original comparten paquete: lo que los distingue es el espacio de usuario de la notificación.
-    private val myUser: Int by lazy { android.os.Process.myUid() / 100000 }
+    private val myUser: Int by lazy { Clones.myUser() }
     private val ANY_USER = -2
     private fun norm(u: Int) = if (u < 0) myUser else u
-    private fun isClone(u: Int) = u >= 0 && u != myUser
+    private fun isClone(u: Int) = Clones.isClone(u)
     /** Clave de la app: el paquete a secas para la original; «paquete@espacio» para su clon. */
-    private fun appKey(pkg: String, u: Int) = if (isClone(u)) "$pkg@$u" else pkg
-    /** Paquete → espacio donde ya se vio una notificación de su clon. */
+    private fun appKey(pkg: String, u: Int) = Clones.key(pkg, u)
+    /** Paquete → espacio donde ya se vio una notificación de su clon (para distinguir la copia al frente). */
     private val cloneSeen = HashMap<String, Int>()
 
-    /** ¿Esta app existe también en otro espacio (clon)? Por una notificación ya vista o por el catálogo. */
-    private fun hasClone(pkg: String): Boolean = cloneSeen.containsKey(pkg) || Apps.hasClone(this, pkg)
+    /** ¿Esta app existe también en otro espacio (clon)? Lo sabe [Clones]: copia vista, perfiles o usuarios de la ROM. */
+    private fun hasClone(pkg: String): Boolean = Clones.hasClone(this, pkg)
 
     /**
      * Qué copia de [pkg] tienes delante: [ANY_USER] si solo hay una, el id del espacio si se distingue, null si hay clon y no se sabe.
@@ -140,7 +140,7 @@ class NotifListener : NotificationListenerService() {
         if (!Prefs.hideInGames(this) && apps.isEmpty()) return false
         val fg = Foreground.pkg(this) ?: return false
         if (fg == packageName) return false
-        return Apps.matchesFront(apps, fg) || (Prefs.hideInGames(this) && Foreground.isGame(this, fg))
+        return fg in apps || (Prefs.hideInGames(this) && Foreground.isGame(this, fg))
     }
 
     /** App que estás usando ahora mismo (pantalla encendida y desbloqueada), o null si no se puede saber. */
@@ -245,10 +245,7 @@ class NotifListener : NotificationListenerService() {
 
         // Ya estás dentro de esa app (pantalla encendida y desbloqueada): lo estás leyendo ahí, la isla no lo toma
         val uid = if (sbn.userId >= 0) sbn.userId else myUser
-        if (isClone(uid)) {
-            cloneSeen[sbn.packageName] = uid
-            Apps.note(this, sbn.packageName, uid)
-        }
+        if (isClone(uid)) { cloneSeen[sbn.packageName] = uid; Clones.note(this, sbn.packageName, uid) }
         val reading = readingNow(sbn.packageName, uid)
 
         // 0) SOLO LA ISLA: si ella va a mostrarla, el aviso del sistema se quita YA (antes de guardar o preparar nada)
@@ -282,7 +279,7 @@ class NotifListener : NotificationListenerService() {
 
         // 2) Filtros de la isla
         if (!Prefs.islandOn(this)) return
-        if (Apps.matches(Prefs.blocked(this), sbn.packageName, uid)) return
+        if (appKey(sbn.packageName, uid) in Prefs.blocked(this)) return
         if (hiddenNow()) return          // la notificación del sistema se queda intacta
         if (reading) {                   // ya la estás leyendo dentro de la app: no entra a la isla ni deja esperando lo anterior de esa app
             val rp = sbn.packageName
@@ -361,7 +358,7 @@ class NotifListener : NotificationListenerService() {
         !Prefs.islandOn(this) -> "la isla está apagada"
         !Prefs.blockSystem(this) -> "«Bloquear notificaciones del sistema» está apagado"
         !Settings.canDrawOverlays(this) -> "falta el permiso de superposición"
-        Apps.matches(Prefs.blocked(this), sbn.packageName, if (sbn.userId >= 0) sbn.userId else myUser) -> "app excluida de la isla"
+        Clones.key(sbn.packageName, if (sbn.userId >= 0) sbn.userId else myUser) in Prefs.blocked(this) -> "app excluida de la isla"
         sbn.isOngoing -> "aviso en curso"
         !sbn.isClearable -> "Android no deja quitarlo"
         keepInSystem(n) -> "categoría ${n.category} (se queda en el sistema)"
@@ -1063,13 +1060,16 @@ class NotifListener : NotificationListenerService() {
         pulse()
     }
 
-    /** La isla deja de mostrar esa app (queda en «Apps bloqueadas» de los ajustes). */
+    /** La isla deja de mostrar ESA copia de la app (queda en «Apps bloqueadas» de los ajustes). */
     private fun muteCurrent() {
         val c = cards.getOrNull(cardIndex) ?: return
         if (c.pkg == packageName) { dismissCurrent(); return }
-        Prefs.setBlocked(this, Prefs.blocked(this) + c.pkg)
-        android.widget.Toast.makeText(this, "${nameOf(c)}: silenciada en la isla", android.widget.Toast.LENGTH_SHORT).show()
-        cards.removeAll { it.pkg == c.pkg }
+        val k = appKey(c.pkg, c.userId)
+        Prefs.setBlocked(this, Prefs.blocked(this) + k)
+        android.widget.Toast.makeText(this,
+            "${nameOf(c)}: ${if (isClone(c.userId)) "esta copia" else "esta app"} silenciada en la isla",
+            android.widget.Toast.LENGTH_SHORT).show()
+        cards.removeAll { appKey(it.pkg, it.userId) == k }
         if (cards.isEmpty()) { collapse(); return }
         cardIndex = 0; bindCard(cards[0]); updateBadge()
     }
@@ -1376,9 +1376,7 @@ class NotifListener : NotificationListenerService() {
 
     private fun openApp(pkg: String, freeform: Boolean, pi: android.app.PendingIntent?, kind: Int? = null,
                         user: android.os.UserHandle? = null, userId: Int = -1) {
-        val cloneUser = if (isClone(userId))
-            (user ?: try { android.os.UserHandle.of(norm(userId)) } catch (e: Throwable) { null })
-            else null
+        val cloneUser = if (isClone(userId)) user else null
         if (freeform) { FloatingWindow.open(this, pkg, pi, kind, cloneUser, norm(userId)); return }
         // Abre la conversación exacta de la notificación; si no hay destino, la pantalla principal de la app
         if (pi != null && FloatingWindow.sendPending(this, pi, false, null)) return
