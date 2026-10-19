@@ -5,8 +5,6 @@ import android.content.pm.LauncherApps
 import android.os.Looper
 import android.os.Process
 import android.os.UserHandle
-import android.os.UserInfo
-import android.os.UserManager
 
 /**
  * Copias clonadas de una app (app dual, «segundo espacio», «gemelo»…).
@@ -44,12 +42,18 @@ object Clones {
     /** UserHandle de un espacio, con API pública (no hay «getIdentifier», pero sí esto). */
     fun handle(userId: Int): UserHandle = UserHandle.getUserHandleForUid(userId * 100000)
 
+    /** Id del espacio a partir de su UserHandle. «getIdentifier» está oculto (@hide); hashCode() devuelve ese id. */
+    fun idOf(h: UserHandle): Int = h.hashCode()
+
     private fun la(c: Context) = c.getSystemService(Context.LAUNCHER_APPS_SERVICE) as LauncherApps
 
-    /** Espacios que Android declara además del principal (perfil de trabajo, segundo espacio…). */
-    fun profiles(c: Context): List<UserInfo> = try {
-        val um = c.getSystemService(Context.USER_SERVICE) as UserManager
-        um.userProfiles.filter { it.id != myUser() }
+    /**
+     * Espacios que Android declara además del principal (perfil de trabajo, segundo espacio…).
+     * Se usa LauncherApps.getProfiles() (API pública, 26+) en lugar de UserManager.getUserProfiles(),
+     * porque su tipo UserInfo está oculto (@hide) y no existe en el SDK público.
+     */
+    fun profiles(c: Context): List<UserHandle> = try {
+        la(c).profiles.filter { idOf(it) != myUser() }
     } catch (e: Exception) { emptyList() }
 
     // Espacios vistos con Shizuku/root («pm list users» puede mostrar los clonados ocultos). Se refresca cada 5 min.
@@ -57,7 +61,7 @@ object Clones {
 
     /** Todos los espacios conocidos (declarados por el sistema y, con privilegios, los ocultos de la ROM). */
     fun userIds(c: Context): List<Int> {
-        val declared = profiles(c).map { it.id }
+        val declared = profiles(c).map { idOf(it) }
         val extra = try {
             // Nunca se ejecuta shell en el hilo principal: se deja para la próxima consulta de fondo.
             if (onMain()) emptyList()
@@ -149,8 +153,9 @@ object Clones {
             if (!isClone(u) || !seen.add(k) || !appExists(c, p)) continue
             out.add(Entry(p, u, label(c, p, u)))
         }
-        for (u in profiles(c).map { it.id }) {
-            val apps = try { la(c).getActivityList(null, handle(u)) } catch (e: Exception) { emptyList() }
+        for (h in profiles(c)) {
+            val u = idOf(h)
+            val apps = try { la(c).getActivityList(null, h) } catch (e: Exception) { emptyList() }
             for (ai in apps) {
                 val p = ai.componentName.packageName
                 if (p == c.packageName) continue
