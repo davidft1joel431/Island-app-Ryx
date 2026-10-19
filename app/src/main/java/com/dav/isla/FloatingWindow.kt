@@ -108,7 +108,7 @@ object FloatingWindow {
         // Con clon hay dos tareas del mismo paquete: se toma la del espacio correcto (la línea trae «U=<espacio>»)
         return out.lines().mapNotNull { ln ->
             val id = Regex("#(\\d+)").find(ln)?.groupValues?.get(1)?.toIntOrNull() ?: return@mapNotNull null
-            val u = Regex("U=(\\d+)").find(ln)?.groupValues?.get(1)?.toIntOrNull()
+            val u = Regex("(?:\\bU=|userId=)(\\d+)").find(ln)?.groupValues?.get(1)?.toIntOrNull()
             if (userId >= 0 && u != null && u != userId) null else id
         }.maxOrNull()?.toString() ?: ""
     }

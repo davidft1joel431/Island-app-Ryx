@@ -91,7 +91,8 @@ object FloatFrame {
             val bar = LinearLayout(app).apply {
                 orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
                 background = GradientDrawable().apply {
-                    val rad = dp(app, 14).toFloat(); cornerRadii = floatArrayOf(rad, rad, rad, rad, 0f, 0f, 0f, 0f); setColor(0xE615171C.toInt())
+                    val rad = dp(app, 16).toFloat(); cornerRadii = floatArrayOf(rad, rad, rad, rad, 0f, 0f, 0f, 0f)
+                    setColor(0xF0181B22.toInt()); setStroke(dp(app, 1), 0x55FFFFFF)
                 }
                 setPadding(dp(app, 14), 0, dp(app, 4), 0)
             }

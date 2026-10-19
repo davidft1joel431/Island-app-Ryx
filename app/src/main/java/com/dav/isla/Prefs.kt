@@ -17,7 +17,7 @@ object Prefs {
     fun hideHeadsUp(c: Context): Boolean = sp(c).getBoolean("hide_headsup", false)
     fun setHideHeadsUp(c: Context, v: Boolean) = sp(c).edit().putBoolean("hide_headsup", v).apply()
 
-    fun style(c: Context): String = sp(c).getString("style", "hyperos") ?: "hyperos"
+    fun style(c: Context): String = sp(c).getString("style", "liquid") ?: "liquid"
     fun setStyle(c: Context, v: String) = sp(c).edit().putString("style", v).apply()
 
     fun yOffsetDp(c: Context): Int = sp(c).getInt("y_dp", 8)
@@ -222,6 +222,9 @@ object Prefs {
     /** Variante de apertura directa que funcionó en esta ROM (-1 = sin calibrar). */
     fun fwVariant(c: Context): Int = sp(c).getInt("fw_variant", -1)
     fun setFwVariant(c: Context, v: Int) = sp(c).edit().putInt("fw_variant", v).apply()
+    /** 2 = calibración de 0.9.23 (el orden de variantes cambió; las anteriores no sirven). */
+    fun fwVariantGen(c: Context): Int = sp(c).getInt("fw_vgen", 0)
+    fun setFwVariantGen(c: Context, v: Int) = sp(c).edit().putInt("fw_vgen", v).apply()
     /** Activar solo «Forzar que las actividades sean redimensionables» antes de abrir (necesita WRITE_SECURE_SETTINGS, concedido una vez por ADB). */
     fun fwUnlock(c: Context): Boolean = sp(c).getBoolean("fw_unlock", true)
     fun setFwUnlock(c: Context, v: Boolean) = sp(c).edit().putBoolean("fw_unlock", v).apply()

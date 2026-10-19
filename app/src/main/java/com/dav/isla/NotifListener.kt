@@ -105,22 +105,9 @@ class NotifListener : NotificationListenerService() {
     private fun appKey(pkg: String, u: Int) = if (isClone(u)) "$pkg@$u" else pkg
     /** Paquete → espacio donde ya se vio una notificación de su clon. */
     private val cloneSeen = HashMap<String, Int>()
-    private val cloneCache = HashMap<String, Pair<Boolean, Long>>()
 
-    /** ¿Esta app existe también en otro espacio (clon)? Se sabe por una notificación vista o por los perfiles del sistema. */
-    private fun hasClone(pkg: String): Boolean {
-        if (cloneSeen.containsKey(pkg)) return true
-        val now = System.currentTimeMillis()
-        cloneCache[pkg]?.let { if (now - it.second < 60_000L) return it.first }
-        val r = try {
-            val um = getSystemService(USER_SERVICE) as android.os.UserManager
-            val la = getSystemService(LAUNCHER_APPS_SERVICE) as android.content.pm.LauncherApps
-            val me = android.os.Process.myUserHandle()
-            um.userProfiles.any { it != me && la.getActivityList(pkg, it).isNotEmpty() }
-        } catch (e: Exception) { false }
-        cloneCache[pkg] = Pair(r, now)
-        return r
-    }
+    /** ¿Esta app existe también en otro espacio (clon)? Por una notificación ya vista o por el catálogo. */
+    private fun hasClone(pkg: String): Boolean = cloneSeen.containsKey(pkg) || Apps.hasClone(this, pkg)
 
     /**
      * Qué copia de [pkg] tienes delante: [ANY_USER] si solo hay una, el id del espacio si se distingue, null si hay clon y no se sabe.
@@ -153,7 +140,7 @@ class NotifListener : NotificationListenerService() {
         if (!Prefs.hideInGames(this) && apps.isEmpty()) return false
         val fg = Foreground.pkg(this) ?: return false
         if (fg == packageName) return false
-        return fg in apps || (Prefs.hideInGames(this) && Foreground.isGame(this, fg))
+        return Apps.matchesFront(apps, fg) || (Prefs.hideInGames(this) && Foreground.isGame(this, fg))
     }
 
     /** App que estás usando ahora mismo (pantalla encendida y desbloqueada), o null si no se puede saber. */
@@ -258,7 +245,10 @@ class NotifListener : NotificationListenerService() {
 
         // Ya estás dentro de esa app (pantalla encendida y desbloqueada): lo estás leyendo ahí, la isla no lo toma
         val uid = if (sbn.userId >= 0) sbn.userId else myUser
-        if (isClone(uid)) cloneSeen[sbn.packageName] = uid
+        if (isClone(uid)) {
+            cloneSeen[sbn.packageName] = uid
+            Apps.note(this, sbn.packageName, uid)
+        }
         val reading = readingNow(sbn.packageName, uid)
 
         // 0) SOLO LA ISLA: si ella va a mostrarla, el aviso del sistema se quita YA (antes de guardar o preparar nada)
@@ -292,7 +282,7 @@ class NotifListener : NotificationListenerService() {
 
         // 2) Filtros de la isla
         if (!Prefs.islandOn(this)) return
-        if (sbn.packageName in Prefs.blocked(this)) return
+        if (Apps.matches(Prefs.blocked(this), sbn.packageName, uid)) return
         if (hiddenNow()) return          // la notificación del sistema se queda intacta
         if (reading) {                   // ya la estás leyendo dentro de la app: no entra a la isla ni deja esperando lo anterior de esa app
             val rp = sbn.packageName
@@ -371,7 +361,7 @@ class NotifListener : NotificationListenerService() {
         !Prefs.islandOn(this) -> "la isla está apagada"
         !Prefs.blockSystem(this) -> "«Bloquear notificaciones del sistema» está apagado"
         !Settings.canDrawOverlays(this) -> "falta el permiso de superposición"
-        sbn.packageName in Prefs.blocked(this) -> "app excluida de la isla"
+        Apps.matches(Prefs.blocked(this), sbn.packageName, if (sbn.userId >= 0) sbn.userId else myUser) -> "app excluida de la isla"
         sbn.isOngoing -> "aviso en curso"
         !sbn.isClearable -> "Android no deja quitarlo"
         keepInSystem(n) -> "categoría ${n.category} (se queda en el sistema)"
@@ -1386,7 +1376,9 @@ class NotifListener : NotificationListenerService() {
 
     private fun openApp(pkg: String, freeform: Boolean, pi: android.app.PendingIntent?, kind: Int? = null,
                         user: android.os.UserHandle? = null, userId: Int = -1) {
-        val cloneUser = if (isClone(userId)) user else null
+        val cloneUser = if (isClone(userId))
+            (user ?: try { android.os.UserHandle.of(norm(userId)) } catch (e: Throwable) { null })
+            else null
         if (freeform) { FloatingWindow.open(this, pkg, pi, kind, cloneUser, norm(userId)); return }
         // Abre la conversación exacta de la notificación; si no hay destino, la pantalla principal de la app
         if (pi != null && FloatingWindow.sendPending(this, pi, false, null)) return

@@ -34,6 +34,9 @@ jobs:
           tag_name: v${{ steps.ver.outputs.v }}
           name: Ryx Island v${{ steps.ver.outputs.v }}
           body: |
+            - Apps clonadas: Dual Apps / espacio 999 (y 95, 10, trabajo) salen como apps distintas, con insignia, y se abren en su espacio.
+            - Formato libre A16/A17: modo interno primero, respaldo `am start --windowingMode 5`, y ajustes de escritorio de desarrollador.
+            - Estilo nuevo «A17 · Liquid», iconos de navegación en trazo y squircle continuo.
             - Nuevo modo «Burbuja (Android 17)»: ventana flotante del sistema que se queda sobre tu app, creada pulsando «Burbuja» en el launcher.
             - Barra del sistema en ventanas libres con root/Shizuku (modo escritorio en el teléfono) y apertura «Directo» instantánea por defecto.
             - Isla más sensible: zona táctil ampliada (ya no baja el panel al fallar por poco), toque más tolerante, respuesta inmediata y animaciones más rápidas.
