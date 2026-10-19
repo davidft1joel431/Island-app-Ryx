@@ -77,42 +77,44 @@ class RyxAccessibility : AccessibilityService() {
     // ─────────────────────────────────────────────────────────────────────────────────────────────
 
     private fun fire(v: Int, launch: Intent, pi: PendingIntent?, b: Rect, reuse: Boolean = false,
-                     pkg: String = "", user: android.os.UserHandle? = null, userId: Int = -1): Boolean = try {
+                     pkg: String = "", user: android.os.UserHandle? = null, userId: Int = -1): Boolean {
         if (v == 4 && pi == null && pkg.isNotEmpty()) return fireShell(userId, pkg, b, reuse)
-        val opts = ActivityOptions.makeBasic()
-        try { opts.setLaunchBounds(b) } catch (e: Throwable) {}
-        if (v == 1) try { opts.setLaunchDisplayId(0) } catch (e: Throwable) {}
-        if (Build.VERSION.SDK_INT >= 34) try {
-            opts.setPendingIntentBackgroundActivityStartMode(ActivityOptions.MODE_BACKGROUND_ACTIVITY_START_ALLOWED)
-        } catch (e: Throwable) {}
-        if (v == 3) try {
-            org.lsposed.hiddenapibypass.HiddenApiBypass.addHiddenApiExemptions("L")
-            ActivityOptions::class.java.getMethod("setLaunchWindowingMode", Int::class.javaPrimitiveType).invoke(opts, 5)
-        } catch (e: Throwable) {}
-        val bundle = opts.toBundle() ?: android.os.Bundle()
-        if (v != 3) bundle.putInt("android.activity.windowingMode", 5)
-        val flags = Intent.FLAG_ACTIVITY_NEW_TASK or (if (v == 2 || reuse) 0 else Intent.FLAG_ACTIVITY_MULTIPLE_TASK)
-        if (pi != null) {
-            pi.send(this, 0, Intent().addFlags(flags), null, null, null, bundle)
-        } else if (pkg.isNotEmpty() && (user != null || hasOtherSpace(pkg))) {
-            // Clon (app dual): se lanza SU copia en su espacio; el intent normal abriría la original.
-            // Y si la app TIENE clon, la ORIGINAL también se lanza indicando su espacio (el principal): con un startActivity normal
-            // la ROM decide sola entre las dos copias y puede abrir el clon en lugar de la original.
-            val target = user ?: android.os.Process.myUserHandle()
-            val la = getSystemService(Context.LAUNCHER_APPS_SERVICE) as LauncherApps
-            val acts = try { la.getActivityList(pkg, target) } catch (e: Throwable) { null }
-            val want = if (user == null) launch.component else null
-            val comp = acts?.firstOrNull { want != null && it.componentName == want }?.componentName
-                ?: acts?.firstOrNull()?.componentName
-            // Espacio oculto (clon de MIUI/OPPO…): la API pública no lo ve → se lanza con Shizuku/root
-            if (comp != null) la.startMainActivity(comp, target, null, bundle)
-            else if (!fireShell(userId, pkg, b, reuse)) return false
-        } else {
-            launch.flags = flags
-            startActivity(launch, bundle)
-        }
-        true
-    } catch (e: Throwable) { false }
+        return try {
+            val opts = ActivityOptions.makeBasic()
+            try { opts.setLaunchBounds(b) } catch (e: Throwable) {}
+            if (v == 1) try { opts.setLaunchDisplayId(0) } catch (e: Throwable) {}
+            if (Build.VERSION.SDK_INT >= 34) try {
+                opts.setPendingIntentBackgroundActivityStartMode(ActivityOptions.MODE_BACKGROUND_ACTIVITY_START_ALLOWED)
+            } catch (e: Throwable) {}
+            if (v == 3) try {
+                org.lsposed.hiddenapibypass.HiddenApiBypass.addHiddenApiExemptions("L")
+                ActivityOptions::class.java.getMethod("setLaunchWindowingMode", Int::class.javaPrimitiveType).invoke(opts, 5)
+            } catch (e: Throwable) {}
+            val bundle = opts.toBundle() ?: android.os.Bundle()
+            if (v != 3) bundle.putInt("android.activity.windowingMode", 5)
+            val flags = Intent.FLAG_ACTIVITY_NEW_TASK or (if (v == 2 || reuse) 0 else Intent.FLAG_ACTIVITY_MULTIPLE_TASK)
+            if (pi != null) {
+                pi.send(this, 0, Intent().addFlags(flags), null, null, null, bundle)
+            } else if (pkg.isNotEmpty() && (user != null || hasOtherSpace(pkg))) {
+                // Clon (app dual): se lanza SU copia en su espacio; el intent normal abriría la original.
+                // Y si la app TIENE clon, la ORIGINAL también se lanza indicando su espacio (el principal): con un startActivity normal
+                // la ROM decide sola entre las dos copias y puede abrir el clon en lugar de la original.
+                val target = user ?: android.os.Process.myUserHandle()
+                val la = getSystemService(Context.LAUNCHER_APPS_SERVICE) as LauncherApps
+                val acts = try { la.getActivityList(pkg, target) } catch (e: Throwable) { null }
+                val want = if (user == null) launch.component else null
+                val comp = acts?.firstOrNull { want != null && it.componentName == want }?.componentName
+                    ?: acts?.firstOrNull()?.componentName
+                // Espacio oculto (clon de MIUI/OPPO…): la API pública no lo ve → se lanza con Shizuku/root
+                if (comp != null) la.startMainActivity(comp, target, null, bundle)
+                else if (!fireShell(userId, pkg, b, reuse)) return false
+            } else {
+                launch.flags = flags
+                startActivity(launch, bundle)
+            }
+            true
+        } catch (e: Throwable) { false }
+    }
 
     // Tareas abiertas por el método con privilegios, para redimensionarlas sin volver a buscarlas.
     private val taskIds = java.util.concurrent.ConcurrentHashMap<String, String>()
