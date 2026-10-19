@@ -273,6 +273,22 @@ class NotifListener : NotificationListenerService() {
             if (words.any { all.contains(it) }) { title = appLabel(sbn.packageName, sbn.user, uid); text = "Contenido oculto" }
         }
 
+        // Texto COMPLETO para el historial y la vista de detalle: texto largo, o los últimos mensajes de la conversación.
+        // La app lo recorta al mostrarlo, pero se guarda entero para que el .html descargado salga con todo.
+        var full: CharSequence? = n.extras.getCharSequence(Notification.EXTRA_BIG_TEXT)
+        if (full == null) {
+            @Suppress("DEPRECATION")
+            val lines = n.extras.getParcelableArray(Notification.EXTRA_MESSAGES)
+                ?.mapNotNull { it as? android.os.Bundle }?.takeLast(5)?.mapNotNull { m ->
+                    val t = m.getCharSequence("text") ?: return@mapNotNull null
+                    val who = m.getCharSequence("sender")
+                    if (who != null) "$who: $t" else t.toString()
+                }
+            if (!lines.isNullOrEmpty()) full = lines.joinToString("\n")
+        }
+        if (words.isNotEmpty() && text == "Contenido oculto") full = text
+        if (full == null) full = text
+
         // Si ya lo leíste y la app lo reenvía igual (pasa al abrir el chat), no vuelve a la isla ni al historial
         val nowMs = System.currentTimeMillis()
         readSigs.entries.removeAll { nowMs - it.value > 120_000L }
@@ -280,9 +296,9 @@ class NotifListener : NotificationListenerService() {
 
         val (mediaBmp, mediaKind) = extractMedia(n)
 
-        // 1) La isla REGISTRA todo en el historial, por aplicación
+        // 1) La isla REGISTRA todo en el historial, por aplicación, con el texto COMPLETO
         if (Prefs.keepHistory(this) && (!sbn.isOngoing || isCall(n))) {
-            val hp = sbn.packageName; val ht = title?.toString() ?: ""; val hx = text?.toString() ?: ""
+            val hp = sbn.packageName; val ht = title?.toString() ?: ""; val hx = (full ?: text)?.toString() ?: ""
             // Los avisos del sistema se de-duplican durante más tiempo: no queremos cuatro avisos de batería seguidos.
             val win = if (Sys.isSystemPkg(hp)) 120_000L else 3_000L
             histExec.execute {      // disco y copia de seguridad fuera del hilo principal: la isla sale antes
@@ -318,26 +334,21 @@ class NotifListener : NotificationListenerService() {
         // Llamadas: entrante, en curso, en espera y perdida se unen en UNA sola tarjeta con sus botones reales
         if (isCall(n)) { showCall(sbn, n, title, text, large); return }
 
-        // Texto completo para la vista de detalle: texto largo, o los últimos mensajes de la conversación
-        var full: CharSequence? = n.extras.getCharSequence(Notification.EXTRA_BIG_TEXT)
-        if (full == null) {
-            @Suppress("DEPRECATION")
-            val lines = n.extras.getParcelableArray(Notification.EXTRA_MESSAGES)
-                ?.mapNotNull { it as? android.os.Bundle }?.takeLast(5)?.mapNotNull { m ->
-                    val t = m.getCharSequence("text") ?: return@mapNotNull null
-                    val who = m.getCharSequence("sender")
-                    if (who != null) "$who: $t" else t.toString()
-                }
-            if (!lines.isNullOrEmpty()) full = lines.joinToString("\n")
-        }
-        if (words.isNotEmpty() && text == "Contenido oculto") full = text
+        // Texto completo para la vista de detalle ya calculado arriba (se guarda entero en el historial)
         val ci = n.contentIntent
         val ik = appKey(sbn.packageName, uid)      // original y clon tienen su propia tarjeta y su propio destino
         if (ci != null && (n.flags and Notification.FLAG_GROUP_SUMMARY) == 0) intents[ik] = ci
         else if (ci != null && !intents.containsKey(ik)) intents[ik] = ci
+        // Apps de pedidos y de viajes: se reconocen por su paquete y la tarjeta sale con su color y su etiqueta
+        val tag = when {
+            Sys.isOrderApp(sbn.packageName) -> "Pedido" to 0xFFFF9F0A.toInt()
+            Sys.isRideApp(sbn.packageName) -> "Viaje" to 0xFF40C8E0.toInt()
+            else -> null
+        }
         show(sbn.packageName, title, text, large, true, true, "app:$ik", false,
             fallback = small, media = mediaBmp, detailText = full ?: text,
-            sig = "${sbn.key}|$title|$text", user = sbn.user, userId = uid)
+            sig = "${sbn.key}|$title|$text", user = sbn.user, userId = uid,
+            label = tag?.first, accentOverride = tag?.second)
     }
 
     /** La notificación se canceló (la leíste, la deslizaste o la app la retiró). Lo que cancela la propia isla no cuenta. */
