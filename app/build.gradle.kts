@@ -12,7 +12,7 @@ android {
         minSdk = 29
         targetSdk = 36
         versionCode = 30
-        versionName = "0.9.9"
+        versionName = "0.9.22"
         // Número de la ejecución de GitHub Actions (el tag del release es v<número>); en local queda en 0
         buildConfigField("int", "BUILD_NUMBER", (project.findProperty("buildNumber") ?: "0").toString())
     }

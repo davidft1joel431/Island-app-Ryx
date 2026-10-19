@@ -8,6 +8,7 @@ import android.os.Build
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
+import android.content.pm.LauncherApps
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.Color
@@ -69,7 +70,8 @@ class RyxAccessibility : AccessibilityService() {
 
     private val VARIANTS = listOf("estándar (clave windowingMode)", "con pantalla 0", "sin ventana nueva", "método interno")
 
-    private fun fire(v: Int, launch: Intent, pi: PendingIntent?, b: Rect, reuse: Boolean = false): Boolean = try {
+    private fun fire(v: Int, launch: Intent, pi: PendingIntent?, b: Rect, reuse: Boolean = false,
+                     pkg: String = "", user: android.os.UserHandle? = null): Boolean = try {
         val opts = ActivityOptions.makeBasic()
         try { opts.setLaunchBounds(b) } catch (e: Throwable) {}
         if (v == 1) try { opts.setLaunchDisplayId(0) } catch (e: Throwable) {}
@@ -85,6 +87,11 @@ class RyxAccessibility : AccessibilityService() {
         val flags = Intent.FLAG_ACTIVITY_NEW_TASK or (if (v == 2 || reuse) 0 else Intent.FLAG_ACTIVITY_MULTIPLE_TASK)
         if (pi != null) {
             pi.send(this, 0, Intent().addFlags(flags), null, null, null, bundle)
+        } else if (user != null && pkg.isNotEmpty()) {
+            // Clon (app dual): se lanza SU copia en su espacio; el intent normal abriría la original
+            val la = getSystemService(Context.LAUNCHER_APPS_SERVICE) as LauncherApps
+            val comp = la.getActivityList(pkg, user).firstOrNull()?.componentName ?: return false
+            la.startMainActivity(comp, user, null, bundle)
         } else {
             launch.flags = flags
             startActivity(launch, bundle)
@@ -115,7 +122,7 @@ class RyxAccessibility : AccessibilityService() {
      * Con la variante recordada la apertura es de un solo intento y tarda lo que tarda el sistema (unos cientos de ms).
      * Llamar fuera del hilo principal.
      */
-    fun launchSmartIsland(pkg: String, pi: PendingIntent?, b: Rect, log: StringBuilder): Boolean {
+    fun launchSmartIsland(pkg: String, pi: PendingIntent?, b: Rect, log: StringBuilder, user: android.os.UserHandle? = null): Boolean {
         val t0 = System.currentTimeMillis()
         try { FreeformUnlock.ensure(this, log) } catch (e: Throwable) { log.append("Desbloqueo: ${e.javaClass.simpleName}\n") }
         return try {
@@ -123,13 +130,13 @@ class RyxAccessibility : AccessibilityService() {
             // Si pides una ventana casi del tamaño de la pantalla no se puede distinguir de «pantalla completa»: un solo intento
             val almostFull = b.width() >= m.widthPixels * 0.97f && b.height() >= m.heightPixels * 0.88f
             val launch = packageManager.getLaunchIntentForPackage(pkg)
-            if (launch == null && pi == null) { log.append("No se encontró la actividad principal.\n"); return false }
+            if (launch == null && pi == null && user == null) { log.append("No se encontró la actividad principal.\n"); return false }
             val ok = if (almostFull) {
                 val v = Prefs.fwVariant(this).let { if (it in VARIANTS.indices) it else 0 }
                 log.append("Ventana casi a pantalla completa: un solo intento (variante ${v + 1}).\n")
-                fire(v, Intent(launch ?: Intent()), pi, b)
-            } else if (launch != null) {
-                launchFreeformDirect(pkg, pi, b, log)
+                fire(v, Intent(launch ?: Intent()), pi, b, pkg = pkg, user = user)
+            } else if (launch != null || user != null) {
+                launchFreeformDirect(pkg, pi, b, log, user)
             } else {
                 fire(Prefs.fwVariant(this).let { if (it in VARIANTS.indices) it else 0 }, Intent(), pi, b)
             }
@@ -161,11 +168,14 @@ class RyxAccessibility : AccessibilityService() {
      * Mover/redimensionar sin privilegios: vuelve a pedir el modo libre con los nuevos límites SIN «ventana nueva»,
      * para que Android reutilice la misma tarea en vez de abrir otra. Llamar fuera del hilo principal.
      */
-    fun relaunchBounds(pkg: String, b: Rect): Boolean {
-        val launch = packageManager.getLaunchIntentForPackage(pkg) ?: return false
+    fun relaunchBounds(pkg: String, b: Rect, user: android.os.UserHandle? = null): Boolean {
+        // El intent de la app se guarda: preguntarlo a Android en cada movimiento restaba fluidez
+        val launch = if (user != null) Intent()
+            else (launchCache[pkg] ?: packageManager.getLaunchIntentForPackage(pkg)?.also { launchCache[pkg] = it }) ?: return false
         val v = Prefs.fwVariant(this).let { if (it in VARIANTS.indices) it else 0 }   // la misma variante que abrió la ventana
-        return fire(v, Intent(launch), null, b, reuse = true)
+        return fire(v, Intent(launch), null, b, reuse = true, pkg = pkg, user = user)
     }
+    private val launchCache = java.util.concurrent.ConcurrentHashMap<String, Intent>()
 
     /** true = la ventana de [pkg] no ocupa toda la pantalla (flotante); false = pantalla completa; null = no se pudo saber. */
     private fun floatingState(pkg: String): Boolean? {
@@ -194,18 +204,19 @@ class RyxAccessibility : AccessibilityService() {
             if (last == false) {
                 if (falseSince == 0L) falseSince = now else if (now - falseSince > 450) return false
             } else falseSince = 0L
-            pause(70)
+            pause(30)
         }
         return last
     }
 
     /** Llamar fuera del hilo principal. Devuelve true si la app quedó (o parece haber quedado) en ventana libre. */
-    fun launchFreeformDirect(pkg: String, pi: PendingIntent?, b: Rect, log: StringBuilder): Boolean {
-        val launch = packageManager.getLaunchIntentForPackage(pkg) ?: run { log.append("No se encontró la actividad principal.\n"); return false }
+    fun launchFreeformDirect(pkg: String, pi: PendingIntent?, b: Rect, log: StringBuilder, user: android.os.UserHandle? = null): Boolean {
+        val launch = packageManager.getLaunchIntentForPackage(pkg)
+        if (launch == null && user == null) { log.append("No se encontró la actividad principal.\n"); return false }
         val cached = Prefs.fwVariant(this)
         val order = if (cached in VARIANTS.indices) listOf(cached) + VARIANTS.indices.filter { it != cached } else VARIANTS.indices.toList()
         for (v in order) {
-            val sent = fire(v, Intent(launch), pi, b)
+            val sent = fire(v, launch?.let { Intent(it) } ?: Intent(), pi, b, pkg = pkg, user = user)
             if (!sent) { log.append("Variante ${v + 1} · ${VARIANTS[v]}: no se pudo lanzar.\n"); continue }
             when (waitFloating(pkg, 1500)) {
                 true -> { log.append("Variante ${v + 1} · ${VARIANTS[v]}: ventana libre verificada. ${describeWindows(pkg)}\n"); Prefs.setFwVariant(this, v); return true }
