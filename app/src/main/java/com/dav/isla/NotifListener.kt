@@ -88,8 +88,19 @@ class NotifListener : NotificationListenerService() {
         val target: String? = null,      // eventos del sistema: pantalla de Ajustes a la que lleva al tocarlo
         val label: String? = null,       // eventos del sistema: nombre en lugar del de la app
         val userId: Int = -1,            // espacio de la app (clon / app dual); -1 = el principal
-        val user: android.os.UserHandle? = null
+        val user: android.os.UserHandle? = null,
+        val actions: List<CardAction> = emptyList()   // botones propios: contestar/colgar, cambiar de Wi-Fi, apagar el punto de acceso…
     )
+
+    /** Botón propio de una tarjeta (contestar/colgar, cambiar de Wi-Fi, apagar el punto de acceso…). */
+    private class CardAction(
+        val label: String,
+        val color: Int = 0,          // 0 = color de acento
+        val filled: Boolean = false,
+        val dismiss: Boolean = false, // al pulsarlo, ¿se quita la tarjeta de la isla?
+        val run: () -> Unit
+    )
+
     private fun nameOf(c: Card): String = c.label ?: appLabel(c.pkg, c.user, c.userId)
     private val cards = ArrayList<Card>()
     /** Último destino (chat) de cada app, para abrirlo exactamente al tocar la tarjeta. */
@@ -270,7 +281,7 @@ class NotifListener : NotificationListenerService() {
         val (mediaBmp, mediaKind) = extractMedia(n)
 
         // 1) La isla REGISTRA todo en el historial, por aplicación
-        if (Prefs.keepHistory(this) && !sbn.isOngoing) {
+        if (Prefs.keepHistory(this) && (!sbn.isOngoing || isCall(n))) {
             val hp = sbn.packageName; val ht = title?.toString() ?: ""; val hx = text?.toString() ?: ""
             // Los avisos del sistema se de-duplican durante más tiempo: no queremos cuatro avisos de batería seguidos.
             val win = if (Sys.isSystemPkg(hp)) 120_000L else 3_000L
@@ -288,7 +299,7 @@ class NotifListener : NotificationListenerService() {
             main.post { markRead(rp, user = uid) }
             return
         }
-        if (sbn.isOngoing) return
+        if (sbn.isOngoing && !isCall(n)) return
 
         // Batería: todos los avisos del sistema se unen en UNA sola tarjeta con el nivel en tiempo real
         if (Sys.isBatteryNotif(sbn.packageName, title, text)) {
@@ -303,6 +314,10 @@ class NotifListener : NotificationListenerService() {
         val small: Drawable? = try {
             n.smallIcon?.loadDrawable(createPackageContext(sbn.packageName, 0))
         } catch (e: Exception) { null }
+
+        // Llamadas: entrante, en curso, en espera y perdida se unen en UNA sola tarjeta con sus botones reales
+        if (isCall(n)) { showCall(sbn, n, title, text, large); return }
+
         // Texto completo para la vista de detalle: texto largo, o los últimos mensajes de la conversación
         var full: CharSequence? = n.extras.getCharSequence(Notification.EXTRA_BIG_TEXT)
         if (full == null) {
@@ -329,6 +344,9 @@ class NotifListener : NotificationListenerService() {
     override fun onNotificationRemoved(sbn: StatusBarNotification, rankingMap: NotificationListenerService.RankingMap?, reason: Int) {
         if (reason == NotificationListenerService.REASON_LISTENER_CANCEL || reason == NotificationListenerService.REASON_LISTENER_CANCEL_ALL) return
         if (sbn.packageName == packageName) return
+        // Se colgó o se rechazó la llamada: la tarjeta unificada se retira
+        val cn = sbn.notification
+        if (cn != null && (cn.category == "call" || cn.category == "missed_call")) main.post { dropKey("sys:call") }
         val pk = sbn.packageName; val key = sbn.key; val ru = norm(sbn.userId)
         main.post { markRead(pk, key, user = ru) }
     }
@@ -370,8 +388,9 @@ class NotifListener : NotificationListenerService() {
         !Prefs.blockSystem(this) -> "«Bloquear notificaciones del sistema» está apagado"
         !Settings.canDrawOverlays(this) -> "falta el permiso de superposición"
         Clones.key(sbn.packageName, if (sbn.userId >= 0) sbn.userId else myUser) in Prefs.blocked(this) -> "app excluida de la isla"
-        sbn.isOngoing -> "aviso en curso"
+        sbn.isOngoing && !isCall(n) -> "aviso en curso"
         !sbn.isClearable -> "Android no deja quitarlo"
+        isCall(n) -> "llamada (la isla la muestra sin quitar la del sistema)"
         keepInSystem(n) -> "categoría ${n.category} (se queda en el sistema)"
         hiddenNow() -> "isla oculta (bloqueo, juego o app elegida)"
         reading -> "estás dentro de esa app"
@@ -392,9 +411,14 @@ class NotifListener : NotificationListenerService() {
         }
     }
 
-    /** Llamadas, multimedia y navegación se quedan en el sistema para no romper sus controles. */
+    /** Multimedia, navegación, alarmas y progresos se quedan en el sistema para no romper sus controles.
+     *  Las llamadas NO: entrante, en curso y perdida se unifican en la isla con sus botones. */
     private fun keepInSystem(n: Notification): Boolean =
-        n.category in setOf("call", "transport", "navigation", "alarm", "progress")
+        n.category in setOf("transport", "navigation", "alarm", "progress")
+
+    /** ¿Es una llamada (entrante, en curso, en espera o perdida)? */
+    private fun isCall(n: Notification): Boolean =
+        n.category == "call" || n.category == "missed_call"
 
     // ---------- Eventos del sistema ----------
 
@@ -419,6 +443,17 @@ class NotifListener : NotificationListenerService() {
                     if (i.getBooleanExtra("state", false)) showEvent("airplane")
                 }
                 android.bluetooth.BluetoothDevice.ACTION_ACL_CONNECTED -> showEvent("bt")
+                // Wi-Fi apagado: aviso en rojo (la conexión, con el nombre de la red, llega por la red)
+                android.net.wifi.WifiManager.WIFI_STATE_CHANGED_ACTION -> {
+                    val st = i.getIntExtra(android.net.wifi.WifiManager.EXTRA_WIFI_STATE,
+                        android.net.wifi.WifiManager.WIFI_STATE_UNKNOWN)
+                    if (st == android.net.wifi.WifiManager.WIFI_STATE_DISABLED) showNoNet("Wi-Fi desactivado")
+                }
+                // Punto de acceso (compartir datos móviles): se enciende/apaga y se cuentan los dispositivos
+                WIFI_AP_ACTION -> {
+                    val st = i.getIntExtra("wifi_state", 11)
+                    if (st == 12 || st == 13) startHotspot() else stopHotspotCard()
+                }
             }
         }
     }
@@ -434,12 +469,14 @@ class NotifListener : NotificationListenerService() {
             addAction(PowerManager.ACTION_POWER_SAVE_MODE_CHANGED)
             addAction(Intent.ACTION_AIRPLANE_MODE_CHANGED)
             addAction(android.bluetooth.BluetoothDevice.ACTION_ACL_CONNECTED)
+            addAction(android.net.wifi.WifiManager.WIFI_STATE_CHANGED_ACTION)
+            addAction(WIFI_AP_ACTION)
         }
         try {
             if (Build.VERSION.SDK_INT >= 33) registerReceiver(sysReceiver, f, RECEIVER_EXPORTED)
             else registerReceiver(sysReceiver, f)
         } catch (e: Exception) {}
-        // Wi-Fi / datos móviles / VPN
+        // Wi-Fi / datos móviles / VPN: la red que se conecta sola se anuncia con su nombre
         try {
             val cm = getSystemService(CONNECTIVITY_SERVICE) as android.net.ConnectivityManager
             cm.registerDefaultNetworkCallback(object : android.net.ConnectivityManager.NetworkCallback() {
@@ -451,7 +488,16 @@ class NotifListener : NotificationListenerService() {
                         c.hasTransport(android.net.NetworkCapabilities.TRANSPORT_CELLULAR) -> "data"
                         else -> ""
                     }
-                    if (t.isNotEmpty() && t != last) { last = t; showEvent(t) }
+                    if (t.isEmpty() || t == last) return
+                    last = t
+                    main.removeCallbacks(offlineTask)
+                    if (t == "wifi") showWifi() else showEvent(t)
+                }
+                override fun onLost(n: android.net.Network) {
+                    last = ""
+                    // Puede ser un cambio Wi-Fi → datos: se espera un momento antes de darla por caída
+                    main.removeCallbacks(offlineTask)
+                    main.postDelayed(offlineTask, 1500)
                 }
             })
         } catch (e: Exception) {}
@@ -519,6 +565,221 @@ class NotifListener : NotificationListenerService() {
             "saver" -> "Ahorro de batería activado$pct"
             else -> ev.body
         }
+    }
+
+    // ---------- Wi-Fi, red y punto de acceso ----------
+
+    private val WIFI_AP_ACTION = "android.net.wifi.WIFI_AP_STATE_CHANGED"
+    private val offlineTask = Runnable { showNoNet("Red desactivada") }
+
+    /** Nombre de la red Wi-Fi conectada. Primero por el propio sistema y, si la ROM lo oculta, con Shizuku/root. */
+    private fun currentSsid(): String? {
+        try {
+            val wm = getSystemService(Context.WIFI_SERVICE) as? android.net.wifi.WifiManager
+            @Suppress("DEPRECATION")
+            val s = wm?.connectionInfo?.ssid?.trim('"')
+            if (!s.isNullOrEmpty() && s != "<unknown ssid>" && s != "0x") return s
+        } catch (e: Exception) {}
+        // Sin permiso de ubicación la ROM oculta el nombre: con privilegios se lee de «cmd wifi status»
+        if (Shell.privileged(this)) {
+            try {
+                val out = Shell.run(this, "cmd wifi status").second
+                val m = Regex("SSID:\\s*\"?([^\"\\n,]+)\"?").find(out)
+                val s = m?.groupValues?.getOrNull(1)?.trim()
+                if (!s.isNullOrEmpty() && s != "<unknown ssid>") return s
+            } catch (e: Exception) {}
+        }
+        return null
+    }
+
+    /** Wi-Fi conectado: «Conectado a la red [nombre]» + botón para cambiar de red. */
+    private fun showWifi() {
+        if (!Prefs.islandOn(this) || !Prefs.eventOn(this, "wifi")) return
+        // El nombre de la red puede costar (consulta con privilegios): se resuelve fuera del hilo principal
+        histExec.execute {
+            val ssid = currentSsid()
+            main.post { renderWifi(ssid) }
+        }
+    }
+
+    private fun renderWifi(ssid: String?) {
+        if (!Prefs.islandOn(this) || !Prefs.eventOn(this, "wifi")) return
+        val blue = 0xFF0A84FF.toInt()
+        val body = if (ssid != null) "Conectado a la red «$ssid»" else "Conectado a una red Wi-Fi"
+        show(packageName, "Wi-Fi", body, eventIcon("wifi", blue), true, true, "sys:wifi", false,
+            sig = "sys:wifi|$ssid", target = "wifi", label = "Wi-Fi", accentOverride = blue,
+            actions = listOf(
+                CardAction("Cambiar red", blue, true, dismiss = true) { openTarget("wifi") },
+                CardAction("Ajustes", 0, false, dismiss = true) { openTarget("wifi") }))
+    }
+
+    /** Red caída o Wi-Fi apagado: aviso en ROJO. */
+    private fun showNoNet(title: String) {
+        if (!Prefs.islandOn(this) || !Prefs.eventOn(this, "offline")) return
+        val red = 0xFFFF453A.toInt()
+        show(packageName, title, "Sin conexión a Internet", eventIcon("wifi_off", red), true, true, "sys:offline", false,
+            sig = "sys:offline|$title", target = "wifi", label = "Red", accentOverride = red,
+            actions = listOf(
+                CardAction("Wi-Fi", 0xFF0A84FF.toInt(), false, dismiss = true) { openTarget("wifi") },
+                CardAction("Datos", 0xFF30D158.toInt(), false, dismiss = true) { openTarget("data") }))
+    }
+
+    // ---------- Punto de acceso (compartir datos móviles) ----------
+
+    private var hotspotOn = false
+    private val hotspotTask = object : Runnable {
+        override fun run() {
+            if (!hotspotOn) return
+            refreshHotspot()
+            main.postDelayed(this, 8000)
+        }
+    }
+
+    private fun startHotspot() {
+        hotspotOn = true
+        refreshHotspot()
+        main.removeCallbacks(hotspotTask)
+        main.postDelayed(hotspotTask, 8000)
+    }
+
+    private fun stopHotspotCard() {
+        if (!hotspotOn) return
+        hotspotOn = false
+        main.removeCallbacks(hotspotTask)
+        main.post { dropKey("sys:hotspot") }
+    }
+
+    /** Recuenta los dispositivos conectados y refresca la tarjeta del punto de acceso. */
+    private fun refreshHotspot() {
+        if (!Prefs.islandOn(this) || !Prefs.eventOn(this, "hotspot")) return
+        val first = cards.none { it.key == "sys:hotspot" }
+        histExec.execute {
+            val clients = hotspotClients()
+            main.post { if (hotspotOn) showHotspot(clients, first) }
+        }
+    }
+
+    /** Dispositivos conectados al punto de acceso: se cuentan por la tabla ARP (solo con privilegios). */
+    private fun hotspotClients(): Int? {
+        if (!Shell.privileged(this)) return null
+        return try {
+            val out = Shell.run(this, "cat /proc/net/arp").second
+            out.lineSequence().drop(1).count { l ->
+                val p = l.trim().split(Regex("\\s+"))
+                p.size >= 4 && p[3].equals("0x2", true) && p[1] != "00:00:00:00:00:00"
+            }
+        } catch (e: Exception) { null }
+    }
+
+    private fun showHotspot(clients: Int?, first: Boolean) {
+        if (!hotspotOn) return
+        val cyan = 0xFF40C8E0.toInt()
+        val body = when {
+            clients == null -> "Compartiendo internet"
+            clients <= 0 -> "Compartiendo internet · sin dispositivos"
+            clients == 1 -> "Compartiendo internet · 1 dispositivo"
+            else -> "Compartiendo internet · $clients dispositivos"
+        }
+        val sig = "sys:hotspot|$body"
+        if (cards.any { it.key == "sys:hotspot" && it.sig == sig }) return
+        show(packageName, "Punto de acceso", body, eventIcon("hotspot", cyan), false, first, "sys:hotspot", false,
+            sig = sig, target = "hotspot", label = "Punto de acceso", accentOverride = cyan,
+            actions = listOf(
+                CardAction("Desactivar", 0xFFFF453A.toInt(), true) { offHotspot() },
+                CardAction("Ajustes", 0, false, dismiss = true) { openTarget("hotspot") }))
+    }
+
+    /** Apaga el punto de acceso con Shizuku/root y, si no se puede, deja abiertos los ajustes. */
+    private fun offHotspot() {
+        android.widget.Toast.makeText(this, "Apagando punto de acceso…", android.widget.Toast.LENGTH_SHORT).show()
+        main.post { dropKey("sys:hotspot") }
+        Thread {
+            var ok = false
+            try {
+                if (Shell.privileged(this)) ok = Shell.run(this, "cmd wifi stop-softap").first == 0
+            } catch (e: Exception) {}
+            if (!ok) main.post { openTarget("hotspot") }
+        }.start()
+    }
+
+    /** Quita todas las tarjetas con esa clave, sin tocar el resto. */
+    private fun dropKey(key: String) {
+        val gone = cards.filter { it.key == key }
+        if (gone.isEmpty()) return
+        val shown = cards.getOrNull(cardIndex)
+        cards.removeAll(gone.toSet())
+        if (!attached) return
+        if (cards.isEmpty()) {
+            cardIndex = 0
+            if (expanded) collapse() else if (!Prefs.permanent(this)) removeNow() else { updateBadge(); updateCount() }
+            return
+        }
+        cardIndex = if (shown != null && shown !in gone) cards.indexOf(shown) else 0
+        bindCard(cards[cardIndex.coerceIn(0, cards.size - 1)])
+        updateBadge(); updateCount()
+    }
+
+    /** Llamadas: unifica entrante, en curso, en espera y perdida en UNA sola tarjeta con los botones del sistema. */
+    private fun showCall(sbn: StatusBarNotification, n: Notification, title: CharSequence?, text: CharSequence?, large: Drawable?) {
+        val green = 0xFF30D158.toInt(); val red = 0xFFFF453A.toInt()
+        // Tipo de llamada que pone Android: 1 entrante, 2 en curso, 3 en espera; 0 = sin dato
+        val ct = try { n.extras.getInt("android.callType", 0) } catch (e: Exception) { 0 }
+        val t = (title?.toString() ?: "").trim()
+        val b = (text?.toString() ?: "").trim()
+        val low = "$t $b".lowercase()
+        val missed = ct == 0 && (n.category == "missed_call" || low.contains("perdid") ||
+            low.contains("missed") || low.contains("no contestad"))
+        val state = when {
+            ct == 1 -> "Llamada entrante"
+            ct == 3 -> "Llamada en espera"
+            ct == 2 -> "En llamada"
+            missed -> "Llamada perdida"
+            n.actions?.any { isAnswerAction(it) } == true -> "Llamada entrante"
+            else -> "En llamada"
+        }
+        val color = if (missed) red else green
+        // Botones REALES de la notificación (contestar, rechazar, colgar…): se reenvían tal cual
+        val acts = ArrayList<CardAction>()
+        n.actions?.forEach { a ->
+            val at = a.title?.toString()?.trim().orEmpty()
+            val pi = a.actionIntent ?: return@forEach
+            if (at.isEmpty()) return@forEach
+            val ans = isAnswerAction(a)
+            val end = !ans && isEndAction(a)
+            acts.add(CardAction(at,
+                color = if (ans) green else if (end) red else 0,
+                filled = ans || end,
+                dismiss = end,
+                run = { try { pi.send(this@NotifListener, 0, null); buzz() } catch (e: Exception) {} }))
+        }
+        if (acts.isEmpty()) {
+            // Sin botones del sistema: al menos se abre el marcador o el registro
+            acts.add(CardAction(if (missed) "Ver registro" else "Abrir", color = Glass.ACCENT, filled = true,
+                dismiss = true, run = { openTarget(if (missed) "calllog" else "dialer") }))
+        }
+        val icon = large ?: eventIcon("phone", color)
+        val body = if (b.isNotEmpty() && b != state) "$state · $b" else state
+        val sig = "sys:call|$t|$state|$b"
+        // El sistema reenvía la llamada en curso muchas veces: si nada cambió, no se vuelve a animar
+        if (cards.any { it.key == "sys:call" && it.sig == sig }) return
+        show(packageName, if (t.isNotEmpty()) t else "Llamada", body, icon, false, true, "sys:call", false,
+            sig = sig, target = if (missed) "calllog" else "dialer",
+            label = "Llamada", accentOverride = color, actions = acts)
+    }
+
+    /** ¿El botón de la notificación sirve para contestar? */
+    private fun isAnswerAction(a: Notification.Action): Boolean {
+        val s = (a.title?.toString() ?: "").lowercase()
+        return s.contains("contest") || s.contains("respond") || s.contains("answer") ||
+            s.contains("descolg") || s.contains("acept") || s.contains("atend") || s.contains("pick")
+    }
+
+    /** ¿El botón de la notificación sirve para colgar/rechazar? */
+    private fun isEndAction(a: Notification.Action): Boolean {
+        val s = (a.title?.toString() ?: "").lowercase()
+        return s.contains("colg") || s.contains("rechaz") || s.contains("finaliz") ||
+            s.contains("hang") || s.contains("decline") || s.contains("end") ||
+            s.contains("ignor") || s.contains("deneg")
     }
 
     /** Icono vectorial del evento, blanco sobre un círculo del COLOR propio del evento (verde batería, azul Wi-Fi…). */
@@ -765,6 +1026,46 @@ class NotifListener : NotificationListenerService() {
         setOnClickListener { onClick() }
     }
 
+    /** Píldora de acción con color propio (verde contestar, rojo colgar, azul Wi-Fi…). */
+    private fun chip(text: String, color: Int, filled: Boolean, s: IslandStyle, onClick: () -> Unit) = TextView(this).apply {
+        this.text = text; gravity = Gravity.CENTER; textSize = 12.5f
+        setTypeface(typeface, Typeface.BOLD)
+        val base = if (color != 0) color else Glass.ACCENT
+        setTextColor(if (filled) 0xFF10131A.toInt() else if (color != 0) base else s.textColor)
+        setPadding(px(6), px(9), px(6), px(9))
+        background = GradientDrawable().apply {
+            cornerRadius = px(16).toFloat()
+            setColor(when {
+                filled -> base
+                color != 0 -> (base and 0x00FFFFFF) or 0x33000000
+                s.textColor == 0xFFFFFFFF.toInt() -> 0x30FFFFFF
+                else -> 0x22000000
+            })
+        }
+        setOnClickListener { onClick() }
+    }
+
+    /** Botones de la tarjeta: los propios (llamadas, Wi-Fi, punto de acceso) o los de siempre. */
+    private fun rebuildActions(c: Card) {
+        val acts = actionsRow ?: return
+        acts.removeAllViews()
+        val s = style
+        val chipLp = { l: Int, r: Int -> LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply { marginStart = px(l); marginEnd = px(r) } }
+        if (c.actions.isNotEmpty()) {
+            c.actions.forEachIndexed { i, a ->
+                acts.addView(chip(a.label, a.color, a.filled, s) {
+                    a.run()
+                    if (a.dismiss) dismissCurrent()
+                }, chipLp(if (i == 0) 0 else 3, if (i == c.actions.size - 1) 0 else 3))
+            }
+        } else {
+            acts.addView(actionChip("Abrir", true, s) { openCurrent(false) }, chipLp(0, 3))
+            acts.addView(actionChip("Libre", false, s) { openCurrent(true, 0) }, chipLp(3, 3))
+            acts.addView(actionChip("Burbuja", false, s) { openCurrent(true, 1) }, chipLp(3, 3))
+            acts.addView(actionChip("Descartar", false, s) { dismissCurrent() }, chipLp(3, 0))
+        }
+    }
+
     private fun idleWidth(): Int = px(Prefs.idleWidthDp(this))
 
     private fun expandedWidth(): Int =
@@ -826,7 +1127,7 @@ class NotifListener : NotificationListenerService() {
         expand: Boolean = true, key: String = "$pkg|$t", ephemeral: Boolean = false,
         fallback: Drawable? = null, media: Bitmap? = null, detailText: CharSequence? = null,
         sig: String = "", target: String? = null, label: String? = null, accentOverride: Int? = null,
-        user: android.os.UserHandle? = null, userId: Int = -1
+        user: android.os.UserHandle? = null, userId: Int = -1, actions: List<CardAction> = emptyList()
     ) {
         main.post {
             if (!::wm.isInitialized || !Settings.canDrawOverlays(this)) return@post
@@ -868,7 +1169,7 @@ class NotifListener : NotificationListenerService() {
             }
             val fullText: CharSequence? = if (lines.size > 1) lines.filter { it.isNotEmpty() }.joinToString("\n") else detailText
             cards.removeAll { it.key == key }
-            cards.add(0, Card(key, pkg, t, b, shown, accent, ephemeral, fullText, media, count, lines, sig, target = target, label = label, userId = userId, user = user))
+            cards.add(0, Card(key, pkg, t, b, shown, accent, ephemeral, fullText, media, count, lines, sig, target = target, label = label, userId = userId, user = user, actions = actions))
             val limit = System.currentTimeMillis() - 15 * 60_000L
             cards.removeAll { it.time < limit }
             while (cards.size > 8) cards.removeAt(cards.size - 1)
@@ -928,6 +1229,9 @@ class NotifListener : NotificationListenerService() {
         (iconView as? ShapedImageView)?.shape = Prefs.iconShape(this)
         island?.background = buildBackground(style, c.accent)
         updateCount()
+        rebuildActions(c)
+        // Las tarjetas con botones propios (llamada, Wi-Fi, punto de acceso) los muestran ya al abrirse
+        actionsRow?.visibility = if (detail || c.actions.isNotEmpty()) View.VISIBLE else View.GONE
         if (detail) {
             bodyView?.text = c.detail ?: c.body
             detailImg?.let { if (c.media != null) { it.setImageBitmap(c.media); it.visibility = View.VISIBLE } else it.visibility = View.GONE }
@@ -1120,7 +1424,9 @@ class NotifListener : NotificationListenerService() {
     private fun resetDetail() {
         detail = false
         detailImg?.visibility = View.GONE
-        actionsRow?.visibility = View.GONE
+        val cur = cards.getOrNull(cardIndex)
+        if (cur != null) rebuildActions(cur)
+        actionsRow?.visibility = if (cur != null && cur.actions.isNotEmpty()) View.VISIBLE else View.GONE
         bodyView?.maxLines = 1
         appView?.visibility = if (style.showAppName) View.VISIBLE else View.GONE
         cards.getOrNull(cardIndex)?.let {
@@ -1140,6 +1446,7 @@ class NotifListener : NotificationListenerService() {
         appView?.visibility = View.VISIBLE
         appView?.text = nameOf(c) + if (c.count > 1) " · ${c.count} notificaciones" else ""
         detailImg?.let { if (c.media != null) { it.setImageBitmap(c.media); it.visibility = View.VISIBLE } else it.visibility = View.GONE }
+        rebuildActions(c)
         actionsRow?.visibility = View.VISIBLE
         animateDetail(true)
     }

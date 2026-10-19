@@ -27,7 +27,8 @@ object Events {
         IslandEvent("data", "Datos móviles", "signal", "Datos móviles", "Conexión activa", true, 0xFF30D158.toInt(), "data"),
         IslandEvent("bt", "Bluetooth", "bluetooth", "Bluetooth", "Dispositivo conectado", true, 0xFF5E5CE6.toInt(), "bluetooth"),
         IslandEvent("airplane", "Modo avión", "airplane", "Modo avión", "Activado", true, 0xFFFF9F0A.toInt(), "airplane"),
-        IslandEvent("hotspot", "Punto de acceso", "wifi", "Punto de acceso", "Compartiendo internet", false, 0xFF40C8E0.toInt(), "hotspot"),
+        IslandEvent("offline", "Sin red", "wifi_off", "Red desactivada", "Sin conexión a Internet", true, 0xFFFF453A.toInt(), "wifi"),
+        IslandEvent("hotspot", "Punto de acceso", "hotspot", "Punto de acceso", "Compartiendo internet", false, 0xFF40C8E0.toInt(), "hotspot"),
         IslandEvent("vpn", "VPN", "vpn", "VPN", "Conectada", false, 0xFFBF5AF2.toInt(), "vpn")
     ))
     val ACTIVITIES = EventGroup("act", "Actividades", "phone", listOf(

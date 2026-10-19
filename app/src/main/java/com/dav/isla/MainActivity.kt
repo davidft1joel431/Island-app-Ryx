@@ -122,8 +122,11 @@ class MainActivity : Activity() {
         }, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT))
         head.addView(logoBox, LinearLayout.LayoutParams(px(54), px(54)))
         val names = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
-        names.addView(label("Ryx", 28f, R.color.text, true).apply { letterSpacing = -0.02f })
-        names.addView(label("Island · por David Joel", 13f, R.color.muted))
+        val nameRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
+        nameRow.addView(label("Ryx", 27f, R.color.gold, true).apply { letterSpacing = -0.03f })
+        nameRow.addView(label(" Island", 27f, R.color.text, true).apply { letterSpacing = -0.03f })
+        names.addView(nameRow)
+        names.addView(label("Panel de control · por David Joel", 12.5f, R.color.muted))
         head.addView(names, LinearLayout.LayoutParams(0, WRAP, 1f).apply { marginStart = px(14) })
         activePill = label("", 13f, R.color.green, true).apply { setPadding(px(14), px(7), px(14), px(7)) }
         head.addView(activePill)
@@ -461,6 +464,7 @@ class MainActivity : Activity() {
     // ---------------- INICIO ----------------
 
     private fun buildHome(p: LinearLayout) {
+        p.addView(heroCard(), lp(8))
         val main = card()
         main.addView(rowWithSwitch("Ryx Island", if (Prefs.islandOn(this)) "Activa" else "Apagada",
             Prefs.islandOn(this)) { v -> Prefs.setIslandOn(this, v); applyAll(); render() })
@@ -535,6 +539,36 @@ class MainActivity : Activity() {
             p.addView(c, lp(10))
         }
         buildTest(p)
+    }
+
+    /** Tarjeta principal de la pestaña Isla: resumen moderno del estado actual con acciones rápidas. */
+    private fun heroCard(): View {
+        val on = Prefs.islandOn(this) && Settings.canDrawOverlays(this)
+        val st = Styles.byId(Prefs.style(this))
+        val th = Glass.THEMES.firstOrNull { it.id == Prefs.appTheme(this) } ?: Glass.THEMES[0]
+        val box = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            background = Glass.card(this@MainActivity, 30f, true)
+            setPadding(px(20), px(20), px(20), px(18))
+        }
+        val top = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
+        val dot = View(this).apply {
+            background = Glass.pill(this@MainActivity, if (on) 0xFF3DDC84.toInt() else 0xFFFF6B6B.toInt(), 0, 20f)
+        }
+        top.addView(dot, LinearLayout.LayoutParams(px(12), px(12)).apply { marginEnd = px(10) })
+        top.addView(label(if (on) "Isla activa" else "Isla inactiva", 20f, R.color.text, true),
+            LinearLayout.LayoutParams(0, WRAP, 1f))
+        top.addView(label(if (on) "En línea" else "Detenida", 12.5f, if (on) R.color.green else R.color.red, true))
+        box.addView(top)
+        box.addView(label("Estilo ${st.label}   ·   Tema ${th.label}", 13f, R.color.muted), lp(10))
+        val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+        row.addView(button(if (on) "Apagar" else "Encender", !on) {
+            Prefs.setIslandOn(this, !Prefs.islandOn(this)); applyAll(); render()
+        }, LinearLayout.LayoutParams(0, WRAP, 1f).apply { marginEnd = px(5) })
+        row.addView(button("Permisos", false) { subPage = "perms"; render() },
+            LinearLayout.LayoutParams(0, WRAP, 1f).apply { marginStart = px(5) })
+        box.addView(row, lp(14))
+        return box
     }
 
     /** Tira de accesos rápidos: lleva a Permisos con un toque, mostrando en verde lo que ya está concedido. */
