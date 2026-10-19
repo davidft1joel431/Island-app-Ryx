@@ -44,8 +44,8 @@ object FloatingWindow {
     }
 
     /** Abre [pkg] según el modo elegido. Devuelve el registro de lo ocurrido (también se guarda). Llamar fuera del hilo principal. */
-    fun open(c: Context, pkg: String, pi: PendingIntent? = null): String {
-        val bubble = Prefs.fwKind(c) == 1
+    fun open(c: Context, pkg: String, pi: PendingIntent? = null, kind: Int? = null): String {
+        val bubble = (kind ?: Prefs.fwKind(c)) == 1
         val log = StringBuilder("Hora: ${java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.getDefault()).format(java.util.Date())}\n" +
             "Aplicación: $pkg\nMétodo: ${if (bubble) "Burbuja (Android 17)" else "Formato libre directo"}\n")
         val svc = RyxAccessibility.instance
@@ -96,6 +96,12 @@ object FloatingWindow {
         pi.send(c, 0, null, null, null, null, opts.toBundle())
         true
     } catch (e: Exception) { false }
+
+    /** Con Shizuku/root ya activos: id de la tarea más reciente de [pkg] (para moverla de verdad). Vacío si no se pudo. */
+    fun findTaskId(c: Context, pkg: String): String {
+        val out = Shell.run(c, "dumpsys activity activities | grep -E \"Task\\{.*" + pkg + "\"").second
+        return Regex("#(\\d+)").findAll(out).mapNotNull { it.groupValues[1].toIntOrNull() }.maxOrNull()?.toString() ?: ""
+    }
 
     /** Vuelve a pedir la ventana libre en otra posición/tamaño sin ventana nueva (Android reutiliza la tarea). */
     fun reposition(c: Context, pkg: String, r: Rect) {

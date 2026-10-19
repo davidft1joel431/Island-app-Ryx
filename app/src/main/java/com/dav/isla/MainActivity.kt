@@ -53,8 +53,9 @@ class MainActivity : Activity() {
     private var previewOpen = false
     private var appQuery = ""
     private var rootStatus = "Sin comprobar"
-    private val actionNames = listOf("Nada", "Abrir app", "Ventana flotante", "Descartar tarjeta",
-        "Siguiente tarjeta", "Tarjeta anterior", "Contraer isla", "Ver detalle")
+    private val actionNames = listOf("Nada", "Abrir app", "Ventana (según Formato libre / Burbuja)", "Descartar tarjeta",
+        "Siguiente tarjeta", "Tarjeta anterior", "Contraer isla", "Ver detalle",
+        "Burbuja", "Formato libre", "Copiar texto", "Silenciar esta app")
     private val permListener = Shizuku.OnRequestPermissionResultListener { _, _ -> runOnUiThread { render() } }
     private val binderListener = Shizuku.OnBinderReceivedListener { runOnUiThread { render() } }
     private val deadListener = Shizuku.OnBinderDeadListener { runOnUiThread { render() } }
@@ -635,6 +636,9 @@ class MainActivity : Activity() {
         gestureRow(ge, "Deslizar a la derecha", Prefs.gRight(this)) { Prefs.setGRight(this, it) }
         gestureRow(ge, "Mantener pulsado", Prefs.gLong(this)) { Prefs.setGLong(this, it) }
         seekRow(ge, "Distancia para deslizar", "dp", 20, 80, Prefs.swipeDp(this)) { Prefs.setSwipeDp(this, it) }
+        ge.addView(label("«Burbuja» y «Formato libre» abren la app de esa forma sin importar el modo elegido en Ventana. " +
+            "En avisos del sistema (batería, Wi-Fi, Bluetooth…) «Abrir app» te lleva a su pantalla de Ajustes. " +
+            "«Silenciar esta app» la añade a las apps bloqueadas.", 12f, R.color.muted), lp(8))
         ge.addView(label("Con la isla contraída: tocar o jalar hacia abajo la despliega. " +
             "En la vista de detalle: tocar abre la app, jalar hacia abajo usa el gesto de arriba y hacia arriba vuelve. " +
             "Prueba con «Simular acumulación» en la pestaña Isla.", 12f, R.color.muted), lp(8))
@@ -716,6 +720,8 @@ class MainActivity : Activity() {
             Thread { val r = Shell.setHeadsUp(this, !v); runOnUiThread {
                 if (r.first == 0) Prefs.setHideHeadsUp(this, v) else { toast("No se pudo (¿root denegado?)"); render() } } }.start()
         })
+        only.addView(rowWithSwitch("Quitar lo que ya leí", "Al abrir la app o cancelarse el aviso, sale de la isla y no vuelve",
+            Prefs.autoRead(this)) { Prefs.setAutoRead(this, it) })
         only.addView(rowWithSwitch("Mostrar con el teléfono bloqueado", "", Prefs.lockScreen(this)) { Prefs.setLockScreen(this, it) })
         only.addView(label("Llamadas, multimedia, navegación y alarmas se quedan en el sistema para no romper sus controles. " +
             "Sin root, Android puede mostrar el aviso un instante antes de que la isla lo quite.", 12f, R.color.muted), lp(8))

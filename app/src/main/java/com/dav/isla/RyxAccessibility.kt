@@ -48,7 +48,14 @@ class RyxAccessibility : AccessibilityService() {
 
     override fun onServiceConnected() { instance = this }
     override fun onUnbind(intent: Intent?): Boolean { hideCurtain(); instance = null; return super.onUnbind(intent) }
-    override fun onAccessibilityEvent(event: AccessibilityEvent?) {}
+    /** Cambios de ventanas (mover, redimensionar, cerrar): la barra de Ryx se entera al instante y se pega a la ventana real. */
+    override fun onAccessibilityEvent(event: AccessibilityEvent?) {
+        when (event?.eventType) {
+            AccessibilityEvent.TYPE_WINDOWS_CHANGED -> FloatFrame.onWindowsChanged()
+            // Una app abrió una ventana: sus avisos pendientes en la isla ya se leyeron
+            AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED -> event?.packageName?.toString()?.let { NotifListener.instance?.onAppOpened(it) }
+        }
+    }
     override fun onInterrupt() {}
 
     /** Paquete de la app que está al frente ahora (la ventana activa). */
@@ -62,7 +69,7 @@ class RyxAccessibility : AccessibilityService() {
 
     private val VARIANTS = listOf("estándar (clave windowingMode)", "con pantalla 0", "sin ventana nueva", "método interno")
 
-    private fun fire(v: Int, launch: Intent, pi: PendingIntent?, b: Rect): Boolean = try {
+    private fun fire(v: Int, launch: Intent, pi: PendingIntent?, b: Rect, reuse: Boolean = false): Boolean = try {
         val opts = ActivityOptions.makeBasic()
         try { opts.setLaunchBounds(b) } catch (e: Throwable) {}
         if (v == 1) try { opts.setLaunchDisplayId(0) } catch (e: Throwable) {}
@@ -75,7 +82,7 @@ class RyxAccessibility : AccessibilityService() {
         } catch (e: Throwable) {}
         val bundle = opts.toBundle() ?: android.os.Bundle()
         if (v != 3) bundle.putInt("android.activity.windowingMode", 5)
-        val flags = Intent.FLAG_ACTIVITY_NEW_TASK or (if (v == 2) 0 else Intent.FLAG_ACTIVITY_MULTIPLE_TASK)
+        val flags = Intent.FLAG_ACTIVITY_NEW_TASK or (if (v == 2 || reuse) 0 else Intent.FLAG_ACTIVITY_MULTIPLE_TASK)
         if (pi != null) {
             pi.send(this, 0, Intent().addFlags(flags), null, null, null, bundle)
         } else {
@@ -154,16 +161,11 @@ class RyxAccessibility : AccessibilityService() {
      * Mover/redimensionar sin privilegios: vuelve a pedir el modo libre con los nuevos límites SIN «ventana nueva»,
      * para que Android reutilice la misma tarea en vez de abrir otra. Llamar fuera del hilo principal.
      */
-    fun relaunchBounds(pkg: String, b: Rect): Boolean = try {
+    fun relaunchBounds(pkg: String, b: Rect): Boolean {
         val launch = packageManager.getLaunchIntentForPackage(pkg) ?: return false
-        val options = ActivityOptions.makeBasic()
-        options.setLaunchBounds(b)
-        val bundle = options.toBundle() ?: android.os.Bundle()
-        bundle.putInt("android.activity.windowingMode", 5)
-        launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        startActivity(launch, bundle)
-        true
-    } catch (e: Throwable) { false }
+        val v = Prefs.fwVariant(this).let { if (it in VARIANTS.indices) it else 0 }   // la misma variante que abrió la ventana
+        return fire(v, Intent(launch), null, b, reuse = true)
+    }
 
     /** true = la ventana de [pkg] no ocupa toda la pantalla (flotante); false = pantalla completa; null = no se pudo saber. */
     private fun floatingState(pkg: String): Boolean? {

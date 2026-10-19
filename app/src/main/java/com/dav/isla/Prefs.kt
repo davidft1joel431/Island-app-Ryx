@@ -101,6 +101,9 @@ object Prefs {
     fun setSideMarginDp(c: Context, v: Int) = sp(c).edit().putInt("side_m", v).apply()
 
     // ---- Puente de notificaciones ----
+    /** Quitar de la isla lo que ya leíste (abriste la app o se canceló la notificación). */
+    fun autoRead(c: Context): Boolean = sp(c).getBoolean("auto_read", true)
+    fun setAutoRead(c: Context, v: Boolean) = sp(c).edit().putBoolean("auto_read", v).apply()
     fun blockSystem(c: Context): Boolean = sp(c).getBoolean("block_sys", true)
     fun setBlockSystem(c: Context, v: Boolean) = sp(c).edit().putBoolean("block_sys", v).apply()
     fun iconMode(c: Context): Int = sp(c).getInt("icon_mode", 0)       // 0 sistema, 1 notificación, 2 monocromo
@@ -164,7 +167,7 @@ object Prefs {
     fun shellMethod(c: Context): Int = sp(c).getInt("shell_m", 0)      // 0 auto, 1 Shizuku, 2 root
     fun setShellMethod(c: Context, v: Int) = sp(c).edit().putInt("shell_m", v).apply()
 
-    // ---- Gestos: 0 nada, 1 abrir app, 2 ventana flotante, 3 descartar, 4 siguiente, 5 anterior, 6 contraer ----
+    // ---- Gestos: 0 nada, 1 abrir app, 2 ventana (según el modo), 3 descartar, 4 siguiente, 5 anterior, 6 contraer, 7 detalle, 8 burbuja, 9 formato libre, 10 copiar, 11 silenciar app ----
     fun gTap(c: Context): Int = sp(c).getInt("g_tap", 7)
     fun setGTap(c: Context, v: Int) = sp(c).edit().putInt("g_tap", v).apply()
     fun gDown(c: Context): Int = sp(c).getInt("g_down", 2)
