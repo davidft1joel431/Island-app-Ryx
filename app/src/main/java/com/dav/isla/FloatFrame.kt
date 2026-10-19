@@ -167,13 +167,6 @@ object FloatFrame {
         Choreographer.getInstance().postFrameCallback(frameCb)
     }
 
-    /** Duración de un fotograma de la pantalla (16 ms a 60 Hz, 8 ms a 120 Hz). */
-    @Suppress("DEPRECATION")
-    private fun frameMs(c: Context): Long = try {
-        val hz = (c.getSystemService(Context.WINDOW_SERVICE) as WindowManager).defaultDisplay.refreshRate
-        (1000f / hz).toLong().coerceIn(6L, 20L)
-    } catch (e: Throwable) { 16L }
-
     private fun WindowManager.LayoutParams.cutoutAlways() {
         if (Build.VERSION.SDK_INT >= 28) layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS
     }
@@ -185,7 +178,9 @@ object FloatFrame {
 
     /** Lo llama el servicio de accesibilidad en cada cambio de ventanas. Se junta en una sola lectura cada ~12 ms. */
     fun onWindowsChanged() {
-        if (handle == null || syncQueued) return
+        // Mientras arrastras no se consulta la ventana real: cada cambio de ventanas dispararía una lectura por binder y
+        // eso es justo lo que hacía que el gesto fuera a tirones.
+        if (handle == null || dragging || syncQueued) return
         syncQueued = true
         val gen = generation
         bg.postDelayed({ syncQueued = false; syncNow(gen) }, 12)
@@ -201,7 +196,7 @@ object FloatFrame {
 
     /** Lee la ventana real (hilo de fondo) y la aplica en el hilo principal. */
     private fun syncNow(gen: Int) {
-        if (generation != gen) return
+        if (generation != gen || dragging) return
         val svc = RyxAccessibility.instance ?: return
         val pkg = pkgName
         if (pkg.isEmpty()) return
@@ -264,7 +259,10 @@ object FloatFrame {
         worker = true
         val gen = generation
         val usePriv = priv; val id = taskId; val pk = pkgName; val cu = cloneUser; val uidN = userIdN
-        val frame = frameMs(c)
+        // Ritmo REALISTA: un comando no cabe en un fotograma, así que se manda uno cada ~70 ms (con privilegios, que van por
+        // el shell root vivo) o cada ~260 ms (sin privilegios, donde mover la ventana implica relanzarla). La barra sí se
+        // dibuja a la velocidad de la pantalla, así que el gesto se siente fluido aunque la ventana vaya un poco por detrás.
+        val gap = if (usePriv && id.isNotEmpty()) 70L else 260L
         val from = Rect(start)                      // ventana real antes de este movimiento (para saber si obedeció)
         Thread {
             var last: Rect? = null
@@ -279,8 +277,8 @@ object FloatFrame {
                         FloatingWindow.reposition(c, pk, q, cu, uidN)
                     }
                     last = p
-                    // Ritmo de la pantalla: se descuenta lo que ya tardó el envío (antes se esperaban 60 ms FIJOS después de cada uno)
-                    val wait = frame - (SystemClock.uptimeMillis() - t0)
+                    // Se descuenta lo que ya tardó el propio envío, para no sumar esperas de más
+                    val wait = gap - (SystemClock.uptimeMillis() - t0)
                     if (wait > 0) try { Thread.sleep(wait) } catch (e: InterruptedException) { break }
                 }
             } finally { worker = false }

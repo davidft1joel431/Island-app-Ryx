@@ -21,6 +21,31 @@ object Sys {
     fun isSystemPkg(pkg: String): Boolean =
         pkg in PKGS || pkg.startsWith("com.android.providers.") || pkg.startsWith("com.android.systemui")
 
+    /**
+     * Apps de pedidos (comida, súper, paquetería): Ryx las reconoce por su paquete para marcarlas como «Pedido»
+     * con su propio color e icono. No existe un aviso del SISTEMA para esto: el pedido solo lo sabe la app, así que
+     * lo correcto es detectar la app, no inventar un evento del sistema.
+     */
+    private val ORDER = setOf(
+        "com.grability.rappi", "com.rappi.android", "com.rappi", "com.pedidosya", "com.pedidosya.consumer",
+        "com.ubercab.eats", "com.glovo", "com.cornershopapp.consumer", "com.didiglobal.food", "com.ifood",
+        "br.com.brainweb.ifood", "com.wolt.android", "com.mcdonalds.mobileapp", "com.justo.android",
+        "com.deliveryhero.customer", "com.tipti.consumer", "com.rappi.restaurants", "com.uberEats.consumer"
+    )
+
+    /** Apps de viajes/transporte: Ryx las reconoce por su paquete para marcarlas como «Viaje». */
+    private val RIDE = setOf(
+        "com.ubercab", "com.ubercab.driver", "com.didiglobal.passenger", "com.didiglobal.driver",
+        "com.cabify.rider", "com.cabify.driver", "com.beat.passenger", "com.rappi.driver",
+        "com.pedidosya.driver", "com.bolt.rider", "com.careem.rider", "com.free.taxis"
+    )
+
+    /** App de pedidos (comida, súper, paquetería). */
+    fun isOrderApp(pkg: String): Boolean = pkg in ORDER
+
+    /** App de viajes/transporte. */
+    fun isRideApp(pkg: String): Boolean = pkg in RIDE
+
     /** Subcategoría del aviso dentro de «Sistema»: battery · wifi · net · bt · other. */
     fun kind(pkg: String, title: CharSequence?, text: CharSequence?): String {
         val s = ((title?.toString() ?: "") + " " + (text?.toString() ?: "")).lowercase()

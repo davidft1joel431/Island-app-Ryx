@@ -34,6 +34,12 @@ jobs:
           tag_name: v${{ steps.ver.outputs.v }}
           name: Ryx Island v${{ steps.ver.outputs.v }}
           body: |
+            - Formato libre FLUIDO: se elimina el arranque de un proceso «su» por fotograma (era la causa de los tirones). Ahora se mantiene UN shell root vivo y el arrastre va a un ritmo realista (~70 ms con privilegios, ~260 ms sin ellos), con la barra pegada al dedo a la velocidad de la pantalla. Mientras arrastras ya no se consulta la ventana real por binder, así el gesto no se atasca.
+            - Pedidos: la isla reconoce por su paquete las apps de pedidos (Rappi, PedidosYa, Uber Eats, Glovo, iFood, Wolt, Cornershop…) y de viajes (Uber, DiDi, Cabify…), y muestra su aviso con la etiqueta «Pedido»/«Viaje» y su propio color. Ya no hay un «pedido del sistema» inventado: lo detecta la app real.
+            - Demon: las pruebas de eventos se separan en su propia sección «Demon» (desde Inicio y desde Ajustes), con su cabecera propia.
+            - Historial rediseñado: buscador por texto y filtro por aplicación (o «Sistema»), agrupado por DÍAS (Hoy · Ayer · fecha) y separando Aplicaciones y Sistema, cada uno con su diseño y su encabezado.
+            - Historial: se guarda el TEXTO COMPLETO de cada aviso (aunque en la app se recorte) y hay un botón «Descargar como .html» que genera un archivo autónomo y presentable con TODO el texto y las imágenes, listo para abrir en cualquier navegador.
+            - Diseño, Puente y Ajustes: nueva cabecera grande con color propio en cada pestaña y encabezados de sección con barra de acento.
             - Llamadas unificadas: entrante, en curso, en espera y perdida se muestran en UNA sola tarjeta con los botones REALES del sistema para CONTESTAR y COLGAR/RECHAZAR; el botón de contestar va en verde y el de colgar/rechazar en rojo, y la llamada se retira sola al terminar.
             - Wi-Fi: al conectar muestra «Conectado a la red [nombre]» con un botón «Cambiar red» que lleva a los ajustes de Wi-Fi; al desactivar la red (o caer la conexión) avisa en ROJO con accesos directos a Wi-Fi y Datos.
             - Punto de acceso: cuando compartes datos móviles se muestra una tarjeta con los dispositivos conectados (contador, también al expandir), botón «Desactivar» (con Shizuku/root) y acceso a los ajustes; se refresca sola.

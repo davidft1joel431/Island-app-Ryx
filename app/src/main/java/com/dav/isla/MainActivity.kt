@@ -54,6 +54,11 @@ class MainActivity : Activity() {
     private var previewView: IslandPreview? = null
     private var previewOpen = false
     private var appQuery = ""
+    // Historial: búsqueda por texto y por app (se reconstruye solo la lista, sin perder el cursor del buscador)
+    private var histQuery = ""
+    private var histFilter = ""
+    private var histBox: LinearLayout? = null
+    private var pendingHtml = ""
     private var rootStatus = "Sin comprobar"
     private val actionNames = listOf("Nada", "Abrir app", "Ventana (según Formato libre / Burbuja)", "Descartar tarjeta",
         "Siguiente tarjeta", "Tarjeta anterior", "Contraer isla", "Ver detalle",
@@ -162,6 +167,7 @@ class MainActivity : Activity() {
 
     private val REQ_TREE = 71
     private val REQ_RESTORE = 72
+    private val REQ_HTML = 73
 
     @Suppress("DEPRECATION")
     override fun onActivityResult(req: Int, res: Int, data: Intent?) {
@@ -185,6 +191,10 @@ class MainActivity : Activity() {
                 } catch (e: Exception) { "No se pudo restaurar: ${e.message ?: e.javaClass.simpleName}" }
                 runOnUiThread { applyAll(); render(); dialog("Restaurar copia", msg) }
             }.start()
+            REQ_HTML -> try {
+                contentResolver.openOutputStream(uri)?.use { it.write(pendingHtml.toByteArray(Charsets.UTF_8)) }
+                toast("Historial guardado como .html")
+            } catch (e: Exception) { toast("No pude escribir el archivo: ${e.message ?: ""}") }
         }
     }
 
@@ -398,10 +408,17 @@ class MainActivity : Activity() {
                 setOnClickListener { subPage = null; render() }
             }
             back.addView(icon("back", 24, Glass.TEXT))
-            back.addView(label(if (sp == "history") "Historial de notificaciones" else "Permisos", 20f, R.color.text, true),
-                LinearLayout.LayoutParams(0, WRAP, 1f).apply { marginStart = px(12) })
+            back.addView(label(when (sp) {
+                "history" -> "Historial"
+                "demon" -> "Demon"
+                else -> "Permisos"
+            }, 20f, R.color.text, true), LinearLayout.LayoutParams(0, WRAP, 1f).apply { marginStart = px(12) })
             page.addView(back, lp(4))
-            if (sp == "history") buildHistory(page) else buildPerms(page)
+            when (sp) {
+                "history" -> buildHistory(page)
+                "demon" -> buildDemon(page)
+                else -> buildPerms(page)
+            }
             content.addView(ScrollView(this).apply { addView(page); isVerticalScrollBarEnabled = false })
             return
         }
@@ -455,10 +472,33 @@ class MainActivity : Activity() {
 
     private fun titled(p: LinearLayout, title: String, sub: String = ""): LinearLayout {
         val c = card()
-        c.addView(label(title, 18f, R.color.text, true))
-        if (sub.isNotEmpty()) c.addView(label(sub, 13f, R.color.muted))
+        val head = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
+        head.addView(View(this).apply { background = Glass.pill(this@MainActivity, Glass.ACCENT, 0, 6f) },
+            LinearLayout.LayoutParams(px(4), px(24)).apply { marginEnd = px(12) })
+        val t = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        t.addView(label(title, 18f, R.color.text, true))
+        if (sub.isNotEmpty()) t.addView(label(sub, 13f, R.color.muted))
+        head.addView(t, LinearLayout.LayoutParams(0, WRAP, 1f))
+        c.addView(head)
         p.addView(c, lp(12))
         return c
+    }
+
+    /** Cabecera grande de pestaña, con color propio: da a cada sección un aspecto moderno y distinto. */
+    private fun pageHero(p: LinearLayout, iconName: String, color: Int, title: String, sub: String) {
+        val box = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
+            setPadding(px(18), px(18), px(18), px(18))
+            background = Glass.pill(this@MainActivity,
+                (color and 0x00FFFFFF) or 0x2E000000, (color and 0x00FFFFFF) or 0x66000000, 28f)
+        }
+        box.addView(tileIcon(iconName, color, Color.WHITE),
+            LinearLayout.LayoutParams(px(52), px(52)).apply { marginEnd = px(16) })
+        val t = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        t.addView(label(title, 22f, R.color.text, true))
+        t.addView(label(sub, 12.5f, R.color.muted))
+        box.addView(t, LinearLayout.LayoutParams(0, WRAP, 1f))
+        p.addView(box, lp(14))
     }
 
     // ---------------- INICIO ----------------
@@ -538,6 +578,24 @@ class MainActivity : Activity() {
             }
             p.addView(c, lp(10))
         }
+        p.addView(button("Demon · pruebas de la isla", false) { subPage = "demon"; render() }, lp(14))
+    }
+
+    /** Sección «Demon»: todas las pruebas de la isla, aparte del resto de la app. */
+    private fun buildDemon(p: LinearLayout) {
+        val h = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
+            setPadding(px(16), px(16), px(16), px(16))
+            background = Glass.card(this@MainActivity, 26f, true)
+        }
+        h.addView(tileIcon("bolt", 0x33FF9F0A, 0xFFFF9F0A.toInt()),
+            LinearLayout.LayoutParams(px(48), px(48)).apply { marginEnd = px(14) })
+        val t = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        t.addView(label("Demon", 20f, R.color.text, true))
+        t.addView(label("Pruebas de la isla: toca un evento y aparece en vivo, sin esperar a una notificación real",
+            12f, R.color.muted))
+        h.addView(t, LinearLayout.LayoutParams(0, WRAP, 1f))
+        p.addView(h, lp(10))
         buildTest(p)
     }
 
@@ -627,6 +685,7 @@ class MainActivity : Activity() {
     // ---------------- DISEÑO ----------------
 
     private fun buildLayout(p: LinearLayout) {
+        pageHero(p, "palette", 0xFF7B5CE0.toInt(), "Diseño", "Estilos, temas, tipografía y color de la isla")
         val st = titled(p, "Estilo de la isla", "Toca uno para verlo arriba y en la isla real")
         Styles.ALL.chunked(2).forEach { pair ->
             val r = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
@@ -818,6 +877,7 @@ class MainActivity : Activity() {
     // ---------------- PUENTE ----------------
 
     private fun buildBridge(p: LinearLayout) {
+        pageHero(p, "signal", 0xFF3F7BEA.toInt(), "Puente", "Cómo se relacionan la isla y el sistema")
         val only = titled(p, "Solo la isla", "La isla registra y muestra; el sistema se calla")
         only.addView(rowWithSwitch("Bloquear notificaciones del sistema", "Quita la del panel cuando la isla la muestra",
             Prefs.blockSystem(this)) { Prefs.setBlockSystem(this, it) })
@@ -1041,9 +1101,11 @@ class MainActivity : Activity() {
     // ---------------- AJUSTES ----------------
 
     private fun buildSettings(p: LinearLayout) {
+        pageHero(p, "settings", 0xFF2DAA55.toInt(), "Ajustes", "Permisos, copias, historial y pruebas")
         val n = Prefs.histAll(this).size
         item(p, "palette", 0xFF7B5CE0.toInt(), "Tema de la app", "Color de acento de la aplicación", Glass.theme.label) { themeDialog() }
         item(p, "history", 0xFF6A62E8.toInt(), "Historial de notificaciones", "Ordenado por aplicación, con su icono", "$n") { subPage = "history"; render() }
+        item(p, "bolt", 0xFFFF9F0A.toInt(), "Demon", "Todas las pruebas de la isla, en un solo lugar", "") { subPage = "demon"; render() }
         item(p, "shield", 0xFF2DAA55.toInt(), "Permisos", "Superposición, acceso a notificaciones, batería", "") { subPage = "perms"; render() }
         item(p, "backup", 0xFF3F7BEA.toInt(), "Copia de seguridad", "Exporta o importa todos los ajustes", "") { backupDialog() }
         item(p, "upload", 0xFF2D8CCB.toInt(), "Copia en la nube",
@@ -1059,43 +1121,224 @@ class MainActivity : Activity() {
         }
     }
 
+    /** Historial: búsqueda por texto y por aplicación, agrupado por días y separando Apps y Sistema. */
     private fun buildHistory(p: LinearLayout) {
-        val top = card()
-        top.addView(rowWithSwitch("Guardar historial", "Todo lo que pasa por la isla", Prefs.keepHistory(this)) { Prefs.setKeepHistory(this, it) })
         val all = Prefs.histAll(this)
-        val apps = all.filter { !Sys.isSystemPkg(it.pkg) }
-        val sys = all.filter { Sys.isSystemPkg(it.pkg) }
-        // Resumen por secciones: cuántas son de apps y cuántas del sistema
+        val nApps = all.count { !Sys.isSystemPkg(it.pkg) }
+        val nSys = all.count { Sys.isSystemPkg(it.pkg) }
+
+        val top = card()
+        top.addView(rowWithSwitch("Guardar historial", "Todo lo que pasa por la isla, con el texto completo", Prefs.keepHistory(this)) { Prefs.setKeepHistory(this, it) })
         val sum = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; setPadding(0, px(6), 0, 0) }
-        sum.addView(summaryChip("grid", 0xFF6A62E8.toInt(), "${apps.size}", "Aplicaciones"),
+        sum.addView(summaryChip("grid", 0xFF6A62E8.toInt(), "$nApps", "Aplicaciones"),
             LinearLayout.LayoutParams(0, WRAP, 1f).apply { marginEnd = px(4) })
-        sum.addView(summaryChip("settings", 0xFF2DAA55.toInt(), "${sys.size}", "Sistema"),
+        sum.addView(summaryChip("settings", 0xFF2DAA55.toInt(), "$nSys", "Sistema"),
             LinearLayout.LayoutParams(0, WRAP, 1f).apply { marginStart = px(4) })
         top.addView(sum)
-        top.addView(button("Borrar historial", false) { Prefs.clearHist(this); render() }, lp(10))
+        top.addView(button("Borrar historial", false) { Prefs.clearHist(this); histQuery = ""; histFilter = ""; render() }, lp(10))
         p.addView(top, lp(8))
+
+        // Buscador: texto libre + filtro por aplicación (o Sistema)
+        val search = card()
+        search.addView(label("Buscar", 16f, R.color.text, true))
+        search.addView(editText("Escribe para buscar en los mensajes…", histQuery) { q -> histQuery = q; fillHist() }, lp(8))
+        val chips = android.widget.HorizontalScrollView(this).apply { isHorizontalScrollBarEnabled = false }
+        val crow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; setPadding(0, px(6), 0, px(2)) }
+        val addF: (String, String, Int) -> Unit = { id, name, color ->
+            val on = histFilter == id
+            crow.addView(TextView(this).apply {
+                text = name; textSize = 12.5f; gravity = Gravity.CENTER
+                setTextColor(if (on) 0xFF10131A.toInt() else Glass.TEXT)
+                typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+                setPadding(px(14), px(7), px(14), px(7))
+                background = Glass.pill(this@MainActivity,
+                    if (on) color else 0x14FFFFFF, if (on) color else 0x33FFFFFF, 18f)
+                setOnClickListener { histFilter = id; render() }
+            }, LinearLayout.LayoutParams(WRAP, WRAP).apply { marginEnd = px(8) })
+        }
+        addF("", "Todas", Glass.ACCENT)
+        if (nSys > 0) addF("__sys__", "Sistema", 0xFF2DAA55.toInt())
+        all.filter { !Sys.isSystemPkg(it.pkg) }.groupBy { it.pkg }
+            .entries.sortedByDescending { e -> e.value.size }.take(12)
+            .forEach { (pkg, _) -> addF(pkg, appNameOf(pkg), 0xFF6A62E8.toInt()) }
+        chips.addView(crow)
+        search.addView(chips, lp(4))
+        search.addView(button("Descargar como .html", true) { exportHtml() }, lp(12))
+        search.addView(label("Se descarga TODO el texto (aunque aquí se recorte) y las imágenes, en un archivo que abre cualquier navegador.",
+            12f, R.color.muted), lp(6))
+        p.addView(search, lp(8))
 
         // Registro de batería a tiempo real: una sola lectura, sin duplicar avisos
         batteryStrip(p)
 
-        if (all.isEmpty()) {
-            p.addView(label("Todavía no hay notificaciones. Cuando lleguen, aparecerán aquí separadas por aplicación y por avisos del sistema.",
-                14f, R.color.muted), lp(16))
+        val box = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        histBox = box
+        p.addView(box)
+        fillHist()
+    }
+
+    /** Reconstruye solo la lista del historial (sin perder el cursor del buscador). */
+    private fun fillHist() {
+        val box = histBox ?: return
+        box.removeAllViews()
+        val items = filteredHist()
+        if (items.isEmpty()) {
+            box.addView(label("No hay nada que coincida.", 14f, R.color.muted)
+                .apply { setPadding(px(4), px(16), px(4), px(4)) })
             return
         }
-
-        if (apps.isNotEmpty()) {
-            historyHeader(p, "grid", 0xFF6A62E8.toInt(), "Aplicaciones", apps.size)
-            apps.groupBy { it.pkg }.entries.sortedByDescending { e -> e.value.maxOf { it.ts } }
-                .forEach { (pkg, items) -> appHistoryGroup(p, pkg, items) }
+        val appList = items.filter { !Sys.isSystemPkg(it.pkg) }
+        val sysList = items.filter { Sys.isSystemPkg(it.pkg) }
+        if (appList.isNotEmpty()) {
+            historyHeader(box, "grid", 0xFF6A62E8.toInt(), "Aplicaciones", appList.size)
+            appList.groupBy { dayLabel(it.ts) }.forEach { (day, dl) ->
+                dayHeader(box, day, dl.size, 0xFF6A62E8.toInt())
+                dl.groupBy { it.pkg }.entries.sortedByDescending { e -> e.value.maxOf { it.ts } }
+                    .forEach { (pkg, its) -> appHistoryGroup(box, pkg, its) }
+            }
         }
-        if (sys.isNotEmpty()) {
-            historyHeader(p, "settings", 0xFF2DAA55.toInt(), "Sistema", sys.size)
-            sys.groupBy { Sys.kind(it.pkg, it.title, it.text) }
-                .entries.sortedByDescending { e -> e.value.maxOf { it.ts } }
-                .forEach { (kind, items) -> sysHistoryGroup(p, kind, items) }
+        if (sysList.isNotEmpty()) {
+            historyHeader(box, "settings", 0xFF2DAA55.toInt(), "Sistema", sysList.size)
+            sysList.groupBy { dayLabel(it.ts) }.forEach { (day, dl) ->
+                dayHeader(box, day, dl.size, 0xFF2DAA55.toInt())
+                dl.groupBy { Sys.kind(it.pkg, it.title, it.text) }
+                    .entries.sortedByDescending { e -> e.value.maxOf { it.ts } }
+                    .forEach { (k, its) -> sysHistoryGroup(box, k, its) }
+            }
         }
     }
+
+    /** Aplica la búsqueda y el filtro actuales sobre todo el historial. */
+    private fun filteredHist(): List<Prefs.HistItem> {
+        val q = histQuery.trim().lowercase()
+        var items = Prefs.histAll(this)
+        if (histFilter == "__sys__") items = items.filter { Sys.isSystemPkg(it.pkg) }
+        else if (histFilter.isNotEmpty()) items = items.filter { it.pkg == histFilter }
+        if (q.isNotEmpty()) items = items.filter { it.title.lowercase().contains(q) || it.text.lowercase().contains(q) }
+        return items
+    }
+
+    /** Separador de día (Hoy · Ayer · fecha). */
+    private fun dayHeader(p: LinearLayout, day: String, count: Int, color: Int) {
+        val r = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
+            setPadding(px(6), px(16), px(6), px(4))
+        }
+        r.addView(View(this).apply { background = Glass.pill(this@MainActivity, color, 0, 4f) },
+            LinearLayout.LayoutParams(px(3), px(16)).apply { marginEnd = px(10) })
+        r.addView(label(day.replaceFirstChar { it.uppercase() }, 14.5f, R.color.text, true),
+            LinearLayout.LayoutParams(0, WRAP, 1f))
+        r.addView(label("$count", 12f, R.color.muted, true))
+        p.addView(r)
+    }
+
+    /** «Hoy», «Ayer» o la fecha. */
+    private fun dayLabel(ts: Long): String {
+        val cal = java.util.Calendar.getInstance()
+        val d = java.util.Calendar.getInstance().apply { timeInMillis = ts }
+        val yest = java.util.Calendar.getInstance().apply { add(java.util.Calendar.DAY_OF_YEAR, -1) }
+        return when {
+            sameDay(d, cal) -> "Hoy"
+            sameDay(d, yest) -> "Ayer"
+            d.get(java.util.Calendar.YEAR) == cal.get(java.util.Calendar.YEAR) ->
+                java.text.SimpleDateFormat("EEEE d 'de' MMMM", java.util.Locale.getDefault()).format(java.util.Date(ts))
+            else -> java.text.SimpleDateFormat("d 'de' MMMM 'de' yyyy", java.util.Locale.getDefault()).format(java.util.Date(ts))
+        }
+    }
+
+    private fun sameDay(a: java.util.Calendar, b: java.util.Calendar) =
+        a.get(java.util.Calendar.YEAR) == b.get(java.util.Calendar.YEAR) &&
+            a.get(java.util.Calendar.DAY_OF_YEAR) == b.get(java.util.Calendar.DAY_OF_YEAR)
+
+    /** Descarga el historial (con el filtro puesto) como un .html autónomo y presentable. */
+    private fun exportHtml() {
+        val items = filteredHist()
+        if (items.isEmpty()) { toast("No hay nada que descargar"); return }
+        pendingHtml = buildHtml(items)
+        val name = "ryx_historial_" +
+            java.text.SimpleDateFormat("yyyy-MM-dd_HHmm", java.util.Locale.getDefault()).format(java.util.Date()) + ".html"
+        val i = Intent(Intent.ACTION_CREATE_DOCUMENT).apply {
+            addCategory(Intent.CATEGORY_OPENABLE)
+            type = "text/html"
+            putExtra(Intent.EXTRA_TITLE, name)
+        }
+        try { startActivityForResult(i, REQ_HTML) } catch (e: Exception) { toast("No pude abrir el guardado de archivos") }
+    }
+
+    /** Arma el HTML completo: todo el texto, agrupado por día y por app/sistema. */
+    private fun buildHtml(items: List<Prefs.HistItem>): String {
+        val apps = items.filter { !Sys.isSystemPkg(it.pkg) }
+        val sys = items.filter { Sys.isSystemPkg(it.pkg) }
+        val sb = StringBuilder()
+        sb.append("<!DOCTYPE html><html lang=\"es\"><head><meta charset=\"utf-8\">")
+        sb.append("<meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">")
+        sb.append("<title>Ryx Island · Historial</title><style>")
+        sb.append("*{box-sizing:border-box}body{margin:0;padding:24px;background:#0f1115;color:#e9edf5;font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;line-height:1.5}")
+        sb.append("h1{font-size:22px;margin:0 0 4px}.sub{color:#94a0b4;font-size:13px;margin-bottom:18px}")
+        sb.append("h2{font-size:16px;margin:28px 0 8px;padding-left:10px;border-left:4px solid #6a62e8}")
+        sb.append("h2.sysc{border-color:#2daa55;color:#7ee2a0}.app{color:#b9b3ff}")
+        sb.append("h3{font-size:13px;text-transform:uppercase;letter-spacing:.06em;color:#94a0b4;margin:18px 0 6px}")
+        sb.append(".day{font-weight:700;color:#ffb26b;font-size:14px;margin:16px 0 2px}")
+        sb.append(".card{background:#181b22;border:1px solid #262b36;border-radius:14px;padding:10px 14px;margin:6px 0}")
+        sb.append(".it{padding:9px 0;border-top:1px solid #222733}.it:first-child{border-top:0}")
+        sb.append(".t{font-weight:700}.x{color:#c7cfdd;white-space:pre-wrap;word-break:break-word}")
+        sb.append(".meta{color:#7f8b9e;font-size:11px;margin-top:4px}img{max-width:100%;border-radius:10px;margin-top:8px;display:block}")
+        sb.append("</style></head><body>")
+        sb.append("<h1>Ryx Island · Historial de notificaciones</h1><div class=\"sub\">")
+        sb.append(esc("" + items.size + " avisos · " +
+            java.text.SimpleDateFormat("dd/MM/yyyy HH:mm", java.util.Locale.getDefault()).format(java.util.Date())))
+        sb.append("</div>")
+        if (apps.isNotEmpty()) {
+            sb.append("<h2 class=\"app\">Aplicaciones (").append(apps.size).append(")</h2>")
+            apps.groupBy { dayLabel(it.ts) }.forEach { (day, dl) ->
+                sb.append("<div class=\"day\">").append(esc(day)).append("</div>")
+                dl.groupBy { it.pkg }.entries.sortedByDescending { e -> e.value.maxOf { it.ts } }.forEach { (pkg, its) ->
+                    sb.append("<h3>").append(esc(appNameOf(pkg))).append("</h3><div class=\"card\">")
+                    its.sortedByDescending { it.ts }.forEach { h -> sb.append(htmlItem(h)) }
+                    sb.append("</div>")
+                }
+            }
+        }
+        if (sys.isNotEmpty()) {
+            sb.append("<h2 class=\"sysc\">Sistema (").append(sys.size).append(")</h2>")
+            sys.groupBy { dayLabel(it.ts) }.forEach { (day, dl) ->
+                sb.append("<div class=\"day\">").append(esc(day)).append("</div>")
+                dl.groupBy { Sys.kind(it.pkg, it.title, it.text) }
+                    .entries.sortedByDescending { e -> e.value.maxOf { it.ts } }.forEach { (k, its) ->
+                        sb.append("<h3>").append(esc(Sys.label(k))).append("</h3><div class=\"card\">")
+                        its.sortedByDescending { it.ts }.forEach { h -> sb.append(htmlItem(h)) }
+                        sb.append("</div>")
+                    }
+            }
+        }
+        sb.append("</body></html>")
+        return sb.toString()
+    }
+
+    private fun htmlItem(h: Prefs.HistItem): String {
+        val sb = StringBuilder("<div class=\"it\">")
+        if (h.title.isNotEmpty()) sb.append("<div class=\"t\">").append(esc(h.title)).append("</div>")
+        if (h.text.isNotEmpty()) sb.append("<div class=\"x\">").append(esc(h.text)).append("</div>")
+        if (h.img.isNotEmpty()) {
+            val f = java.io.File(Prefs.histDir(this), h.img)
+            if (f.exists() && f.length() < 600_000) try {
+                val b64 = android.util.Base64.encodeToString(f.readBytes(), android.util.Base64.NO_WRAP)
+                sb.append("<img src=\"data:image/png;base64,").append(b64).append("\">")
+            } catch (e: Exception) {}
+        }
+        sb.append("<div class=\"meta\">")
+        if (h.kind.isNotEmpty()) sb.append(esc(h.kind)).append(" · ")
+        sb.append(esc(java.text.SimpleDateFormat("dd/MM/yyyy HH:mm", java.util.Locale.getDefault()).format(java.util.Date(h.ts))))
+        sb.append("</div></div>")
+        return sb.toString()
+    }
+
+    private fun appNameOf(pkg: String): String = try {
+        packageManager.getApplicationLabel(packageManager.getApplicationInfo(pkg, 0)).toString()
+    } catch (e: Exception) { pkg }
+
+    private fun esc(s: String): String =
+        s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
 
     /** Encabezado de sección del historial, con icono, título y número de avisos. */
     private fun historyHeader(p: LinearLayout, iconName: String, color: Int, title: String, count: Int) {

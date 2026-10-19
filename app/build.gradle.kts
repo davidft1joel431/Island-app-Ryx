@@ -11,8 +11,8 @@ android {
         applicationId = "com.dav.isla"
         minSdk = 29
         targetSdk = 36
-        versionCode = 33
-        versionName = "0.9.25"
+        versionCode = 34
+        versionName = "0.9.26"
         // Número de la ejecución de GitHub Actions (el tag del release es v<número>); en local queda en 0
         buildConfigField("int", "BUILD_NUMBER", (project.findProperty("buildNumber") ?: "0").toString())
     }
