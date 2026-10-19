@@ -122,7 +122,37 @@ object Styles {
         padH = 14, padV = 12, textColor = 0xFF14161C.toInt(), subColor = 0xCC3A3F4A.toInt()
     )
 
-    val ALL = listOf(HYPEROS, IOS, SAMSUNG, CLASSIC, AURORA, NEON, AMBAR, BOSQUE, MINIMAL, CLARO)
+    // Azul océano profundo con borde luminoso.
+    val OCEANO = IslandStyle(
+        id = "oceano", label = "Océano",
+        bgTop = 0xEB0F2C55.toInt(), bgBottom = 0xEB08192F.toInt(),
+        strokeColor = 0x884DA3FF.toInt(), strokeDp = 1.3f, highlight = 0x33FFFFFF,
+        cornerDp = 32f, iconCircle = false, iconCornerDp = 14f, iconDp = 40,
+        showAppName = false, expandedWidthDp = 350, titleSp = 14f, bodySp = 12f,
+        padH = 14, padV = 12
+    )
+
+    // Rojo rubí con borde cálido.
+    val RUBI = IslandStyle(
+        id = "rubi", label = "Rubí",
+        bgTop = 0xEB4A0F1C.toInt(), bgBottom = 0xEB26070F.toInt(),
+        strokeColor = 0x88FF5A5F.toInt(), strokeDp = 1.3f, highlight = 0x33FFFFFF,
+        cornerDp = 32f, iconCircle = false, iconCornerDp = 14f, iconDp = 40,
+        showAppName = false, expandedWidthDp = 350, titleSp = 14f, bodySp = 12f,
+        padH = 14, padV = 12
+    )
+
+    // Menta suave, con texto oscuro.
+    val MENTA = IslandStyle(
+        id = "menta", label = "Menta",
+        bgTop = 0xF2D6FBF2.toInt(), bgBottom = 0xF2AEEBDD.toInt(),
+        strokeColor = 0x882EE6C5.toInt(), strokeDp = 1.2f, highlight = 0x66FFFFFF,
+        cornerDp = 30f, iconCircle = false, iconCornerDp = 12f, iconDp = 40,
+        showAppName = false, expandedWidthDp = 350, titleSp = 14f, bodySp = 12f,
+        padH = 14, padV = 12, textColor = 0xFF0E2A24.toInt(), subColor = 0xCC1E4A40.toInt()
+    )
+
+    val ALL = listOf(HYPEROS, IOS, SAMSUNG, CLASSIC, AURORA, NEON, AMBAR, BOSQUE, MINIMAL, CLARO, OCEANO, RUBI, MENTA)
 
     fun byId(id: String): IslandStyle = ALL.firstOrNull { it.id == id } ?: HYPEROS
 }

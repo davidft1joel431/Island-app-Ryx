@@ -645,6 +645,32 @@ class MainActivity : Activity() {
         ap.addView(rowWithSwitch("Sombra bajo la isla", "", Prefs.shadow(this)) { v ->
             Prefs.setShadow(this, v); applyAll(); svc()?.showTest(); previewView?.refresh() })
 
+        val ac = titled(p, "Acento de la app", "Color de los botones, interruptores y detalles")
+        Glass.THEMES.chunked(3).forEach { rowThemes ->
+            val r = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+            rowThemes.forEach { t ->
+                val on = Glass.theme.id == t.id
+                val cell = LinearLayout(this).apply {
+                    orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER
+                    setPadding(px(4), px(10), px(4), px(8))
+                    background = Glass.pill(this@MainActivity, if (on) Glass.accentA(0x33) else 0x14FFFFFF,
+                        if (on) t.accent else 0x22FFFFFF, 18f)
+                    setOnClickListener { Prefs.setAppTheme(this@MainActivity, t.id); Glass.applyTheme(this@MainActivity); recreate() }
+                }
+                cell.addView(View(this).apply { background = Glass.pill(this@MainActivity, t.accent, 0, 20f) },
+                    LinearLayout.LayoutParams(px(34), px(34)))
+                cell.addView(label(t.label, 11f, R.color.text, true).apply { gravity = Gravity.CENTER }, lp(6))
+                r.addView(cell, LinearLayout.LayoutParams(0, WRAP, 1f).apply { marginStart = px(3); marginEnd = px(3) })
+            }
+            var n = rowThemes.size
+            while (n < 3) { r.addView(View(this), LinearLayout.LayoutParams(0, 1, 1f)); n++ }
+            ac.addView(r, lp(6))
+        }
+
+        val tp = titled(p, "Tipografía", "Cómo se ve el texto de la isla")
+        tp.addView(rowWithSwitch("Título en negrita", "El título se resalta; el cuerpo se lee en letra normal",
+            Prefs.fontBold(this)) { v -> Prefs.setFontBold(this, v); applyAll(); svc()?.showTest() })
+
         val an = titled(p, "Animación", "Resorte estilo HyperOS 3: sube un poco y se asienta")
         an.addView(segmented(listOf("Relajada", "Normal", "Ágil"), Prefs.speed(this), true) { Prefs.setSpeed(this, it) }, lp(10))
         seekRow(an, "Tiempo visible", "s", 2, 15, Prefs.durationSeconds(this)) { Prefs.setDurationSeconds(this, it) }
@@ -679,7 +705,8 @@ class MainActivity : Activity() {
         gestureRow(ge, "Deslizar a la izquierda", Prefs.gLeft(this)) { Prefs.setGLeft(this, it) }
         gestureRow(ge, "Deslizar a la derecha", Prefs.gRight(this)) { Prefs.setGRight(this, it) }
         gestureRow(ge, "Mantener pulsado", Prefs.gLong(this)) { Prefs.setGLong(this, it) }
-        seekRow(ge, "Distancia para deslizar", "dp", 20, 80, Prefs.swipeDp(this)) { Prefs.setSwipeDp(this, it) }
+        ge.addView(label("Distancia para deslizar: 50 dp (fija)", 14f, R.color.text, true), lp(12))
+        ge.addView(label("Un deslizamiento solo cuenta a partir de 50 dp, para que no se active sin querer.", 12f, R.color.muted), lp(4))
         ge.addView(label("«Burbuja» y «Formato libre» abren la app de esa forma sin importar el modo elegido en Ventana. " +
             "En avisos del sistema (batería, Wi-Fi, Bluetooth…) «Abrir app» te lleva a su pantalla de Ajustes. " +
             "«Silenciar esta app» la añade a las apps bloqueadas.", 12f, R.color.muted), lp(8))
@@ -690,7 +717,8 @@ class MainActivity : Activity() {
 
     private val swatchColors = listOf(0xFFFFFFFF.toInt(), 0xFF000000.toInt(), 0xFF2A2E38.toInt(), 0xFFFF8A4C.toInt(),
         0xFFFF5A5F.toInt(), 0xFFFF6B9A.toInt(), 0xFFB388FF.toInt(), 0xFF4DA3FF.toInt(), 0xFF22E5FF.toInt(),
-        0xFF4ADE80.toInt(), 0xFFFFC857.toInt())
+        0xFF4ADE80.toInt(), 0xFFFFC857.toInt(), 0xFF2EE6C5.toInt(), 0xFFFF7A59.toInt(), 0xFF7C89FF.toInt(),
+        0xFF00D4C8.toInt(), 0xFFE0E5EC.toInt(), 0xFFB4B8C4.toInt(), 0xFF6A62E8.toInt())
 
     /** Fila de colores: «Auto» (0) y una paleta para tocar. */
     private fun colorRow(parent: LinearLayout, current: Int, onPick: (Int) -> Unit) {
@@ -1000,57 +1028,177 @@ class MainActivity : Activity() {
     private fun buildHistory(p: LinearLayout) {
         val top = card()
         top.addView(rowWithSwitch("Guardar historial", "Todo lo que pasa por la isla", Prefs.keepHistory(this)) { Prefs.setKeepHistory(this, it) })
-        top.addView(button("Borrar historial", false) { Prefs.clearHist(this); render() }, lp(8))
-        p.addView(top, lp(8))
         val all = Prefs.histAll(this)
-        if (all.isEmpty()) { p.addView(label("Todavía no hay notificaciones.", 14f, R.color.muted), lp(16)); return }
-        val groups = all.groupBy { it.pkg }.entries.sortedByDescending { e -> e.value.maxOf { it.ts } }
-        val pm = packageManager
-        groups.forEach { (pkg, items) ->
-            val appName = try { pm.getApplicationLabel(pm.getApplicationInfo(pkg, 0)).toString() } catch (e: Exception) { pkg }
-            val key = "h_$pkg"
-            val open = key !in expandedGroups          // por defecto abiertas
-            val c = card()
-            val h = LinearLayout(this).apply {
-                orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
-                setOnClickListener { if (open) expandedGroups.add(key) else expandedGroups.remove(key); render() }
-            }
-            h.addView(ShapedImageView(this).apply {
-                shape = Prefs.iconShape(this@MainActivity); setImageDrawable(appIcon(pkg)); scaleType = ImageView.ScaleType.CENTER_CROP
-            }, LinearLayout.LayoutParams(px(42), px(42)).apply { marginEnd = px(12) })
-            val t = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
-            t.addView(label(appName, 17f, R.color.text, true))
-            t.addView(label("${items.size} notificaciones", 12f, R.color.muted))
-            h.addView(t, LinearLayout.LayoutParams(0, WRAP, 1f))
-            h.addView(icon(if (open) "chev_up" else "chev_down", 22, Glass.MUTED))
-            c.addView(h)
-            if (open) items.take(25).forEach { h2 ->
-                val r = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(px(54), px(10), 0, 0) }
-                if (h2.title.isNotEmpty()) r.addView(label(h2.title, 14f, R.color.text, true).apply { maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END })
-                if (h2.text.isNotEmpty()) r.addView(label(h2.text, 13f, R.color.muted).apply { maxLines = 2; ellipsize = android.text.TextUtils.TruncateAt.END })
-                if (h2.img.isNotEmpty()) {
-                    val f = java.io.File(Prefs.histDir(this), h2.img)
-                    val bmp = if (f.exists()) BitmapFactory.decodeFile(f.absolutePath, BitmapFactory.Options().apply { inSampleSize = 2 }) else null
-                    if (bmp != null) {
-                        val iv = ImageView(this).apply {
-                            setImageBitmap(bmp); scaleType = ImageView.ScaleType.CENTER_CROP
-                            outlineProvider = object : ViewOutlineProvider() {
-                                override fun getOutline(view: View, o: Outline) { o.setRoundRect(0, 0, view.width, view.height, px(14).toFloat()) }
-                            }
-                            clipToOutline = true
-                            setOnClickListener { showImage(f.absolutePath) }
-                        }
-                        r.addView(iv, LinearLayout.LayoutParams(px(if (h2.kind == "Sticker") 110 else 190), px(if (h2.kind == "Sticker") 110 else 130)).apply { topMargin = px(6) })
-                    }
-                }
-                if (h2.kind.isNotEmpty()) r.addView(label(h2.kind, 11f, R.color.gold, true))
-                r.addView(label(android.text.format.DateUtils.getRelativeTimeSpanString(h2.ts, System.currentTimeMillis(),
-                    android.text.format.DateUtils.MINUTE_IN_MILLIS).toString(), 11f, R.color.gold))
-                c.addView(r)
-            }
-            p.addView(c, lp(10))
+        val apps = all.filter { !Sys.isSystemPkg(it.pkg) }
+        val sys = all.filter { Sys.isSystemPkg(it.pkg) }
+        // Resumen por secciones: cuántas son de apps y cuántas del sistema
+        val sum = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; setPadding(0, px(6), 0, 0) }
+        sum.addView(summaryChip("grid", 0xFF6A62E8.toInt(), "${apps.size}", "Aplicaciones"),
+            LinearLayout.LayoutParams(0, WRAP, 1f).apply { marginEnd = px(4) })
+        sum.addView(summaryChip("settings", 0xFF2DAA55.toInt(), "${sys.size}", "Sistema"),
+            LinearLayout.LayoutParams(0, WRAP, 1f).apply { marginStart = px(4) })
+        top.addView(sum)
+        top.addView(button("Borrar historial", false) { Prefs.clearHist(this); render() }, lp(10))
+        p.addView(top, lp(8))
+
+        // Registro de batería a tiempo real: una sola lectura, sin duplicar avisos
+        batteryStrip(p)
+
+        if (all.isEmpty()) {
+            p.addView(label("Todavía no hay notificaciones. Cuando lleguen, aparecerán aquí separadas por aplicación y por avisos del sistema.",
+                14f, R.color.muted), lp(16))
+            return
+        }
+
+        if (apps.isNotEmpty()) {
+            historyHeader(p, "grid", 0xFF6A62E8.toInt(), "Aplicaciones", apps.size)
+            apps.groupBy { it.pkg }.entries.sortedByDescending { e -> e.value.maxOf { it.ts } }
+                .forEach { (pkg, items) -> appHistoryGroup(p, pkg, items) }
+        }
+        if (sys.isNotEmpty()) {
+            historyHeader(p, "settings", 0xFF2DAA55.toInt(), "Sistema", sys.size)
+            sys.groupBy { Sys.kind(it.pkg, it.title, it.text) }
+                .entries.sortedByDescending { e -> e.value.maxOf { it.ts } }
+                .forEach { (kind, items) -> sysHistoryGroup(p, kind, items) }
         }
     }
+
+    /** Encabezado de sección del historial, con icono, título y número de avisos. */
+    private fun historyHeader(p: LinearLayout, iconName: String, color: Int, title: String, count: Int) {
+        val r = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
+            setPadding(px(4), px(18), px(4), px(6))
+        }
+        r.addView(tileIcon(iconName, (color and 0x00FFFFFF) or 0x33000000, color),
+            LinearLayout.LayoutParams(px(34), px(34)).apply { marginEnd = px(10) })
+        r.addView(label(title, 16f, R.color.text, true).apply { letterSpacing = 0.06f },
+            LinearLayout.LayoutParams(0, WRAP, 1f))
+        r.addView(TextView(this).apply {
+            text = "$count"; textSize = 13f; gravity = Gravity.CENTER
+            setTextColor(color); typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+            setPadding(px(12), px(5), px(12), px(5))
+            background = Glass.pill(this@MainActivity, (color and 0x00FFFFFF) or 0x22000000, (color and 0x00FFFFFF) or 0x66000000, 14f)
+        })
+        p.addView(r)
+    }
+
+    /** Recuadro resumen (número + etiqueta) con color propio. */
+    private fun summaryChip(iconName: String, color: Int, value: String, caption: String) = LinearLayout(this).apply {
+        orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
+        setPadding(px(12), px(12), px(12), px(12))
+        background = Glass.pill(this@MainActivity, (color and 0x00FFFFFF) or 0x22000000, (color and 0x00FFFFFF) or 0x55000000, 18f)
+        addView(tileIcon(iconName, (color and 0x00FFFFFF) or 0x4D000000, color), LinearLayout.LayoutParams(px(38), px(38)).apply { marginEnd = px(10) })
+        val t = LinearLayout(this@MainActivity).apply { orientation = LinearLayout.VERTICAL }
+        t.addView(label(value, 18f, R.color.text, true))
+        t.addView(label(caption, 12f, R.color.muted))
+        addView(t)
+    }
+
+    /** Batería en tiempo real: nivel actual y estado de carga, leído del sistema. */
+    private fun batteryStrip(p: LinearLayout) {
+        val b = Battery.now(this)
+        if (b.pct < 0) return
+        val c = card()
+        val r = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
+        r.addView(tileIcon("battery", 0x3330D158, 0xFF30D158.toInt()),
+            LinearLayout.LayoutParams(px(44), px(44)).apply { marginEnd = px(12) })
+        val t = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        t.addView(label("Batería en tiempo real", 16f, R.color.text, true))
+        t.addView(label("${b.pct}% · ${b.label}", 13f, R.color.muted))
+        r.addView(t, LinearLayout.LayoutParams(0, WRAP, 1f))
+        c.addView(r)
+        val bar = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            background = Glass.pill(this@MainActivity, 0x22FFFFFF, 0, 10f)
+            setPadding(px(1), px(1), px(1), px(1))
+        }
+        val pctF = b.pct.coerceIn(1, 100).toFloat()
+        bar.addView(View(this).apply { background = Glass.pill(this@MainActivity, 0xFF30D158.toInt(), 0, 10f) },
+            LinearLayout.LayoutParams(0, px(9), pctF))
+        bar.addView(View(this), LinearLayout.LayoutParams(0, px(9), (100f - pctF).coerceAtLeast(0.01f)))
+        c.addView(bar, lp(10))
+        c.addView(label("Se lee directamente del sistema: los avisos de batería no se repiten.", 12f, R.color.muted), lp(8))
+        p.addView(c, lp(10))
+    }
+
+    /** Grupo de historial de una aplicación (con su icono), desplegable. */
+    private fun appHistoryGroup(p: LinearLayout, pkg: String, items: List<Prefs.HistItem>) {
+        val pm = packageManager
+        val appName = try { pm.getApplicationLabel(pm.getApplicationInfo(pkg, 0)).toString() } catch (e: Exception) { pkg }
+        val key = "h_$pkg"
+        val open = key !in expandedGroups          // por defecto abiertas
+        val c = card()
+        val h = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
+            setOnClickListener { if (open) expandedGroups.add(key) else expandedGroups.remove(key); render() }
+        }
+        h.addView(ShapedImageView(this).apply {
+            shape = Prefs.iconShape(this@MainActivity); setImageDrawable(appIcon(pkg)); scaleType = ImageView.ScaleType.CENTER_CROP
+        }, LinearLayout.LayoutParams(px(42), px(42)).apply { marginEnd = px(12) })
+        val t = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        t.addView(label(appName, 17f, R.color.text, true))
+        t.addView(label("${items.size} notificaciones", 12f, R.color.muted))
+        h.addView(t, LinearLayout.LayoutParams(0, WRAP, 1f))
+        h.addView(icon(if (open) "chev_up" else "chev_down", 22, Glass.MUTED))
+        c.addView(h)
+        if (open) items.take(25).forEach { h2 -> c.addView(historyItemRow(h2, px(54))) }
+        p.addView(c, lp(10))
+    }
+
+    /** Grupo de historial del sistema (Batería, Wi-Fi, Red…), desplegable. */
+    private fun sysHistoryGroup(p: LinearLayout, kind: String, items: List<Prefs.HistItem>) {
+        val key = "hs_$kind"
+        val open = key !in expandedGroups
+        val color = Sys.color(kind)
+        val c = card()
+        val h = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
+            setOnClickListener { if (open) expandedGroups.add(key) else expandedGroups.remove(key); render() }
+        }
+        h.addView(tileIcon(Sys.symbol(kind), (color and 0x00FFFFFF) or 0x33000000, color),
+            LinearLayout.LayoutParams(px(42), px(42)).apply { marginEnd = px(12) })
+        val t = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        t.addView(label(Sys.label(kind), 17f, R.color.text, true))
+        t.addView(label("${items.size} avisos del sistema", 12f, R.color.muted))
+        h.addView(t, LinearLayout.LayoutParams(0, WRAP, 1f))
+        h.addView(icon(if (open) "chev_up" else "chev_down", 22, Glass.MUTED))
+        c.addView(h)
+        if (open) items.take(25).forEach { h2 -> c.addView(historyItemRow(h2, px(54))) }
+        p.addView(c, lp(10))
+    }
+
+    /** Una entrada del historial: título, texto, imagen (si hay), tipo y hora. */
+    private fun historyItemRow(h2: Prefs.HistItem, indent: Int): View {
+        val r = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(indent, px(10), 0, 0) }
+        if (h2.title.isNotEmpty()) r.addView(label(h2.title, 14f, R.color.text, true).apply { maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END })
+        if (h2.text.isNotEmpty()) r.addView(label(h2.text, 13f, R.color.muted).apply { maxLines = 2; ellipsize = android.text.TextUtils.TruncateAt.END })
+        if (h2.img.isNotEmpty()) {
+            val f = java.io.File(Prefs.histDir(this), h2.img)
+            val bmp = if (f.exists()) BitmapFactory.decodeFile(f.absolutePath, BitmapFactory.Options().apply { inSampleSize = 2 }) else null
+            if (bmp != null) {
+                val iv = ImageView(this).apply {
+                    setImageBitmap(bmp); scaleType = ImageView.ScaleType.CENTER_CROP
+                    outlineProvider = object : ViewOutlineProvider() {
+                        override fun getOutline(view: View, o: Outline) { o.setRoundRect(0, 0, view.width, view.height, px(14).toFloat()) }
+                    }
+                    clipToOutline = true
+                    setOnClickListener { showImage(f.absolutePath) }
+                }
+                r.addView(iv, LinearLayout.LayoutParams(px(if (h2.kind == "Sticker") 110 else 190), px(if (h2.kind == "Sticker") 110 else 130)).apply { topMargin = px(6) })
+            }
+        }
+        val foot = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(0, px(2), 0, 0) }
+        if (h2.kind.isNotEmpty()) {
+            foot.addView(label(h2.kind, 11f, R.color.gold, true))
+            foot.addView(View(this), LinearLayout.LayoutParams(px(8), px(1)))
+        }
+        foot.addView(label(relative(h2.ts), 11f, R.color.gold))
+        r.addView(foot)
+        return r
+    }
+
+    private fun relative(ts: Long): String = android.text.format.DateUtils.getRelativeTimeSpanString(
+        ts, System.currentTimeMillis(), android.text.format.DateUtils.MINUTE_IN_MILLIS).toString()
 
     private fun showImage(path: String) {
         val bmp = BitmapFactory.decodeFile(path) ?: return

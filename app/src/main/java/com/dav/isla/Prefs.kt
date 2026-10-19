@@ -143,14 +143,20 @@ object Prefs {
 
     fun histDir(c: Context): java.io.File = java.io.File(c.filesDir, "hist").also { it.mkdirs() }
 
-    fun addHist(c: Context, pkg: String, title: String, text: String, img: String = "", kind: String = "") {
+    fun addHist(c: Context, pkg: String, title: String, text: String, img: String = "", kind: String = "",
+                windowMs: Long = 3000L) {
         val old = try { org.json.JSONArray(sp(c).getString("hist2", "[]")) } catch (e: Exception) { org.json.JSONArray() }
-        val first = old.optJSONObject(0)
         val now = System.currentTimeMillis()
-        if (first != null && first.optString("p") == pkg && first.optString("t") == title &&
-            first.optString("x") == text && now - first.optLong("ts") < 3000) {
-            if (img.isNotEmpty()) java.io.File(histDir(c), img).delete()
-            return
+        // ¿Ya está registrado lo mismo hace poco? Se revisan las últimas entradas (no solo la primera):
+        // así los avisos del sistema, como la batería, no se duplican aunque llegue otra cosa entre medias.
+        val scan = minOf(old.length(), 40)
+        for (i in 0 until scan) {
+            val o = old.optJSONObject(i) ?: continue
+            if (o.optString("p") == pkg && o.optString("t") == title && o.optString("x") == text &&
+                now - o.optLong("ts") < windowMs) {
+                if (img.isNotEmpty()) java.io.File(histDir(c), img).delete()
+                return
+            }
         }
         val out = org.json.JSONArray()
         out.put(org.json.JSONObject().put("p", pkg).put("t", title).put("x", text).put("ts", now)
@@ -190,7 +196,7 @@ object Prefs {
     fun setGRight(c: Context, v: Int) = sp(c).edit().putInt("g_right", v).apply()
     fun gLong(c: Context): Int = sp(c).getInt("g_long", 6)
     fun setGLong(c: Context, v: Int) = sp(c).edit().putInt("g_long", v).apply()
-    fun swipeDp(c: Context): Int = sp(c).getInt("swipe_dp", 24)
+    fun swipeDp(c: Context): Int = sp(c).getInt("swipe_dp", 50)   // distancia fija para deslizar: 50 dp
     fun setSwipeDp(c: Context, v: Int) = sp(c).edit().putInt("swipe_dp", v).apply()
     fun autoHideAfterTouch(c: Context): Boolean = true
     fun appTheme(c: Context): String = sp(c).getString("app_theme", "ryx") ?: "ryx"

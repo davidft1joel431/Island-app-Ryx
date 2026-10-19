@@ -272,8 +272,10 @@ class NotifListener : NotificationListenerService() {
         // 1) La isla REGISTRA todo en el historial, por aplicación
         if (Prefs.keepHistory(this) && !sbn.isOngoing) {
             val hp = sbn.packageName; val ht = title?.toString() ?: ""; val hx = text?.toString() ?: ""
+            // Los avisos del sistema se de-duplican durante más tiempo: no queremos cuatro avisos de batería seguidos.
+            val win = if (Sys.isSystemPkg(hp)) 120_000L else 3_000L
             histExec.execute {      // disco y copia de seguridad fuera del hilo principal: la isla sale antes
-                try { Prefs.addHist(this, hp, ht, hx, saveBitmap(mediaBmp, mediaKind), mediaKind); Backup.maybeUpload(this) } catch (e: Exception) {}
+                try { Prefs.addHist(this, hp, ht, hx, saveBitmap(mediaBmp, mediaKind), mediaKind, win); Backup.maybeUpload(this) } catch (e: Exception) {}
             }
         }
 
@@ -287,6 +289,15 @@ class NotifListener : NotificationListenerService() {
             return
         }
         if (sbn.isOngoing) return
+
+        // Batería: todos los avisos del sistema se unen en UNA sola tarjeta con el nivel en tiempo real
+        if (Sys.isBatteryNotif(sbn.packageName, title, text)) {
+            val bat = Battery.now(this)
+            val body = (text?.toString() ?: "").let { if (bat.pct >= 0) "$it · ${bat.pct}%" else it }
+            show(sbn.packageName, title, body, eventIcon("battery", 0xFF30D158.toInt()), true, true,
+                "sys:battery", false, sig = "sys:battery|$title|$text", target = "battery", label = "Batería")
+            return
+        }
 
         val large: Drawable? = try { n.getLargeIcon()?.loadDrawable(this) } catch (e: Exception) { null }
         val small: Drawable? = try {
@@ -474,10 +485,40 @@ class NotifListener : NotificationListenerService() {
         }
     }
 
+    /** Eventos de energía que se funden en una sola tarjeta de batería con el nivel real. */
+    private val BATTERY_EVENTS = setOf("plugged", "unplugged", "full", "low", "saver")
+
     private fun showCard(ev: IslandEvent, force: Boolean) {
         val shouldExpand = !force || Prefs.demoExpanded(this)
-        show(packageName, ev.title, ev.body, eventIcon(ev.symbol, ev.color), ev.short, shouldExpand && Prefs.eventExpand(this, ev.id), "ev:${ev.id}", ev.short,
-            target = ev.target ?: "settings", label = ev.label, accentOverride = if (ev.color != 0) ev.color else null)
+        val bat = ev.id in BATTERY_EVENTS
+        // Los cambios de batería se registran UNA vez (con el nivel de ese momento), nunca como cuatro avisos sueltos.
+        if (bat && !force) {
+            val line = batteryLine(ev)
+            histExec.execute { try { Prefs.addHist(this, "android", "Batería", line, "", "", 5 * 60_000L) } catch (e: Exception) {} }
+        }
+        show(packageName,
+            if (bat) "Batería" else ev.title,
+            if (bat) batteryLine(ev) else ev.body,
+            eventIcon(if (bat) "battery" else ev.symbol, if (bat) 0xFF30D158.toInt() else ev.color),
+            ev.short, shouldExpand && Prefs.eventExpand(this, ev.id),
+            if (bat) "sys:battery" else "ev:${ev.id}", ev.short,
+            target = if (bat) "battery" else (ev.target ?: "settings"),
+            label = if (bat) "Batería" else ev.label,
+            accentOverride = if (bat) 0xFF30D158.toInt() else if (ev.color != 0) ev.color else null)
+    }
+
+    /** Texto de la tarjeta de batería con el nivel leído ahora mismo (registro a tiempo real). */
+    private fun batteryLine(ev: IslandEvent): String {
+        val b = Battery.now(this)
+        val pct = if (b.pct >= 0) " · ${b.pct}%" else ""
+        return when (ev.id) {
+            "plugged" -> "Cargador conectado$pct"
+            "unplugged" -> "Cargador retirado$pct"
+            "full" -> "100% cargada"
+            "low" -> "Queda poca batería$pct"
+            "saver" -> "Ahorro de batería activado$pct"
+            else -> ev.body
+        }
     }
 
     /** Icono vectorial del evento, blanco sobre un círculo del COLOR propio del evento (verde batería, azul Wi-Fi…). */
@@ -959,8 +1000,8 @@ class NotifListener : NotificationListenerService() {
                     val dx = e.rawX - x0; val dy = e.rawY - y0
                     val dist = kotlin.math.hypot(dx, dy)
                     val ms = e.eventTime - t0
-                    // Umbral de deslizar más bajo (nunca más de 28 dp) y toque tolerante: un dedo no es un punto
-                    val th = minOf(px(Prefs.swipeDp(this@NotifListener)), px(28)).toFloat()
+                    // Umbral de deslizar fijo: 50 dp. Un toque sigue siendo tolerante (un dedo no es un punto).
+                    val th = px(50).toFloat()
                     val tapR = maxOf(slop * 3f, px(16).toFloat())
                     island?.animate()?.cancel()
                     island?.animate()?.scaleX(1f)?.scaleY(1f)?.setDuration(140)?.start()
