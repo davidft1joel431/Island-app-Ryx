@@ -1997,7 +1997,7 @@ class MainActivity : Activity() {
                     val has = Backup.hasCloud(this)
                     runOnUiThread {
                         if (has) glass(AlertDialog.Builder(this).setTitle("Hay una copia en la nube")
-                            .setMessage("Encontré «$prov/${Backup.FOLDER}/$NAME» (o en la carpeta elegida). " +
+                            .setMessage("Encontré «$prov/${Backup.FOLDER}/${Backup.NAME}» (o en la carpeta elegida). " +
                                 "¿Quieres traerla y restaurarla ahora?")
                             .setPositiveButton("Restaurar") { _, _ -> restoreFromCloud() }
                             .setNegativeButton("Ahora no", null).show())
@@ -2007,7 +2007,7 @@ class MainActivity : Activity() {
             }, lp(8))
         }
         b.addView(button("Restaurar desde un archivo", false) { pickRestore() }, lp(8))
-        b.addView(label("Ryx guarda dentro de la nube una carpeta «${Backup.FOLDER}» con el archivo $NAME " +
+        b.addView(label("Ryx guarda dentro de la nube una carpeta «${Backup.FOLDER}» con el archivo ${Backup.NAME} " +
             "(tus ajustes, el historial y sus imágenes). Al abrir la app, si encuentra esa copia y tu historial está vacío, " +
             "te pregunta si quieres restaurarla. Como queda en tu Drive u OneDrive, sigue ahí aunque desinstales la app.", 12f, R.color.muted), lp(10))
     }
