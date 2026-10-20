@@ -2,5 +2,5 @@
 <resources>
     <string name="app_name">Ryx Island</string>
     <string name="a11y_label">Ryx Island · Formato libre</string>
-    <string name="a11y_desc">Se usa para dos cosas, las dos opcionales: abrir ventanas en «Formato libre» (Ryx pulsa por ti esa opción en el menú de tu launcher) y, SOLO si tú activas «Chats en pantalla» en Ajustes → Permisos, leer el texto visible de la conversación que tengas abierta (WhatsApp, Telegram, Instagram, TikTok…) para guardarla en el Historial, incluidos los chats archivados o restringidos. Nunca lee nada si esa opción está apagada.</string>
+    <string name="a11y_desc">Se usa para dos cosas, las dos opcionales: abrir ventanas en «Formato libre» (Ryx pulsa por ti esa opción en el menú de tu launcher) y, SOLO si tú activas «Chats en pantalla» en Ajustes → Permisos, leer el texto visible de la conversación que tengas abierta (WhatsApp, Telegram, Instagram, TikTok…) y, si lo dejas activado, hacer una captura de pantalla cada 5 s como mucho para guardarla en el Historial, incluidos los chats archivados o restringidos. Nunca lee ni captura nada si esa opción está apagada.</string>
 </resources>

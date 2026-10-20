@@ -86,6 +86,8 @@ class RyxAccessibility : AccessibilityService() {
     private var readPending = false
     private var lastReadHash = 0
     private var lastReadAt = 0L
+    private var lastShotAt = 0L
+    private var shotPending = false
 
     /** ¿Esta app es de chat Y el usuario activó la lectura por pantalla (y, si eligió apps, es una de ellas)? */
     private fun chatWanted(pkg: String): Boolean {
@@ -141,15 +143,55 @@ class RyxAccessibility : AccessibilityService() {
         } catch (e: Exception) { pkg }
         // Se guarda como una entrada del Historial, marcando que vino de la PANTALLA (no de una notificación).
         val mark = if (Prefs.chatMarkScreen(this)) "\n(pantalla · ${app})" else ""
+        // Imagen de lo que se ve (foto/figura/vídeo/sticker): se captura la pantalla del chat cuando cambió.
+        // La accesibilidad NO da los píxeles de una imagen; sin root, la captura de pantalla del propio servicio
+        // es la única vía real. Android limita la frecuencia (~1/s), así que se espacia a 5 s y se hace en un hilo
+        // aparte (nunca en el hilo principal, para no congelar la isla).
+        val wantShot = shotAllowed()
+        if (wantShot) shotPending = true
         val thread = Thread {
             try {
+                var img = ""
+                if (wantShot) {
+                    try {
+                        val bmp = grabScreen()
+                        lastShotAt = System.currentTimeMillis()
+                        if (bmp != null) img = saveShot(downscale(bmp, 720))
+                    } catch (e: Throwable) {}
+                    shotPending = false
+                }
                 Prefs.addHist(this, pkg, "Chat en pantalla · $app", text + mark,
-                    "", "Pantalla", 1_500L)
+                    img, if (img.isNotEmpty()) "Pantalla · captura" else "Pantalla", 1_500L)
                 Backup.maybeUpload(this)
                 Backup.autoLocal(this)
-            } catch (e: Throwable) {}
+            } catch (e: Throwable) { shotPending = false }
         }
         thread.start()
+    }
+
+    /** ¿Toca hacer captura ahora? (opción activada, Android 11+, y no hace menos de 5 s que se hizo otra). */
+    private fun shotAllowed(): Boolean {
+        if (!Prefs.chatShots(this)) return false
+        if (shotPending) return false
+        if (Build.VERSION.SDK_INT < 30) return false
+        return System.currentTimeMillis() - lastShotAt >= 5_000L
+    }
+
+    /** Guarda la captura en la carpeta de imágenes del historial y devuelve su nombre. */
+    private fun saveShot(bmp: Bitmap): String = try {
+        val name = "${System.currentTimeMillis()}_${(Math.random() * 99999).toInt()}.img"
+        java.io.FileOutputStream(java.io.File(Prefs.histDir(this), name)).use {
+            bmp.compress(Bitmap.CompressFormat.JPEG, 78, it)
+        }
+        name
+    } catch (e: Throwable) { "" }
+
+    private fun downscale(b: Bitmap, max: Int): Bitmap {
+        val m = maxOf(b.width, b.height)
+        if (m <= max) return b
+        val f = max.toFloat() / m
+        return Bitmap.createScaledBitmap(b, (b.width * f).toInt().coerceAtLeast(1),
+            (b.height * f).toInt().coerceAtLeast(1), true)
     }
 
     /** Recoge el texto de todos los nodos con texto (en orden de aparición en pantalla). */

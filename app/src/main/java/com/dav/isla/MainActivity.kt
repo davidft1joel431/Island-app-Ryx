@@ -1976,6 +1976,10 @@ class MainActivity : Activity() {
             b.addView(rowWithSwitch("Marcar en el Historial",
                 "Añade «(pantalla · App)» a las entradas capturadas leyendo la pantalla, para distinguirlas de las notificaciones",
                 Prefs.chatMarkScreen(this)) { Prefs.setChatMarkScreen(this, it) }, lp(4))
+            b.addView(rowWithSwitch("Guardar también una captura de pantalla",
+                "Hace una FOTO de lo que ves en el chat (imágenes, vídeos, stickers) cada 5 s como mucho, y la guarda " +
+                "en el Historial. Android no da los píxeles de la imagen a la accesibilidad: la captura es la única vía sin root.",
+                Prefs.chatShots(this)) { Prefs.setChatShots(this, it); reload() }, lp(4))
             if (!RyxAccessibility.isEnabled(this)) {
                 b.addView(label("Falta el servicio de accesibilidad: sin él, Ryx no puede leer la pantalla.",
                     12f, R.color.gold, true), lp(8))
