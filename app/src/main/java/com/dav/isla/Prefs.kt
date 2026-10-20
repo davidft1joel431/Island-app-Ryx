@@ -263,13 +263,16 @@ object Prefs {
     fun updEverySec(c: Context): Int = sp(c).getInt("upd_every_s", 30)
     fun setUpdEverySec(c: Context, v: Int) = sp(c).edit().putInt("upd_every_s", v).apply()
 
-    // ---- Carpeta propia de copias (dentro de la app) ----
-    /** Guardar copias solo, sin tocar nada (por defecto: sí). */
+    // ---- Carpeta propia de respaldos (dentro de la app): «ryx respaldo» ----
+    /** Guardar respaldos solo, sin tocar nada (por defecto: sí). */
     fun backupAuto(c: Context): Boolean = sp(c).getBoolean("backup_auto", true)
     fun setBackupAuto(c: Context, v: Boolean) = sp(c).edit().putBoolean("backup_auto", v).apply()
-    /** Con qué frecuencia se guarda la copia interna (minutos; por defecto 30). */
+    /** Cada cuánto revisa si hay que guardar el respaldo propio, en SEGUNDOS (por defecto 30). */
+    fun backupEverySec(c: Context): Int = sp(c).getInt("backup_every_s2", 30)
+    fun setBackupEverySec(c: Context, v: Int) = sp(c).edit().putInt("backup_every_s2", v).apply()
+
+    /** Compatibilidad con la clave antigua en minutos (se sigue leyendo por si venía de una versión previa). */
     fun backupEveryMin(c: Context): Int = sp(c).getInt("backup_every_m", 30)
-    fun setBackupEveryMin(c: Context, v: Int) = sp(c).edit().putInt("backup_every_m", v).apply()
     /** Cuántas copias internas se conservan (por defecto 7). */
     fun backupKeep(c: Context): Int = sp(c).getInt("backup_keep", 7)
     fun setBackupKeep(c: Context, v: Int) = sp(c).edit().putInt("backup_keep", v).apply()

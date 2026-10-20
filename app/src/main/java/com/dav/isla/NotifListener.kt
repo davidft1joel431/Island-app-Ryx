@@ -204,6 +204,19 @@ class NotifListener : NotificationListenerService() {
         checkUpdatesInBackground()          // aviso de versión nueva aunque la app no esté abierta
         main.removeCallbacks(updWatch); main.postDelayed(updWatch, Prefs.updEverySec(this).coerceIn(15, 3600) * 1000L)
         Backup.autoLocal(this)              // copia propia al arrancar el servicio
+        main.removeCallbacks(backWatch); main.postDelayed(backWatch, 30_000L)   // respaldo propio cada 30 s
+    }
+
+    /**
+     * Respaldo propio: cada 30 segundos revisa si el historial o los ajustes cambiaron y, si es así, guarda una
+     * copia en la carpeta «ryx respaldo» (aunque la app esté cerrada y solo viva el servicio). El intervalo de
+     * guardado lo controla [Prefs.backupEverySec]; este vigilante solo «empuja» con frecuencia.
+     */
+    private val backWatch = object : Runnable {
+        override fun run() {
+            Backup.autoLocal(this@NotifListener)
+            main.postDelayed(this, 30_000L)
+        }
     }
 
     /** Revisa GitHub cada poco (por defecto 30 s) mientras el servicio está vivo. */
@@ -263,6 +276,7 @@ class NotifListener : NotificationListenerService() {
     override fun onListenerDisconnected() {
         main.removeCallbacks(watch)
         main.removeCallbacks(updWatch)
+        main.removeCallbacks(backWatch)
         try { unregisterReceiver(sysReceiver) } catch (e: Exception) {}
         main.post { removeNow() }
         restoreHeadsUp()
@@ -272,6 +286,7 @@ class NotifListener : NotificationListenerService() {
     override fun onDestroy() {
         main.removeCallbacks(watch)
         main.removeCallbacks(updWatch)
+        main.removeCallbacks(backWatch)
         try { unregisterReceiver(sysReceiver) } catch (e: Exception) {}
         anim?.cancel()
         removeNow()

@@ -18,14 +18,36 @@ import java.util.zip.ZipOutputStream
  * así sobrevive a desinstalar la app. No hace falta ninguna clave ni cuenta dentro de Ryx.
  */
 object Backup {
+    /** Nombre del archivo de la copia en la nube / del respaldo propio. */
     private const val NAME = "ryx_respaldo.zip"
+    /** Nombre de la carpeta propia del respaldo, dentro de los datos de la app. */
+    const val FOLDER = "ryx respaldo"
     private var last = 0L
     @Volatile private var running = false
 
     fun configured(c: Context) = Prefs.cloudUri(c).isNotEmpty()
 
-    /** Carpeta PROPIA de la app (dentro de sus datos): aquí se guardan solas las copias, sin pedir nada. */
-    fun dir(c: Context): File = File(c.filesDir, "copias").also { it.mkdirs() }
+    /**
+     * Carpeta PROPIA de la app donde se guardan solas las copias: «ryx respaldo».
+     * Antes se llamaba «copias»; si existe la antigua, se conserva para no perder lo ya guardado.
+     */
+    fun dir(c: Context): File {
+        val d = File(c.filesDir, FOLDER)
+        if (!d.exists()) {
+            d.mkdirs()
+            // Migración suave: si venía de la carpeta «copias», se trae lo que hubiera.
+            val old = File(c.filesDir, "copias")
+            old.listFiles()?.forEach { f -> if (f.isFile) try { f.renameTo(File(d, f.name)) } catch (e: Exception) {} }
+        }
+        return d
+    }
+
+    /** ¿Existe ya algún respaldo guardado en la carpeta propia? */
+    fun hasLocal(c: Context): Boolean = dir(c).listFiles()?.any { it.isFile && it.name.endsWith(".zip") } == true
+
+    /** La copia propia más reciente, o null si no hay ninguna. */
+    fun latestLocal(c: Context): File? =
+        dir(c).listFiles()?.filter { it.isFile && it.name.endsWith(".zip") }?.maxByOrNull { it.name }
 
     /** Suma de comprobación sencilla de «lo que hay que guardar»: ajustes + historial + nº de imágenes. */
     fun stamp(c: Context): String {
@@ -59,16 +81,17 @@ object Backup {
     }
 
     /**
-     * Copia automática en la carpeta propia: solo si algo cambió (ajustes/historial/imágenes) y como mucho
-     * cada [Prefs.backupEveryMin] minutos. Es lo que evita tener que pulsar nada.
+     * Copia automática en la carpeta propia «ryx respaldo»: se revisa cada [Prefs.backupEverySec] segundos
+     * (30 por defecto) y solo se guarda si algo cambió (ajustes / historial / imágenes). Así no hay que pulsar nada
+     * y tampoco se llena la carpeta con copias idénticas.
      */
     fun autoLocal(c: Context, force: Boolean = false) {
         if (!Prefs.backupAuto(c) || running) return
         val now = System.currentTimeMillis()
         when {
             force -> {}
-            stamp(c) == Prefs.backupStamp(c) -> return                       // nada nuevo
-            now - Prefs.backupLast(c) < Prefs.backupEveryMin(c) * 60_000L -> return
+            stamp(c) == Prefs.backupStamp(c) -> return                                    // nada nuevo
+            now - Prefs.backupLast(c) < Prefs.backupEverySec(c).coerceIn(5, 3600) * 1000L -> return
         }
         running = true
         val app = c.applicationContext
@@ -161,5 +184,43 @@ object Backup {
         last = now; running = true
         val app = c.applicationContext
         Thread { try { upload(app) } finally { running = false } }.start()
+    }
+
+    /**
+     * Busca el archivo de copia en la carpeta de la nube elegida. Devuelve su Uri, o null si no hay carpeta,
+     * no hay archivo o Android retiró el permiso. Llamar fuera del hilo principal.
+     */
+    fun cloudFileUri(c: Context): Uri? {
+        val raw = Prefs.cloudUri(c)
+        if (raw.isEmpty()) return null
+        return try {
+            val tree = Uri.parse(raw)
+            val treeId = DocumentsContract.getTreeDocumentId(tree)
+            val children = DocumentsContract.buildChildDocumentsUriUsingTree(tree, treeId)
+            c.contentResolver.query(children, arrayOf(
+                DocumentsContract.Document.COLUMN_DOCUMENT_ID, DocumentsContract.Document.COLUMN_DISPLAY_NAME), null, null, null)?.use { cur ->
+                while (cur.moveToNext()) {
+                    if (cur.getString(1) == NAME) return DocumentsContract.buildDocumentUriUsingTree(tree, cur.getString(0))
+                }
+            }
+            null
+        } catch (e: Exception) { null }
+    }
+
+    /** ¿Hay una copia en la nube disponible en la carpeta elegida? */
+    fun hasCloud(c: Context): Boolean = cloudFileUri(c) != null
+
+    /**
+     * Trae la copia de la nube a la carpeta propia «ryx respaldo» (sin restaurarla todavía) para poder
+     * restaurarla después igual que cualquier copia local. Devuelve "" si salió bien o el motivo del fallo.
+     */
+    fun pullCloud(c: Context): String {
+        val uri = cloudFileUri(c) ?: return "No hay ninguna copia en la nube."
+        return try {
+            val d = dir(c); val f = File(d, "ryx_" + System.currentTimeMillis() + ".zip")
+            c.contentResolver.openInputStream(uri)?.use { i -> f.outputStream().use { o -> i.copyTo(o) } }
+                ?: return "No se pudo leer la copia de la nube."
+            ""
+        } catch (e: Exception) { "No se pudo traer la copia: ${e.message ?: e.javaClass.simpleName}" }
     }
 }
