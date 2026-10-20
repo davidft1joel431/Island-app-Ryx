@@ -538,14 +538,22 @@ class MainActivity : Activity() {
     /** Fondo degradado para las cabeceras: del color de la sección hacia el fondo oscuro, con un borde fino. */
     private fun heroBg(color: Int): android.graphics.drawable.Drawable {
         val rgb = color and 0x00FFFFFF
+        // Los literales con el bit alto activado (0x8C..., 0x2E...) no caben en Int y Kotlin los infiere como
+        // Long; se declaran como Int con «.toInt()» en la propia constante para que la expresión sea siempre Int.
+        val c1: Int = (rgb or 0x8C000000.toInt())
+        val c2: Int = (rgb or 0x3A000000.toInt())
+        val c3: Int = 0x1F000000
         val body = android.graphics.drawable.GradientDrawable(
             android.graphics.drawable.GradientDrawable.Orientation.TL_BR,
-            intArrayOf((rgb or 0x8C000000).toInt(), (rgb or 0x3A000000).toInt(), 0x1F000000.toInt())).apply { cornerRadius = px(30).toFloat() }
+            intArrayOf(c1, c2, c3)).apply { cornerRadius = px(30).toFloat() }
+        val s1: Int = 0x2EFFFFFF.toInt()
+        val s2: Int = 0x00FFFFFF
         val shine = android.graphics.drawable.GradientDrawable(
             android.graphics.drawable.GradientDrawable.Orientation.TOP_BOTTOM,
-            intArrayOf(0x2EFFFFFF.toInt(), 0x00FFFFFF.toInt())).apply { cornerRadius = px(30).toFloat() }
+            intArrayOf(s1, s2)).apply { cornerRadius = px(30).toFloat() }
+        val rimColor: Int = (rgb or 0x80000000.toInt())
         val rim = android.graphics.drawable.GradientDrawable().apply {
-            cornerRadius = px(30).toFloat(); setColor(0); setStroke(px(1), (rgb or 0x80000000).toInt())
+            cornerRadius = px(30).toFloat(); setColor(0); setStroke(px(1), rimColor)
         }
         return android.graphics.drawable.LayerDrawable(arrayOf(body, shine, rim))
     }
