@@ -143,8 +143,10 @@ class NotifListener : NotificationListenerService() {
     private var cardIndex = 0
     private val currentPkg: String? get() = cards.getOrNull(cardIndex)?.pkg
 
-    /** ¿La isla debe estar oculta ahora? (bloqueo desactivado, juego al frente o app elegida) */
-    private fun hiddenNow(): Boolean {
+    /** ¿La isla debe estar oculta ahora? (bloqueo desactivado, juego al frente o app elegida)
+     *  Si [force] es true (llamada de un contacto prioritario), NO se oculta: la isla aparece igual. */
+    private fun hiddenNow(force: Boolean = false): Boolean {
+        if (force) return false
         if (!Prefs.lockScreen(this) &&
             (getSystemService(KEYGUARD_SERVICE) as android.app.KeyguardManager).isKeyguardLocked) return true
         val apps = Prefs.hideApps(this)
@@ -364,7 +366,9 @@ class NotifListener : NotificationListenerService() {
         // 0) SOLO LA ISLA: si la isla va a MOSTRARLA, se quita el aviso del sistema en el mismo momento de mostrarlo
         //    (no antes). Así ninguna notificación se pierde: si la isla no la enseña, la del sistema se queda.
         //    Llamadas, multimedia, navegación, alarmas y progresos se quedan siempre en el sistema.
-        val why = keepReason(sbn, n, reading)
+        //    LLAMADA DE CONTACTO PRIORITARIO (favorito): se salta el bloqueo de juego/app oculta y aparece siempre.
+        val callPrio = isCall(n) && Prefs.callPriorityBypass(this) && callIsPriority(title, text)
+        val why = keepReason(sbn, n, reading, callPrio)
         noteDecision(sbn, uid, false, why)
 
         // Palabras ocultas (privacidad): se reemplaza el contenido
@@ -415,9 +419,9 @@ class NotifListener : NotificationListenerService() {
 
         // 2) Filtros de la isla
         if (!Prefs.islandOn(this)) return
-        if (appKey(sbn.packageName, uid) in Prefs.blocked(this)) return
-        if (hiddenNow()) return          // la notificación del sistema se queda intacta
-        if (reading) {                   // ya la estás leyendo dentro de la app: no entra a la isla ni deja esperando lo anterior de esa app
+        if (!callPrio && appKey(sbn.packageName, uid) in Prefs.blocked(this)) return
+        if (!callPrio && hiddenNow()) return          // la notificación del sistema se queda intacta
+        if (reading && !callPrio) {                   // ya la estás leyendo dentro de la app: no entra a la isla ni deja esperando lo anterior de esa app
             val rp = sbn.packageName
             main.post { markRead(rp, user = uid) }
             return
@@ -442,7 +446,7 @@ class NotifListener : NotificationListenerService() {
         } catch (e: Exception) { null }
 
         // Llamadas: entrante, en curso, en espera y perdida se unen en UNA sola tarjeta con sus botones reales
-        if (isCall(n)) { showCall(sbn, n, title, text, large); return }
+        if (isCall(n)) { showCall(sbn, n, title, text, large, callPrio); return }
         // Texto completo para la vista de detalle ya calculado arriba (se guarda entero en el historial)
         val ci = n.contentIntent
         val ik = appKey(sbn.packageName, uid)      // original y clon tienen su propia tarjeta y su propio destino
@@ -504,7 +508,7 @@ class NotifListener : NotificationListenerService() {
     }
 
     /** null = la isla toma el aviso y lo quita del sistema. Si no, el motivo por el que se queda en el sistema (también para el diagnóstico). */
-    private fun keepReason(sbn: StatusBarNotification, n: Notification, reading: Boolean): String? = when {
+    private fun keepReason(sbn: StatusBarNotification, n: Notification, reading: Boolean, prio: Boolean = false): String? = when {
         !Prefs.islandOn(this) -> "la isla está apagada"
         !Prefs.blockSystem(this) -> "«Bloquear notificaciones del sistema» está apagado"
         !Settings.canDrawOverlays(this) -> "falta el permiso de superposición"
@@ -513,7 +517,8 @@ class NotifListener : NotificationListenerService() {
         !sbn.isClearable -> "Android no deja quitarlo"
         isCall(n) -> "llamada (la isla la muestra sin quitar la del sistema)"
         keepInSystem(n) -> "categoría ${n.category} (se queda en el sistema)"
-        hiddenNow() -> "isla oculta (bloqueo, juego o app elegida)"
+        // Llamada de un contacto prioritario: se salta el bloqueo de juego/app oculta.
+        hiddenNow(prio) -> "isla oculta (bloqueo, juego o app elegida)"
         reading -> "estás dentro de esa app"
         else -> null
     }
@@ -875,14 +880,44 @@ class NotifListener : NotificationListenerService() {
         updateBadge(); updateCount()
     }
 
+    /**
+     * ¿La llamada viene de un contacto PRIORITARIO (favorito de la agenda o de la lista propia de Ryx)?
+     * Se compara el nombre que trae la notificación y, si se puede, el número resuelto por contacto.
+     */
+    private fun callIsPriority(title: CharSequence?, text: CharSequence?): Boolean {
+        if (!Prefs.callPriorityBypass(this)) return false
+        val name = (title?.toString() ?: "").trim()
+        if (name.isEmpty()) return false
+        // Número visible en el texto de la notificación (algunas ROM lo ponen ahí si no hay contacto)
+        val num = Regex("[+]?[0-9][0-9\\-\\s()]{5,}").find(text?.toString() ?: "")?.value
+        return try { Contacts.isPriority(this, name, num) } catch (e: Exception) { false }
+    }
+
+    /** Nombre del contacto para una llamada: el título que trae o, si es un número, el nombre resuelto en la agenda. */
+    private fun contactName(title: CharSequence?, text: CharSequence?): String {
+        val t = (title?.toString() ?: "").trim()
+        if (t.isNotEmpty() && !t.matches(Regex("[+]?[0-9][0-9\\-\\s()]{5,}"))) return t
+        val num = t.ifEmpty { Regex("[+]?[0-9][0-9\\-\\s()]{5,}").find(text?.toString() ?: "")?.value ?: "" }
+        if (num.isEmpty()) return t
+        return try {
+            val uri = android.net.Uri.withAppendedPath(
+                android.provider.ContactsContract.PhoneLookup.CONTENT_FILTER_URI, android.net.Uri.encode(num))
+            contentResolver.query(uri, arrayOf(android.provider.ContactsContract.PhoneLookup.DISPLAY_NAME),
+                null, null, null)?.use { cur -> if (cur.moveToFirst()) cur.getString(0) else t } ?: t
+        } catch (e: Exception) { t }
+    }
+
     /** Llamadas: unifica entrante, en curso, en espera y perdida en UNA sola tarjeta con los botones del sistema. */
-    private fun showCall(sbn: StatusBarNotification, n: Notification, title: CharSequence?, text: CharSequence?, large: Drawable?) {
+    private fun showCall(sbn: StatusBarNotification, n: Notification, title: CharSequence?, text: CharSequence?, large: Drawable?, prio: Boolean) {
         val green = 0xFF30D158.toInt(); val red = 0xFFFF453A.toInt()
         // Tipo de llamada que pone Android: 1 entrante, 2 en curso, 3 en espera; 0 = sin dato
         val ct = try { n.extras.getInt("android.callType", 0) } catch (e: Exception) { 0 }
-        val t = (title?.toString() ?: "").trim()
-        val b = (text?.toString() ?: "").trim()
-        val low = "$t $b".lowercase()
+        val t0 = (title?.toString() ?: "").trim()
+        val b0 = (text?.toString() ?: "").trim()
+        val low = "$t0 $b0".lowercase()
+        // Nombre real del contacto (si el título es un número, se resuelve en la agenda)
+        val t = contactName(title, text)
+        val b = b0
         val missed = ct == 0 && (n.category == "missed_call" || low.contains("perdid") ||
             low.contains("missed") || low.contains("no contestad"))
         val state = when {
@@ -894,7 +929,8 @@ class NotifListener : NotificationListenerService() {
             else -> "En llamada"
         }
         val color = if (missed) red else green
-        // Botones REALES de la notificación (contestar, rechazar, colgar…): se reenvían tal cual
+        // Botones REALES de la notificación (contestar, rechazar, colgar…): se reenvían tal cual, así funcionan
+        // sin ser la app de llamadas por defecto.
         val acts = ArrayList<CardAction>()
         n.actions?.forEach { a ->
             val at = a.title?.toString()?.trim().orEmpty()
@@ -908,19 +944,29 @@ class NotifListener : NotificationListenerService() {
                 dismiss = end,
                 run = { try { pi.send(this@NotifListener, 0, null); buzz() } catch (e: Exception) {} }))
         }
+        // Si no hay botones del sistema, se ponen los propios de Ryx: contestar/colgar no se puede inventar sin
+        // los de la app de teléfono, así que se ofrece Abrir la app de llamada y, en perdidas, ver el registro.
         if (acts.isEmpty()) {
-            // Sin botones del sistema: al menos se abre el marcador o el registro
-            acts.add(CardAction(if (missed) "Ver registro" else "Abrir", color = Glass.ACCENT, filled = true,
-                dismiss = true, run = { openTarget(if (missed) "calllog" else "dialer") }))
+            if (missed) {
+                acts.add(CardAction("Ver registro", color = Glass.ACCENT, filled = true, dismiss = true,
+                    run = { Calls.openLog(this@NotifListener) }))
+            } else {
+                acts.add(CardAction("Abrir app", color = Glass.ACCENT, filled = true, dismiss = true,
+                    run = { Calls.openDialer(this@NotifListener) }))
+            }
         }
-        val icon = large ?: eventIcon("phone", color)
-        val body = if (b.isNotEmpty() && b != state) "$state · $b" else state
-        val sig = "sys:call|$t|$state|$b"
+        // Etiqueta extra si es de un contacto prioritario
+        val label = if (prio) "Llamada prioritaria" else "Llamada"
+        val accent = if (prio) 0xFFFFB020.toInt() else color
+        val icon = large ?: eventIcon("phone", accent)
+        val extra = if (prio) "$state · ★ contacto prioritario" else state
+        val body = if (b.isNotEmpty() && b != extra) "$extra · $b" else extra
+        val sig = "sys:call|$t|$state|$b|$prio"
         // El sistema reenvía la llamada en curso muchas veces: si nada cambió, no se vuelve a animar
         if (cards.any { it.key == "sys:call" && it.sig == sig }) return
         show(packageName, if (t.isNotEmpty()) t else "Llamada", body, icon, false, true, "sys:call", false,
             sig = sig, target = if (missed) "calllog" else "dialer",
-            label = "Llamada", accentOverride = color, actions = acts)
+            label = label, accentOverride = accent, actions = acts)
     }
 
     /** ¿El botón de la notificación sirve para contestar? */
@@ -1722,6 +1768,14 @@ class NotifListener : NotificationListenerService() {
                 mime.startsWith("video/") -> "Video"
                 else -> ""
             }
+            // «Ver una vez»: WhatsApp/Signal/Telegram marcan estos mensajes en el texto o el canal.
+            val lowAll = (n.extras.getCharSequence(Notification.EXTRA_TITLE)?.toString() ?: "") + " " +
+                (n.extras.getCharSequence(Notification.EXTRA_TEXT)?.toString() ?: "") + " " +
+                (n.extras.getCharSequence(Notification.EXTRA_SUB_TEXT)?.toString() ?: "")
+            val l = lowAll.lowercase()
+            if (l.contains("ver una vez") || l.contains("view once") || l.contains("solo una vez") ||
+                l.contains("una sola vez") || l.contains("one-time") || l.contains("temporal"))
+                kind = if (kind.isEmpty()) "Ver una vez" else "$kind · Ver una vez"
             return Pair(bmp?.let { scaleDown(it, 640) }, kind)
         } catch (e: Throwable) {
             return Pair(null, "")
@@ -1969,6 +2023,9 @@ class NotifListener : NotificationListenerService() {
 
     /** Abre la pantalla del sistema de ese evento; si la ROM no la tiene, los Ajustes generales. */
     private fun openTarget(k: String) {
+        // Llamadas: se usa la app de llamadas elegida o la predeterminada del sistema (ver [Calls]).
+        if (k == "calllog") { Calls.openLog(this); return }
+        if (k == "dialer") { Calls.openDialer(this); return }
         for (i in targetIntents(k)) {
             try { i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK); startActivity(i); return } catch (e: Exception) {}
         }

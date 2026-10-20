@@ -1393,7 +1393,7 @@ class MainActivity : Activity() {
 
     /** Historial: búsqueda por texto y por aplicación, agrupado por días y separando Apps y Sistema. */
     private fun buildHistory(p: LinearLayout) {
-        pageHero(p, "history", 0xFF6A62E8.toInt(), "Historial", "Todo lo que pasó por la isla, buscable y exportable")
+        pageHero(p, "history", 0xFF6A62E8.toInt(), "Historial", "Toca todo lo que pasa por la isla: avisos, mensajes, media y llamadas, buscable y exportable")
         val all = Prefs.histAll(this)
         val nApps = all.count { !Sys.isSystemPkg(it.pkg) }
         val nSys = all.count { Sys.isSystemPkg(it.pkg) }
@@ -1597,7 +1597,7 @@ class MainActivity : Activity() {
         sb.append(".t{font-weight:700}.x{color:#c7cfdd;white-space:pre-wrap;word-break:break-word}")
         sb.append(".meta{color:#7f8b9e;font-size:11px;margin-top:4px}img{max-width:100%;border-radius:10px;margin-top:8px;display:block}")
         sb.append("</style></head><body>")
-        sb.append("<h1>Ryx Island · Historial de notificaciones</h1><div class=\"sub\">")
+        sb.append("<h1>Ryx Island · Historial</h1><div class=\"sub\">")
         sb.append(esc("" + items.size + " avisos · " +
             java.text.SimpleDateFormat("dd/MM/yyyy HH:mm", java.util.Locale.getDefault()).format(java.util.Date())))
         sb.append("</div>")
@@ -1819,6 +1819,26 @@ class MainActivity : Activity() {
         permRow(b, "Acceso a notificaciones", "Lee mensajes, llamadas y alertas, y las registra", notifEnabled()) {
             startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS))
         }
+        // ---- Llamadas ----
+        // El sistema SIEMPRE tiene una app de llamadas; Ryx la detecta y usa la predeterminada (o la que elijas).
+        val dialerName = Calls.chosenLabel(this)
+        val dialerOk = Calls.hasDialer(this)
+        permRow(b, "App de llamadas", "Usando: $dialerName. Elige cuál usa Ryx al abrir una llamada",
+            dialerOk) { callsDialog() }
+        val callGranted = Calls.canReadContacts(this) && Calls.canReadCallLog(this) &&
+            Calls.canAnswer(this) && Calls.canCall(this)
+        permRow(b, "Permisos de llamadas y contactos",
+            "Para contestar/colgar, abrir el marcador, ver el registro y detectar tus contactos favoritos (prioritarios)",
+            callGranted) {
+            try { requestPermissions(Calls.runtimePerms(), 7) } catch (e: Throwable) { Calls.openAppPerms(this) }
+        }
+        permRow(b, "Contactos favoritos (prioritarios)",
+            if (!Calls.canReadContacts(this)) "Da el permiso de contactos para leer el grupo «Favoritos» de tu agenda"
+            else "Leídos: ${Contacts.favoriteCount(this)} favoritos. Sus llamadas aparecen SIEMPRE, aunque estés en un juego",
+            Calls.canReadContacts(this)) {
+            if (Calls.canReadContacts(this)) Calls.openAppPerms(this) else
+                try { requestPermissions(arrayOf(android.Manifest.permission.READ_CONTACTS), 7) } catch (e: Throwable) { Calls.openAppPerms(this) }
+        }
         permRow(b, "Dispositivos cercanos", "Detecta conexiones Bluetooth",
             Build.VERSION.SDK_INT < 31 || checkSelfPermission("android.permission.BLUETOOTH_CONNECT") == 0) {
             if (Build.VERSION.SDK_INT >= 31) requestPermissions(arrayOf("android.permission.BLUETOOTH_CONNECT"), 1)
@@ -1853,6 +1873,88 @@ class MainActivity : Activity() {
             r.addView(label(t.label, 16f, R.color.text, true))
             b.addView(r, lp(6))
         }
+    }
+
+    /** Ajustes de LLAMADAS: qué app usar, saltar el bloqueo por contactos prioritarios y gestionar la lista. */
+    private fun callsDialog() { callsSheet() }
+    private fun callsSheet() {
+        // Como la hoja se construye antes de devolverse, se guarda en una referencia para poder cerrarla y
+        // reabrirla con los datos nuevos cuando el usuario cambia algo.
+        var dlgRef: Dialog? = null
+        val dlg = sheet("Llamadas") { b ->
+            val reload: () -> Unit = { dlgRef?.dismiss(); callsSheet() }
+            val dialers = Calls.dialers(this)
+            val def = Calls.defaultDialer(this)
+            b.addView(label("App de llamadas", 16f, R.color.text, true))
+            b.addView(label("Ryx usa la predeterminada del sistema salvo que elijas otra aquí. " +
+                "Hay ${dialers.size} app(s) de llamadas en tu teléfono.", 12f, R.color.muted), lp(4))
+            val rows = ArrayList<Pair<String, String>>()
+            rows.add("" to "Predeterminada del sistema")
+            dialers.forEach { rows.add(it) }
+            rows.forEach { (pkg, name) ->
+                val on = Prefs.callApp(this) == pkg
+                val isDef = pkg.isNotEmpty() && pkg == def
+                val r = LinearLayout(this).apply {
+                    orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
+                    setPadding(px(12), px(12), px(12), px(12))
+                    background = Glass.ripple(this@MainActivity,
+                        Glass.pill(this@MainActivity, if (on) Glass.accentA(0x22) else 0, if (on) Glass.ACCENT else 0, 16f), 16f)
+                    setOnClickListener { Prefs.setCallApp(this@MainActivity, pkg); toast("Listo"); reload() }
+                }
+                r.addView(View(this).apply {
+                    background = android.graphics.drawable.GradientDrawable().apply {
+                        shape = android.graphics.drawable.GradientDrawable.OVAL
+                        setColor(if (on) Glass.ACCENT else Glass.SURFACE_HI) }
+                }, LinearLayout.LayoutParams(px(24), px(24)).apply { marginEnd = px(14) })
+                r.addView(label(if (pkg.isEmpty()) "Predeterminada del sistema" else name, 16f, R.color.text, true),
+                    LinearLayout.LayoutParams(0, WRAP, 1f))
+                if (isDef) r.addView(label("predeterminada", 11f, R.color.gold, true))
+                b.addView(r, lp(6))
+            }
+
+            b.addView(label("Contactos prioritarios", 16f, R.color.text, true).apply { setPadding(0, px(14), 0, 0) })
+            b.addView(rowWithSwitch("La isla aparece SIEMPRE",
+                "Si la llamada es de un contacto prioritario, la isla se muestra aunque estés en un juego o la isla esté oculta",
+                Prefs.callPriorityBypass(this)) { Prefs.setCallPriorityBypass(this, it) }, lp(4))
+            b.addView(rowWithSwitch("Usar el grupo «Favoritos» de la agenda",
+                if (Calls.canReadContacts(this)) "Lee los contactos con estrella de tu agenda"
+                else "Necesita el permiso de contactos (está en Ajustes → Permisos)",
+                Prefs.callUseFavorites(this)) {
+                Prefs.setCallUseFavorites(this, it)
+                if (it && !Calls.canReadContacts(this))
+                    try { requestPermissions(arrayOf(android.Manifest.permission.READ_CONTACTS), 7) } catch (e: Throwable) {}
+            }, lp(4))
+
+            b.addView(label("Añade nombres o números a mano (no hace falta permiso de contactos):", 12f, R.color.muted)
+                .apply { setPadding(0, px(10), 0, 0) })
+            val inOwn = EditText(this).apply {
+                hint = "Nombre o número"; setHintTextColor(Glass.MUTED); setTextColor(Glass.TEXT); textSize = 15f
+                setSingleLine(true); setPadding(px(16), px(12), px(16), px(12))
+                background = Glass.pill(this@MainActivity, 0xFF0E1014.toInt(), Glass.HAIR, 14f)
+            }
+            b.addView(inOwn, lp(4))
+            b.addView(button("Añadir a prioritarios", false) {
+                val v = inOwn.text.toString().trim()
+                if (v.isNotEmpty()) { Prefs.addPriorityName(this, v); toast("Añadido"); reload() }
+            }, lp(6))
+            val own = Prefs.priorityNames(this)
+            if (own.isEmpty()) {
+                b.addView(label("(Sin nombres propios añadidos)", 12f, R.color.muted), lp(4))
+            } else {
+                own.forEach { nm ->
+                    val r = LinearLayout(this).apply {
+                        orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
+                        setPadding(px(6), px(4), px(6), px(4))
+                    }
+                    r.addView(label(nm, 15f, R.color.text, true), LinearLayout.LayoutParams(0, WRAP, 1f))
+                    r.addView(button("Quitar", false) { Prefs.removePriorityName(this, nm); reload() })
+                    b.addView(r)
+                }
+            }
+            b.addView(label("Con el permiso de contactos, Ryx detecta solo los favoritos (estrella). Sin él, usa la lista de arriba.",
+                12f, R.color.muted), lp(8))
+        }
+        dlgRef = dlg
     }
 
     private fun backupDialog() = sheet("Copia de seguridad") { b ->
@@ -2049,7 +2151,7 @@ class MainActivity : Activity() {
         glass(AlertDialog.Builder(this).setTitle(title).setMessage(msg).setPositiveButton("Cerrar", null).show())
 
     /** Hoja inferior con asa: sube desde abajo, con las esquinas de arriba redondeadas, y se cierra deslizando hacia abajo. */
-    private fun sheet(title: String, build: (LinearLayout) -> Unit) {
+    private fun sheet(title: String, build: (LinearLayout) -> Unit): Dialog {
         val dlg = Dialog(this)
         dlg.requestWindowFeature(Window.FEATURE_NO_TITLE)
         val box = LinearLayout(this).apply {
@@ -2107,6 +2209,7 @@ class MainActivity : Activity() {
         })
         dlg.setOnDismissListener { render() }
         dlg.show()
+        return dlg
     }
 
     private fun pickApps(title: String, current: Set<String>, max: Int = 999, onDone: (Set<String>) -> Unit) {
