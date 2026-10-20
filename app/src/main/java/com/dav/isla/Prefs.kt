@@ -257,6 +257,36 @@ object Prefs {
     fun fwFrame(c: Context): Boolean = sp(c).getBoolean("fw_frame", true)
     fun setFwFrame(c: Context, v: Boolean) = sp(c).edit().putBoolean("fw_frame", v).apply()
 
+    // ---- Llamadas: contactos prioritarios y comportamiento ----
+    /**
+     * Nombres (o números) que el usuario marca como prioritarios DENTRO de Ryx, sin depender del permiso de
+     * contactos. Si la llamada viene de uno de ellos, la isla aparece SIEMPRE (aunque haya un juego al frente
+     * o el interruptor de «ocultar en juegos» esté activo). Se guarda como una línea por nombre.
+     */
+    fun priorityNames(c: Context): List<String> = (sp(c).getString("call_prio", "") ?: "")
+        .split("\n").map { it.trim() }.filter { it.isNotEmpty() }
+    fun setPriorityNames(c: Context, list: List<String>) =
+        sp(c).edit().putString("call_prio", list.joinToString("\n")).apply()
+    fun addPriorityName(c: Context, v: String) {
+        val l = priorityNames(c).toMutableList()
+        val n = v.trim()
+        if (n.isNotEmpty() && l.none { it.equals(n, true) }) { l.add(n); setPriorityNames(c, l) }
+    }
+    fun removePriorityName(c: Context, v: String) =
+        setPriorityNames(c, priorityNames(c).filterNot { it.equals(v.trim(), true) })
+
+    /** Que la isla aparezca SIEMPRE para llamadas prioritarias aunque haya un juego o app oculta al frente (por defecto: sí). */
+    fun callPriorityBypass(c: Context): Boolean = sp(c).getBoolean("call_bypass", true)
+    fun setCallPriorityBypass(c: Context, v: Boolean) = sp(c).edit().putBoolean("call_bypass", v).apply()
+
+    /** Usar el grupo «Favoritos» de la agenda (necesita permiso de contactos) además de la lista propia (por defecto: sí). */
+    fun callUseFavorites(c: Context): Boolean = sp(c).getBoolean("call_favs", true)
+    fun setCallUseFavorites(c: Context, v: Boolean) = sp(c).edit().putBoolean("call_favs", v).apply()
+
+    /** Qué app de llamadas usar al pulsar «Abrir» en una llamada: "" = la predeterminada del sistema. */
+    fun callApp(c: Context): String = sp(c).getString("call_app", "") ?: ""
+    fun setCallApp(c: Context, v: String) = sp(c).edit().putString("call_app", v).apply()
+
     // ---- Copia en la nube y actualizaciones ----
     fun cloudUri(c: Context): String = sp(c).getString("cloud_uri", "") ?: ""
     fun setCloudUri(c: Context, v: String) = sp(c).edit().putString("cloud_uri", v).apply()

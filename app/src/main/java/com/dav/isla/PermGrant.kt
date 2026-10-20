@@ -30,10 +30,15 @@ object PermGrant {
     const val BLUETOOTH = "android.permission.BLUETOOTH_CONNECT"
     const val POST_NOTIF = "android.permission.POST_NOTIFICATIONS"
     const val OVERLAY = "android.permission.SYSTEM_ALERT_WINDOW"
+    // Permisos de LLAMADAS: contactos (favoritos prioritarios), registro de llamadas y contestar/marcar.
+    const val READ_CONTACTS = "android.permission.READ_CONTACTS"
+    const val READ_CALL_LOG = "android.permission.READ_CALL_LOG"
+    const val ANSWER_CALLS = "android.permission.ANSWER_PHONE_CALLS"
+    const val CALL_PHONE = "android.permission.CALL_PHONE"
+    const val READ_PHONE_STATE = "android.permission.READ_PHONE_STATE"
 
     /** Permisos «normales» de Android, que se conceden con `pm grant`. */
-    private val NORMAL = listOf(BLUETOOTH, POST_NOTIF)
-
+    private val NORMAL = listOf(BLUETOOTH, POST_NOTIF, READ_CONTACTS, READ_CALL_LOG, ANSWER_CALLS, CALL_PHONE, READ_PHONE_STATE)
     /**
      * Permisos «de aplicación» (appops). No se conceden con `pm grant`, van por `appops set`.
      *   - SYSTEM_ALERT_WINDOW: dibujar encima (la isla y las barras del formato libre).
