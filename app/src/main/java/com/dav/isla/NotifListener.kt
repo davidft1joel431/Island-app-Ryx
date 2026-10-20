@@ -254,8 +254,8 @@ class NotifListener : NotificationListenerService() {
         val line = i.notes.trim().lineSequence().firstOrNull { it.isNotBlank() }?.take(160)
             ?: "Toca para ver novedades y descargar."
         show(packageName, "Actualización de Ryx", "$v · $line", eventIcon("download", Glass.ACCENT),
-            true, true, "sys:update", false, "ev:update",
-            target = "update", label = "Ryx Island",
+            autoHide = true, expand = true, key = "sys:update", ephemeral = false,
+            sig = "ev:update", target = "update", label = "Ryx Island",
             accentOverride = Glass.ACCENT)
     }
 
@@ -311,18 +311,26 @@ class NotifListener : NotificationListenerService() {
         }
         var title: CharSequence? = n.extras.getCharSequence(Notification.EXTRA_TITLE)
         var text: CharSequence? = n.extras.getCharSequence(Notification.EXTRA_TEXT)
-        if (title == null && text == null) return
+        // Ninguna app ni aviso del sistema debe escaparse: si no trae título ni texto, se rellena con el nombre de
+        // la app y el del canal (pasa con Wi‑Fi, Bluetooth, USB, batería… que a veces solo traen icono).
+        val uid0 = if (sbn.userId >= 0) sbn.userId else myUser
+        if (title == null) title = appLabel(sbn.packageName, sbn.user, uid0)
+        if (text == null) {
+            val ch = n.extras.getCharSequence(Notification.EXTRA_SUB_TEXT)
+                ?: n.extras.getCharSequence(Notification.EXTRA_INFO_TEXT)
+                ?: channelName(n)
+            text = ch ?: ""
+        }
 
         // Ya estás dentro de esa app (pantalla encendida y desbloqueada): lo estás leyendo ahí, la isla no lo toma
         val uid = if (sbn.userId >= 0) sbn.userId else myUser
         if (isClone(uid)) { cloneSeen[sbn.packageName] = uid; Clones.note(this, sbn.packageName, uid) }
         val reading = readingNow(sbn.packageName, uid)
 
-        // 0) SOLO LA ISLA: si ella va a mostrarla, el aviso del sistema se quita YA (antes de guardar o preparar nada)
-        //    para que apenas llegue a verse. Llamadas, multimedia, navegación, alarmas y progresos se quedan en el sistema.
+        // 0) SOLO LA ISLA: si la isla va a MOSTRARLA, se quita el aviso del sistema en el mismo momento de mostrarlo
+        //    (no antes). Así ninguna notificación se pierde: si la isla no la enseña, la del sistema se queda.
+        //    Llamadas, multimedia, navegación, alarmas y progresos se quedan siempre en el sistema.
         val why = keepReason(sbn, n, reading)
-        val takeOver = why == null
-        if (takeOver) { try { cancelNotification(sbn.key) } catch (e: Exception) {} }
         noteDecision(sbn, uid, false, why)
 
         // Palabras ocultas (privacidad): se reemplaza el contenido
@@ -355,8 +363,10 @@ class NotifListener : NotificationListenerService() {
 
         val (mediaBmp, mediaKind) = extractMedia(n)
 
-        // 1) La isla REGISTRA todo en el historial, por aplicación, con el texto COMPLETO
-        if (Prefs.keepHistory(this) && (!sbn.isOngoing || isCall(n))) {
+        // 1) La isla REGISTRA todo en el historial, por aplicación, con el texto COMPLETO.
+        //    Se guardan también los avisos «en curso» (música, descargas, navegación…): así el historial ve
+        //    TODAS las apps y TODOS los avisos del sistema, aunque la isla no los muestre como tarjeta.
+        if (Prefs.keepHistory(this)) {
             val hp = sbn.packageName; val ht = title?.toString() ?: ""; val hx = (full ?: text)?.toString() ?: ""
             // Los avisos del sistema se de-duplican durante más tiempo: no queremos cuatro avisos de batería seguidos.
             val win = if (Sys.isSystemPkg(hp)) 120_000L else 3_000L
@@ -382,10 +392,13 @@ class NotifListener : NotificationListenerService() {
 
         // Batería: todos los avisos del sistema se unen en UNA sola tarjeta con el nivel en tiempo real
         if (Sys.isBatteryNotif(sbn.packageName, title, text)) {
-            val bat = Battery.now(this)
-            val body = (text?.toString() ?: "").let { if (bat.pct >= 0) "$it · ${bat.pct}%" else it }
-            show(sbn.packageName, title, body, eventIcon("battery", 0xFF30D158.toInt()), true, true,
-                "sys:battery", false, sig = "sys:battery|$title|$text", target = "battery", label = "Batería")
+            if (why == null) {
+                val bat = Battery.now(this)
+                val body = (text?.toString() ?: "").let { if (bat.pct >= 0) "$it · ${bat.pct}%" else it }
+                show(sbn.packageName, title, body, eventIcon("battery", 0xFF30D158.toInt()), true, true,
+                    "sys:battery", false, sig = "sys:battery|$title|$text", target = "battery", label = "Batería",
+                    systemKey = sbn.key)
+            }
             return
         }
 
@@ -396,7 +409,6 @@ class NotifListener : NotificationListenerService() {
 
         // Llamadas: entrante, en curso, en espera y perdida se unen en UNA sola tarjeta con sus botones reales
         if (isCall(n)) { showCall(sbn, n, title, text, large); return }
-
         // Texto completo para la vista de detalle ya calculado arriba (se guarda entero en el historial)
         val ci = n.contentIntent
         val ik = appKey(sbn.packageName, uid)      // original y clon tienen su propia tarjeta y su propio destino
@@ -411,7 +423,8 @@ class NotifListener : NotificationListenerService() {
         show(sbn.packageName, title, text, large, true, true, "app:$ik", false,
             fallback = small, media = mediaBmp, detailText = full ?: text,
             sig = "${sbn.key}|$title|$text", user = sbn.user, userId = uid,
-            label = tag?.first, accentOverride = tag?.second)
+            label = tag?.first, accentOverride = tag?.second,
+            systemKey = if (why == null) sbn.key else "")
     }
 
     /** La notificación se canceló (la leíste, la deslizaste o la app la retiró). Lo que cancela la propia isla no cuenta. */
@@ -493,6 +506,13 @@ class NotifListener : NotificationListenerService() {
     /** ¿Es una llamada (entrante, en curso, en espera o perdida)? */
     private fun isCall(n: Notification): Boolean =
         n.category == "call" || n.category == "missed_call"
+
+    /** Nombre del canal del aviso (respaldo cuando la notificación no trae texto). */
+    private fun channelName(n: Notification): CharSequence? =
+        try { n.channelId?.let { channelId ->
+            val nm = getSystemService(NOTIFICATION_SERVICE) as android.app.NotificationManager
+            @Suppress("DEPRECATION") nm.getNotificationChannel(channelId)?.name
+        } } catch (e: Exception) { null }
 
     // ---------- Eventos del sistema ----------
 
@@ -1243,7 +1263,8 @@ class NotifListener : NotificationListenerService() {
         expand: Boolean = true, key: String = "$pkg|$t", ephemeral: Boolean = false,
         fallback: Drawable? = null, media: Bitmap? = null, detailText: CharSequence? = null,
         sig: String = "", target: String? = null, label: String? = null, accentOverride: Int? = null,
-        user: android.os.UserHandle? = null, userId: Int = -1, actions: List<CardAction> = emptyList()
+        user: android.os.UserHandle? = null, userId: Int = -1, actions: List<CardAction> = emptyList(),
+        systemKey: String = ""     // clave del aviso del sistema que hay que quitar al mostrarlo ("" = ninguno)
     ) {
         main.post {
             if (!::wm.isInitialized || !Settings.canDrawOverlays(this)) return@post
@@ -1251,6 +1272,8 @@ class NotifListener : NotificationListenerService() {
             buildIsland()
             val v = island ?: return@post
             val params = lp ?: return@post
+            // La isla va a mostrarla: ahora sí se quita el aviso del sistema (solo si lo pedimos con [systemKey]).
+            if (systemKey.isNotEmpty()) { try { cancelNotification(systemKey) } catch (e: Exception) {} }
             val baseIcon: Drawable? = try { packageManager.getApplicationIcon(pkg) } catch (e: Exception) { null }
             // El clon lleva la insignia que le pone la ROM, para distinguirlo del original a simple vista
             val sysIcon: Drawable? = if (baseIcon != null && isClone(userId) && user != null)
