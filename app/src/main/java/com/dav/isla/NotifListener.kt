@@ -995,10 +995,9 @@ class NotifListener : NotificationListenerService() {
         val acts = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL; visibility = View.GONE
             val chipLp = { l: Int, r: Int -> LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply { marginStart = px(l); marginEnd = px(r) } }
-            addView(actionChip("Abrir", true, s) { openCurrent(false) }, chipLp(0, 3))
-            addView(actionChip("Libre", false, s) { openCurrent(true, 0) }, chipLp(3, 3))
-            addView(actionChip("Burbuja", false, s) { openCurrent(true, 1) }, chipLp(3, 3))
-            addView(actionChip("Descartar", false, s) { dismissCurrent() }, chipLp(3, 0))
+            addView(actionIcon(R.drawable.ic_arrow_right, s.textColor, true, s) { openCurrent(false) }, chipLp(0, 3))
+            addView(actionIcon(R.drawable.ic_arrow_down, s.textColor, false, s) { openCurrent(true, 0) }, chipLp(3, 3))
+            addView(actionIcon(R.drawable.ic_close, 0xFFFF5A5F.toInt(), false, s) { dismissCurrent() }, chipLp(3, 0))
         }
         detailImg = dImg
         actionsRow = acts
@@ -1078,18 +1077,6 @@ class NotifListener : NotificationListenerService() {
         }
     }
 
-    private fun actionChip(text: String, primary: Boolean, s: IslandStyle, onClick: () -> Unit) = TextView(this).apply {
-        this.text = text; gravity = Gravity.CENTER; textSize = 12.5f
-        setTypeface(typeface, Typeface.BOLD)
-        setTextColor(if (primary) 0xFF1B0B02.toInt() else s.textColor)
-        setPadding(px(6), px(9), px(6), px(9))
-        background = GradientDrawable().apply {
-            cornerRadius = px(16).toFloat()
-            setColor(if (primary) Glass.ACCENT else if (s.textColor == 0xFFFFFFFF.toInt()) 0x30FFFFFF else 0x22000000)
-        }
-        setOnClickListener { onClick() }
-    }
-
     /** Píldora de acción con color propio (verde contestar, rojo colgar, azul Wi-Fi…). */
     private fun chip(text: String, color: Int, filled: Boolean, s: IslandStyle, onClick: () -> Unit) = TextView(this).apply {
         this.text = text; gravity = Gravity.CENTER; textSize = 12.5f
@@ -1109,6 +1096,23 @@ class NotifListener : NotificationListenerService() {
         setOnClickListener { onClick() }
     }
 
+    /**
+     * Botón de acción en forma de icono (en vez de texto): » para abrir, ⇣ para formato libre, ✕ para descartar.
+     * Se usa el mismo fondo de píldora que los botones de texto para que la fila siga viéndose uniforme.
+     */
+    private fun actionIcon(res: Int, tint: Int, primary: Boolean, s: IslandStyle, onClick: () -> Unit) = FrameLayout(this).apply {
+        setPadding(px(10), px(9), px(10), px(9))
+        background = GradientDrawable().apply {
+            cornerRadius = px(16).toFloat()
+            setColor(if (primary) Glass.ACCENT else if (s.textColor == 0xFFFFFFFF.toInt()) 0x30FFFFFF else 0x22000000)
+        }
+        val d = getDrawable(res)!!.mutate()
+        d.setTint(if (primary) 0xFF10131A.toInt() else tint)
+        val iv = ImageView(this@NotifListener).apply { setImageDrawable(d); scaleType = ImageView.ScaleType.FIT_CENTER }
+        addView(iv, FrameLayout.LayoutParams(px(18), px(18), Gravity.CENTER))
+        setOnClickListener { onClick() }
+    }
+
     /** Botones de la tarjeta: los propios (llamadas, Wi-Fi, punto de acceso) o los de siempre. */
     private fun rebuildActions(c: Card) {
         val acts = actionsRow ?: return
@@ -1123,10 +1127,10 @@ class NotifListener : NotificationListenerService() {
                 }, chipLp(if (i == 0) 0 else 3, if (i == c.actions.size - 1) 0 else 3))
             }
         } else {
-            acts.addView(actionChip("Abrir", true, s) { openCurrent(false) }, chipLp(0, 3))
-            acts.addView(actionChip("Libre", false, s) { openCurrent(true, 0) }, chipLp(3, 3))
-            acts.addView(actionChip("Burbuja", false, s) { openCurrent(true, 1) }, chipLp(3, 3))
-            acts.addView(actionChip("Descartar", false, s) { dismissCurrent() }, chipLp(3, 0))
+            // Iconos: »  abrir  ·  ⇣  formato libre  ·  ✕  descartar (rojo). «Burbuja» se eliminó del diseño.
+            acts.addView(actionIcon(R.drawable.ic_arrow_right, s.textColor, true, s) { openCurrent(false) }, chipLp(0, 3))
+            acts.addView(actionIcon(R.drawable.ic_arrow_down, s.textColor, false, s) { openCurrent(true, 0) }, chipLp(3, 3))
+            acts.addView(actionIcon(R.drawable.ic_close, 0xFFFF5A5F.toInt(), false, s) { dismissCurrent() }, chipLp(3, 0))
         }
     }
 
@@ -1444,13 +1448,13 @@ class NotifListener : NotificationListenerService() {
     private fun doAction(a: Int) {
         when (a) {
             1 -> openCurrent(false)
-            2 -> openCurrent(true)          // ventana según tu ajuste (formato libre o burbuja)
+            2 -> openCurrent(true, 0)       // ventana en formato libre
             3 -> dismissCurrent()
             4 -> page(1)
             5 -> page(-1)
             6 -> collapse()
             7 -> enterDetail()
-            8 -> openCurrent(true, 1)       // burbuja
+            8 -> {}                          // «Burbuja» retirada: sin acción
             9 -> openCurrent(true, 0)       // formato libre
             10 -> copyCurrent()
             11 -> muteCurrent()
