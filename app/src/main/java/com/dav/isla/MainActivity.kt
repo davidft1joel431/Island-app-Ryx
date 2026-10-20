@@ -540,10 +540,10 @@ class MainActivity : Activity() {
         val rgb = color and 0x00FFFFFF
         val body = android.graphics.drawable.GradientDrawable(
             android.graphics.drawable.GradientDrawable.Orientation.TL_BR,
-            intArrayOf((rgb or 0x8C000000).toInt(), (rgb or 0x3A000000).toInt(), 0x1F000000)).apply { cornerRadius = px(30).toFloat() }
+            intArrayOf((rgb or 0x8C000000).toInt(), (rgb or 0x3A000000).toInt(), 0x1F000000.toInt())).apply { cornerRadius = px(30).toFloat() }
         val shine = android.graphics.drawable.GradientDrawable(
             android.graphics.drawable.GradientDrawable.Orientation.TOP_BOTTOM,
-            intArrayOf(0x2EFFFFFF, 0x00FFFFFF)).apply { cornerRadius = px(30).toFloat() }
+            intArrayOf(0x2EFFFFFF.toInt(), 0x00FFFFFF.toInt())).apply { cornerRadius = px(30).toFloat() }
         val rim = android.graphics.drawable.GradientDrawable().apply {
             cornerRadius = px(30).toFloat(); setColor(0); setStroke(px(1), (rgb or 0x80000000).toInt())
         }

@@ -129,7 +129,7 @@ object FloatFrame {
             }
             bar.addView(TextView(app).apply {
                 text = "━━  ${if (title.isNotEmpty()) title else "mover"}"; setTextColor(Color.WHITE); textSize = 12f
-                maxLines = 1; ellipsize = TextView.TruncateAt.END
+                maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END
                 layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
             })
             bar.addView(TextView(app).apply {
