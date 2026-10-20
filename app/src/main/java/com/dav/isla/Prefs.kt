@@ -39,7 +39,7 @@ object Prefs {
     fun netAt(c: Context): Long = sp(c).getLong("net_at", 0L)
     fun setNetAt(c: Context, v: Long) = sp(c).edit().putLong("net_at", v).apply()
 
-    /** Versión de la que YA se avisó en el panel del sistema (para no repetir la notificación en cada comprobación). */
+    /** Versión de la que YA se avisó (para no repetir el aviso en cada comprobación). */
     fun updSeen(c: Context): String = sp(c).getString("upd_seen", "") ?: ""
     fun setUpdSeen(c: Context, v: String) = sp(c).edit().putString("upd_seen", v).apply()
 
@@ -109,7 +109,8 @@ object Prefs {
     // ---- Respaldo ----
     fun exportAll(c: Context): String =
         org.json.JSONObject().also { o -> sp(c).all.forEach { (k, v) ->
-            if (k != "hist" && k != "hist2" && k != "last_log" && !k.startsWith("cloud_") && !k.startsWith("upd_")) o.put(k, if (v is Set<*>) org.json.JSONArray(v.toList()) else v) } }.toString()
+            if (k != "hist" && k != "hist2" && k != "last_log" && !k.startsWith("cloud_") && !k.startsWith("upd_")
+                && k != "backup_last" && k != "backup_stamp") o.put(k, if (v is Set<*>) org.json.JSONArray(v.toList()) else v) } }.toString()
     fun importAll(c: Context, json: String): Boolean = try {
         val o = org.json.JSONObject(json); val e = sp(c).edit()
         o.keys().forEach { k -> when (val v = o.get(k)) {
@@ -251,6 +252,31 @@ object Prefs {
     fun setCloudLast(c: Context, v: Long) = sp(c).edit().putLong("cloud_last", v).apply()
     fun updLast(c: Context): Long = sp(c).getLong("upd_last", 0L)
     fun setUpdLast(c: Context, v: Long) = sp(c).edit().putLong("upd_last", v).apply()
+    /** Avisar de la versión nueva CON LA ISLA en vez del panel del sistema (por defecto: sí). */
+    fun updViaIsland(c: Context): Boolean = sp(c).getBoolean("upd_island", true)
+    fun setUpdViaIsland(c: Context, v: Boolean) = sp(c).edit().putBoolean("upd_island", v).apply()
+    /** Poner también el aviso en el panel del sistema además del de la isla (por defecto: no). */
+    fun updAlsoPanel(c: Context): Boolean = sp(c).getBoolean("upd_panel", false)
+    fun setUpdAlsoPanel(c: Context, v: Boolean) = sp(c).edit().putBoolean("upd_panel", v).apply()
+    /** Cada cuántos segundos se mira GitHub (por defecto 30 s). */
+    fun updEverySec(c: Context): Int = sp(c).getInt("upd_every_s", 30)
+    fun setUpdEverySec(c: Context, v: Int) = sp(c).edit().putInt("upd_every_s", v).apply()
+
+    // ---- Carpeta propia de copias (dentro de la app) ----
+    /** Guardar copias solo, sin tocar nada (por defecto: sí). */
+    fun backupAuto(c: Context): Boolean = sp(c).getBoolean("backup_auto", true)
+    fun setBackupAuto(c: Context, v: Boolean) = sp(c).edit().putBoolean("backup_auto", v).apply()
+    /** Con qué frecuencia se guarda la copia interna (minutos; por defecto 30). */
+    fun backupEveryMin(c: Context): Int = sp(c).getInt("backup_every_m", 30)
+    fun setBackupEveryMin(c: Context, v: Int) = sp(c).edit().putInt("backup_every_m", v).apply()
+    /** Cuántas copias internas se conservan (por defecto 7). */
+    fun backupKeep(c: Context): Int = sp(c).getInt("backup_keep", 7)
+    fun setBackupKeep(c: Context, v: Int) = sp(c).edit().putInt("backup_keep", v).apply()
+    /** Suma de comprobación de los datos: si cambia, hay algo nuevo que guardar. */
+    fun backupStamp(c: Context): String = sp(c).getString("backup_stamp", "") ?: ""
+    fun setBackupStamp(c: Context, v: String) = sp(c).edit().putString("backup_stamp", v).apply()
+    fun backupLast(c: Context): Long = sp(c).getLong("backup_last", 0L)
+    fun setBackupLast(c: Context, v: Long) = sp(c).edit().putLong("backup_last", v).apply()
     /** Variante de apertura directa que funcionó en esta ROM (-1 = sin calibrar). */
     fun fwVariant(c: Context): Int = sp(c).getInt("fw_variant", -1)
     fun setFwVariant(c: Context, v: Int) = sp(c).edit().putInt("fw_variant", v).apply()
