@@ -306,12 +306,13 @@ object Prefs {
     fun setChatMarkScreen(c: Context, v: Boolean) = sp(c).edit().putBoolean("chat_mark", v).apply()
 
     /**
-     * Guardar también una CAPTURA DE PANTALLA de los chats leídos (imágenes, vídeos, stickers que se ven).
-     * La accesibilidad no da los píxeles de una imagen; la única forma sin root es capturar la pantalla del propio
-     * servicio. Se espacia (Android limita la frecuencia) y por eso es una opción aparte. Por defecto: sí si hay captura.
+     * Registrar también el TIPO de los adjuntos que se ven en el chat (Foto, Vídeo, Sticker, Ver una vez,
+     * GIF, Audio, Documento…) SIN hacer ninguna captura de pantalla: se lee del árbol de accesibilidad, que
+     * expone la descripción del adjunto pero no sus píxeles. Discreto: no gasta memoria ni almacenamiento y no
+     * dispara el aviso del sistema. Por defecto: activado.
      */
-    fun chatShots(c: Context): Boolean = sp(c).getBoolean("chat_shot", true)
-    fun setChatShots(c: Context, v: Boolean) = sp(c).edit().putBoolean("chat_shot", v).apply()
+    fun chatMedia(c: Context): Boolean = sp(c).getBoolean("chat_media", true)
+    fun setChatMedia(c: Context, v: Boolean) = sp(c).edit().putBoolean("chat_media", v).apply()
 
     // ---- Copia en la nube y actualizaciones ----
     fun cloudUri(c: Context): String = sp(c).getString("cloud_uri", "") ?: ""
