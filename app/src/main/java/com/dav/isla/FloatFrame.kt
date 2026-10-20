@@ -65,9 +65,13 @@ object FloatFrame {
     @Volatile private var generation = 0
     @Volatile private var lockUntil = 0L
     @Volatile private var dragging = false
-    @Volatile private var pending: Rect? = null
-    @Volatile private var worker = false
     @Volatile private var syncQueued = false
+    // Cola de envíos a la ventana real: un solo hueco con «gana el último». Se guarda dentro de un monitor para que
+    // quien escribe y quien vacía lo hagan de forma atómica (antes un hilo podía borrar lo que otro acababa de
+    // poner y la ventana «no obedecía»: parecía que no respondía).
+    private val qLock = Any()
+    private var qLast: Rect? = null
+    private var qRunning = false
     private var misses = 0
     private var fullCount = 0
     private var moverFails = 0
@@ -75,6 +79,21 @@ object FloatFrame {
     private var warned = false
     private var nudge = false           // la ROM ignora un movimiento que no cambia el tamaño: se pide con 1 px de diferencia
     private var nudgeTick = 0
+
+    // ── Rendimiento del arrastre ────────────────────────────────────────────────────────────────
+    // Cada updateViewLayout es un viaje a WindowManager. Con un toque de 120 Hz llegan más dedos que fotogramas, así
+    // que solo se manda lo que ha cambiado de verdad y, mientras se MUEVE, el tirador inferior no se toca (la ventana
+    // real sigue donde estaba, moverlo habría sido un viaje por fotograma sin motivo).
+    private var attached = false                     // barra y tirador ya están en pantalla
+    private var dragMove = true                      // el gesto actual es de MOVER (no de cambiar el tamaño)
+    private val lb = intArrayOf(Int.MIN_VALUE, Int.MIN_VALUE, -1, -1)     // barra dibujada: x, y, ancho, alto
+    private val lg = intArrayOf(Int.MIN_VALUE, Int.MIN_VALUE, -1, -1)     // tirador dibujado
+    private val lgh = intArrayOf(Int.MIN_VALUE, Int.MIN_VALUE, -1, -1)    // fantasma dibujado
+    private var reserve = 0                          // ancho que la barra deja libre a la derecha (botones de la ROM)
+
+    // La barra desaparece al quitar la ventana (minimizar/cerrar); aquí se apunta para volver a ponerla si vuelve.
+    private var watch: Runnable? = null
+    private var watchStop = 0L
 
     private const val OVL_FLAGS = WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
         WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS
@@ -90,6 +109,12 @@ object FloatFrame {
             ctx = app; taskId = id; pkgName = pkg; title = label; priv = false; r.set(bounds); cloneUser = user; userIdN = userId
             misses = 0; fullCount = 0; moverFails = 0; moverBroken = false; warned = false; lockUntil = 0L
             nudge = Prefs.fwMoveNudge(app)
+            reserve = dp(app, 132)                  // hueco para los botones del sistema (minimizar/maximizar)
+            attached = false
+            lb[0] = Int.MIN_VALUE; lb[1] = Int.MIN_VALUE; lb[2] = -1; lb[3] = -1
+            lg[0] = Int.MIN_VALUE; lg[1] = Int.MIN_VALUE; lg[2] = -1; lg[3] = -1
+            lgh[0] = Int.MIN_VALUE; lgh[1] = Int.MIN_VALUE; lgh[2] = -1; lgh[3] = -1
+            stopWatch()
             val w = app.getSystemService(Context.WINDOW_SERVICE) as WindowManager
             wm = w
             val gen = generation
@@ -104,7 +129,8 @@ object FloatFrame {
             }
             bar.addView(TextView(app).apply {
                 text = "━━  ${if (title.isNotEmpty()) title else "mover"}"; setTextColor(Color.WHITE); textSize = 12f
-                maxLines = 1; layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+                maxLines = 1; ellipsize = TextView.TruncateAt.END
+                layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
             })
             bar.addView(TextView(app).apply {
                 text = "✕"; setTextColor(Color.WHITE); textSize = 14f
@@ -129,6 +155,7 @@ object FloatFrame {
             ensureGhost(app)
             place()
             try { w.addView(bar, hp); w.addView(g, gp) } catch (e: Exception) { hide(); return@post }
+            attached = true
 
             if (pkg.isNotEmpty() && RyxAccessibility.instance != null) {
                 bg.postDelayed({ syncNow(gen) }, 150)            // primera lectura: se corrige a los límites reales
@@ -150,7 +177,8 @@ object FloatFrame {
     fun hide() {
         generation++
         bg.removeCallbacksAndMessages(null)
-        pending = null; syncQueued = false; dragging = false
+        synchronized(qLock) { qLast = null; qRunning = false }
+        syncQueued = false; dragging = false; attached = false
         hideGhost()
         val w = wm
         try { handle?.let { w?.removeView(it) } } catch (e: Exception) {}
@@ -158,15 +186,45 @@ object FloatFrame {
         handle = null; grip = null; ghost = null; ghostP = null
     }
 
+    /** Ancho útil de la barra y del tirador: se deja libre la esquina superior derecha, donde la ROM dibuja los
+     *  botones de minimizar/maximizar de la ventana libre (viven en la decoración del sistema, justo encima de la app).
+     *  Taparlos era el motivo de que «no respondieran» al tocarlos. */
+    private fun barWidth(): Int {
+        val c = ctx ?: return r.width()
+        val w = r.width(); val free = if (reserve > 0) reserve else dp(c, 132)
+        return when {
+            w - free >= dp(c, 130) -> w - free          // sobra sitio: barra completa y esquina libre
+            w >= dp(c, 220) -> w * 50 / 100             // ventana estrecha: la barra ocupa la mitad izquierda
+            else -> w                                   // ventana diminuta: se deja entera (aquí no caben dos cosas)
+        }
+    }
+
     private fun place() {
         val c = ctx ?: return
         val sh = c.resources.displayMetrics.heightPixels
-        hp?.let { it.width = r.width(); it.x = r.left; it.y = if (r.top >= it.height) r.top - it.height else r.top }
-        gp?.let { it.width = r.width(); it.x = r.left; it.y = if (r.bottom + it.height <= sh) r.bottom else r.bottom - it.height }
+        val bw = barWidth()
+        hp?.let {
+            it.width = bw; it.x = r.left
+            it.y = if (r.top >= it.height) r.top - it.height else 0
+        }
+        gp?.let { it.width = bw; it.x = r.left; it.y = if (r.bottom + it.height <= sh) r.bottom else r.bottom - it.height }
         ghostP?.let { it.width = r.width(); it.height = r.height(); it.x = r.left; it.y = r.top }
-        try { handle?.let { wm?.updateViewLayout(it, hp) } } catch (e: Exception) {}
-        try { grip?.let { wm?.updateViewLayout(it, gp) } } catch (e: Exception) {}
-        if (ghostShown) try { ghost?.let { wm?.updateViewLayout(it, ghostP) } } catch (e: Exception) {}
+        if (!attached) return
+        upd(handle, hp, lb)
+        // Mientras se MUEVE, la ventana real no se ha tocado: el tirador no cambia, así que ni se le pregunta a WindowManager
+        if (!(dragging && dragMove)) upd(grip, gp, lg)
+        if (ghostShown) upd(ghost, ghostP, lgh)
+    }
+
+    /** Solo manda la vista si sus medidas o su posición han cambiado de verdad: cada updateViewLayout es un viaje
+     *  a WindowManager y en un arrastre llegan más toques que fotogramas. */
+    private fun upd(v: View?, p: WindowManager.LayoutParams?, last: IntArray) {
+        if (v == null || p == null) return
+        if (last[0] == p.x && last[1] == p.y && last[2] == p.width && last[3] == p.height) return
+        last[0] = p.x; last[1] = p.y; last[2] = p.width; last[3] = p.height
+        try { wm?.updateViewLayout(v, p) } catch (e: Exception) {
+            last[0] = Int.MIN_VALUE; last[1] = Int.MIN_VALUE; last[2] = -1; last[3] = -1
+        }
     }
 
     // ───────────────────────────── Marco fantasma ─────────────────────────────
@@ -219,21 +277,24 @@ object FloatFrame {
 
     // ───────────────────────────── Seguimiento real ─────────────────────────────
 
-    /** Lo llama el servicio de accesibilidad en cada cambio de ventanas. Se junta en una sola lectura cada ~12 ms. */
+    /** Lo llama el servicio de accesibilidad en cada cambio de ventanas. Se junta en una sola lectura cada ~50 ms
+     *  (con 12 ms llegaban decenas de lecturas por segundo durante cada animación de minimizar/maximizar, y eso
+     *  se notaba como tirones en toda la interfaz). */
     fun onWindowsChanged() {
         // Mientras arrastras no se consulta la ventana real: cada cambio de ventanas dispararía una lectura por binder y
         // eso es justo lo que hacía que el gesto fuera a tirones.
         if (handle == null || dragging || syncQueued) return
+        if (System.currentTimeMillis() < lockUntil) return      // la ventana sigue moviéndose: se espera a que se quede
         syncQueued = true
         val gen = generation
-        bg.postDelayed({ syncQueued = false; syncNow(gen) }, 12)
+        bg.postDelayed({ syncQueued = false; syncNow(gen) }, 50)
     }
 
     private fun pollRun(gen: Int): Runnable = object : Runnable {
         override fun run() {
             if (generation != gen || handle == null) return
             syncNow(gen)
-            bg.postDelayed(this, 400)
+            bg.postDelayed(this, 250)
         }
     }
 
@@ -250,16 +311,52 @@ object FloatFrame {
     private fun applyReal(real: Rect?, gen: Int) {
         if (generation != gen || handle == null) return
         val c = ctx ?: return
-        if (real == null) { if (++misses >= 6) hide(); return }       // la ventana ya no existe → fuera las asas
+        if (real == null) { if (++misses >= 5) gone(); return }          // la ventana ya no existe → fuera las asas
         misses = 0
         val m = c.resources.displayMetrics
         val full = real.width() >= m.widthPixels * 0.97f && real.height() >= m.heightPixels * 0.88f
-        if (full) { if (++fullCount >= 3) hide(); return }            // pasó a pantalla completa
+        if (full) { if (++fullCount >= 3) gone(); return }               // pasó a pantalla completa
         fullCount = 0
         if (dragging) return                                          // mientras arrastras manda tu dedo
         if (System.currentTimeMillis() < lockUntil) return            // se espera a que la ventana alcance lo pedido
         if (!sameRect(real, r)) { r.set(real); place() }
     }
+
+    /**
+     * La ventana se fue: la ROM la minimizó, la cerró o la llevó a pantalla completa. La barra se quita, pero se queda
+     * mirando (una sola consulta cada 500 ms, 60 s): si el sistema la vuelve a poner en ventana libre, la barra regresa
+     * sola. Antes desaparecía y ya no volvía, y parecía que los botones de minimizar/maximizar no hacían nada.
+     */
+    private fun gone() {
+        val pk = pkgName
+        hide()
+        val gen = generation
+        if (pk.isEmpty() || RyxAccessibility.instance == null) return
+        val c = ctx ?: return
+        val tid = taskId; val lbx = title; val cu = cloneUser; val un = userIdN
+        stopWatch()
+        watchStop = System.currentTimeMillis() + 60_000L
+        val w = object : Runnable {
+            override fun run() {
+                if (System.currentTimeMillis() > watchStop) { watch = null; return }
+                val svc = RyxAccessibility.instance
+                if (svc == null) { watch = null; return }
+                val b = svc.windowBounds(pk)
+                val dm = c.resources.displayMetrics
+                val stillFull = b != null && b.width() >= dm.widthPixels * 0.97f && b.height() >= dm.heightPixels * 0.88f
+                if (b != null && !b.isEmpty && !stillFull && generation == gen) {
+                    watch = null
+                    main.post { if (handle == null) show(c, tid, Rect(b), pk, lbx, cu, un) }
+                    return
+                }
+                bg.postDelayed(this, 500)
+            }
+        }
+        watch = w
+        bg.postDelayed(w, 500)
+    }
+
+    private fun stopWatch() { watch?.let { bg.removeCallbacks(it) }; watch = null; watchStop = 0L }
 
     // ─────────────────────────── Mover y cambiar tamaño ───────────────────────────
 
@@ -268,7 +365,7 @@ object FloatFrame {
         val m = c.resources.displayMetrics
         when (e.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
-                downX = e.rawX; downY = e.rawY; start.set(r); dragging = true
+                downX = e.rawX; downY = e.rawY; start.set(r); dragging = true; dragMove = move
                 if (!moverBroken) { showGhost(); place() }                 // aparece el marco fantasma en su sitio
                 true
             }
@@ -294,7 +391,7 @@ object FloatFrame {
                 hideGhost()
                 place()
                 lockUntil = System.currentTimeMillis() + 900
-                if (!moverBroken && !sameRect(r, start)) push(glide = true)   // al soltar, la ventana «llega» en segundo plano
+                if (!moverBroken && !sameRect(r, start)) push()             // al soltar, la ventana real se pone en su sitio
                 true
             }
             else -> false
@@ -302,47 +399,38 @@ object FloatFrame {
     }
 
     /**
-     * Manda los límites a la ventana real, SIEMPRE en segundo plano. Tras soltar, en lugar de un salto se hace un pequeño
-     * «deslizamiento» (unos pocos pasos interpolados): la ventana llega a su sitio en vez de aparecer de golpe. Si llegan
-     * más movimientos mientras tanto, solo se envía el último.
+     * Manda los límites a la ventana real, SIEMPRE en segundo plano. La cola tiene UN solo hueco con «gana el último»:
+     * se escribe y se lee dentro del mismo monitor, así que un hilo nunca puede borrar lo que otro acababa de poner
+     * (eso dejaba la ventana donde estaba y parecía que no respondía). Solo se envía el pedido final: el marco fantasma
+     * ya ha dado la fluidez durante el arrastre, y esperar a un «deslizamiento» de varios pasos alargaba la respuesta.
      */
-    private fun push(glide: Boolean = false) {
-        val target = Rect(r)
-        pending = target
-        if (worker) return
+    private fun push() {
         val c = ctx ?: return
-        worker = true
+        synchronized(qLock) { qLast = Rect(r); if (qRunning) return; qRunning = true }
         val gen = generation
         val usePriv = priv; val id = taskId; val pk = pkgName; val cu = cloneUser; val uidN = userIdN
-        // Ritmo de comandos: ~50 ms con privilegios (van por el shell root vivo) o ~240 ms sin ellos (mover implica relanzar).
-        val gap = if (usePriv && id.isNotEmpty()) 50L else 240L
+        // Ritmo mínimo entre comandos: ~45 ms con privilegios (van por el shell root vivo) o ~240 ms sin ellos
+        // (mover sin privilegios implica volver a lanzar la ventana, que ya tarda más que eso).
+        val gap = if (usePriv && id.isNotEmpty()) 45L else 240L
         val from = Rect(start)                      // ventana real antes de este movimiento (para saber si obedeció)
         Thread {
             var last: Rect? = null
             try {
-                if (glide && !sameRect(from, target, 6)) {
-                    pending = null                    // lo manda el deslizamiento, que ya termina en el destino
-                    val steps = if (usePriv && id.isNotEmpty()) 5 else 2
-                    for (i in 1..steps) {
-                        if (generation != gen) break
-                        val f = i.toFloat() / steps
-                        val q = Rect(
-                            (from.left + (target.left - from.left) * f).toInt(),
-                            (from.top + (target.top - from.top) * f).toInt(),
-                            (from.right + (target.right - from.right) * f).toInt(),
-                            (from.bottom + (target.bottom - from.bottom) * f).toInt())
-                        if (usePriv && id.isNotEmpty()) FloatingWindow.resizeTask(c, id, q) else {
-                            val qq = if (nudge) Rect(q).also { it.right += (nudgeTick++ and 1) } else q
-                            FloatingWindow.reposition(c, pk, qq, cu, uidN)
-                        }
-                        last = q
-                        if (i < steps) try { Thread.sleep(gap) } catch (e: InterruptedException) { break }
+                while (true) {
+                    if (generation != gen) break
+                    var slot: Rect? = null
+                    synchronized(qLock) {
+                        val q = qLast
+                        if (q != null) { qLast = null; slot = q }
                     }
-                }
-                // Lo que haya quedado pendiente (p.ej. un arrastre nuevo durante el deslizamiento) se manda igual.
-                while (generation == gen) {
-                    val p = pending ?: break
-                    pending = null
+                    val p = slot
+                    if (p == null) {
+                        // Hueco vacío: se cierra el hilo, pero si entre medias alguien escribió, se vuelve a mirar
+                        var quit = false
+                        synchronized(qLock) { if (qLast == null) { qRunning = false; quit = true } }
+                        if (quit) break
+                        continue
+                    }
                     val t0 = SystemClock.uptimeMillis()
                     if (usePriv && id.isNotEmpty()) FloatingWindow.resizeTask(c, id, p) else {
                         // Algunas ROM aceptan cambiar el tamaño pero ignoran un movimiento con el mismo tamaño: alternar 1 px lo evita
@@ -352,9 +440,11 @@ object FloatFrame {
                     last = p
                     // Se descuenta lo que ya tardó el propio envío, para no sumar esperas de más
                     val wait = gap - (SystemClock.uptimeMillis() - t0)
-                    if (wait > 0) try { Thread.sleep(wait) } catch (e: InterruptedException) { break }
+                    if (wait > 0) try { Thread.sleep(wait) } catch (e: InterruptedException) { /* no corta: sale el hueco vacío */ }
                 }
-            } finally { worker = false }
+            } finally {
+                synchronized(qLock) { if (generation == gen && qLast == null) qRunning = false }
+            }
             last?.let { l -> bg.postDelayed({ verify(l, from, gen) }, 380) }
         }.start()
     }

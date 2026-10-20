@@ -29,6 +29,20 @@ object Prefs {
     fun lastLog(c: Context): String = sp(c).getString("last_log", "") ?: ""
     fun setLastLog(c: Context, s: String) = sp(c).edit().putString("last_log", s.takeLast(8000)).apply()
 
+    // ---- Avisos de conectividad de la isla ----
+    // 0 = avisar siempre (como al principio) · 1 = solo cuando cambia de verdad la red (por defecto) · 2 = sin avisos
+    fun netMode(c: Context): Int = sp(c).getInt("net_mode", 1)
+    fun setNetMode(c: Context, v: Int) = sp(c).edit().putInt("net_mode", v).apply()
+    /** Última red/transporte ya anunciado: la misma red no se vuelve a anunciar aunque la ROM revalide la conexión. */
+    fun netKey(c: Context): String = sp(c).getString("net_key", "") ?: ""
+    fun setNetKey(c: Context, v: String) = sp(c).edit().putString("net_key", v).apply()
+    fun netAt(c: Context): Long = sp(c).getLong("net_at", 0L)
+    fun setNetAt(c: Context, v: Long) = sp(c).edit().putLong("net_at", v).apply()
+
+    /** Versión de la que YA se avisó en el panel del sistema (para no repetir la notificación en cada comprobación). */
+    fun updSeen(c: Context): String = sp(c).getString("upd_seen", "") ?: ""
+    fun setUpdSeen(c: Context, v: String) = sp(c).edit().putString("upd_seen", v).apply()
+
     // ---- Eventos ----
     private fun land(c: Context) =
         c.resources.configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE

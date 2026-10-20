@@ -152,6 +152,7 @@ class MainActivity : Activity() {
         setContentView(rootView)
         render()
         if (!appsPermOk()) try { requestPermissions(arrayOf(appsPerm), 5) } catch (e: Throwable) {}
+        askNotifPermission()
         try {
             Shizuku.addRequestPermissionResultListener(permListener)
             Shizuku.addBinderReceivedListener(binderListener)
@@ -163,6 +164,31 @@ class MainActivity : Activity() {
             Prefs.setA11yAsked(this, true); askAccessibility()
         }
         if (System.currentTimeMillis() - Prefs.updLast(this) > 12 * 3600_000L) checkUpdates(false)
+        handleExtras()
+    }
+
+    /** Aperturas pedidas desde fuera: el aviso de «hay versión nueva» del panel del sistema. */
+    private fun handleExtras() {
+        val url = intent?.getStringExtra("ryx_open") ?: return
+        intent?.removeExtra("ryx_open")
+        val manual = intent?.getBooleanExtra("ryx_manual_upd", false) == true
+        intent?.removeExtra("ryx_manual_upd")
+        AppNotify.ensureChannel(this)
+        if (url.isNotEmpty()) openUrl(url)
+        if (manual) checkUpdates(true)
+    }
+
+    override fun onNewIntent(i: Intent) {
+        super.onNewIntent(i)
+        setIntent(i)
+        handleExtras()
+    }
+
+    /** Pide el permiso de notificaciones (Android 13+). Lo usan los avisos de actualización del panel. */
+    fun askNotifPermission() {
+        if (Build.VERSION.SDK_INT < 33) return
+        if (AppNotify.allowed(this)) return
+        try { requestPermissions(arrayOf("android.permission.POST_NOTIFICATIONS"), 9) } catch (e: Throwable) {}
     }
 
     private val REQ_TREE = 71
@@ -225,6 +251,18 @@ class MainActivity : Activity() {
         Prefs.setUpdLast(this, System.currentTimeMillis())
         Thread {
             val r = Updater.check(this)
+            // El aviso al panel se pone desde este mismo hilo de fondo: llega aunque la app no esté delante.
+            r.info?.let { i ->
+                if (i.newer) {
+                    val key = if (i.version.isNotEmpty()) i.version else i.name
+                    if (key != Prefs.updSeen(this)) {
+                        AppNotify.update(this, i.version, i.name, i.apk, i.page, i.notes)
+                        Prefs.setUpdSeen(this, key)
+                    }
+                } else if (Prefs.updSeen(this).isNotEmpty()) {
+                    Prefs.setUpdSeen(this, ""); AppNotify.clearUpdate(this)   // ya está instalada: se quita el aviso
+                }
+            }
             runOnUiThread {
                 if (isFinishing) return@runOnUiThread
                 val i = r.info
@@ -502,12 +540,12 @@ class MainActivity : Activity() {
         val rgb = color and 0x00FFFFFF
         val body = android.graphics.drawable.GradientDrawable(
             android.graphics.drawable.GradientDrawable.Orientation.TL_BR,
-            intArrayOf((rgb or 0x55000000), (rgb or 0x18000000), 0x14000000)).apply { cornerRadius = px(28).toFloat() }
+            intArrayOf((rgb or 0x8C000000).toInt(), (rgb or 0x3A000000).toInt(), 0x1F000000)).apply { cornerRadius = px(30).toFloat() }
         val shine = android.graphics.drawable.GradientDrawable(
             android.graphics.drawable.GradientDrawable.Orientation.TOP_BOTTOM,
-            intArrayOf(0x1FFFFFFF, 0x00FFFFFF)).apply { cornerRadius = px(28).toFloat() }
+            intArrayOf(0x2EFFFFFF, 0x00FFFFFF)).apply { cornerRadius = px(30).toFloat() }
         val rim = android.graphics.drawable.GradientDrawable().apply {
-            cornerRadius = px(28).toFloat(); setColor(0); setStroke(px(1), (rgb or 0x66000000))
+            cornerRadius = px(30).toFloat(); setColor(0); setStroke(px(1), (rgb or 0x80000000).toInt())
         }
         return android.graphics.drawable.LayerDrawable(arrayOf(body, shine, rim))
     }
@@ -516,16 +554,16 @@ class MainActivity : Activity() {
     private fun pageHero(p: LinearLayout, iconName: String, color: Int, title: String, sub: String) {
         val box = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
-            setPadding(px(18), px(18), px(18), px(18))
+            setPadding(px(20), px(20), px(20), px(20))
             background = heroBg(color)
         }
         box.addView(tileIcon(iconName, color, Color.WHITE),
             LinearLayout.LayoutParams(px(52), px(52)).apply { marginEnd = px(16) })
         val t = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
-        t.addView(label(title, 22f, R.color.text, true))
+        t.addView(label(title, 23f, R.color.text, true).apply { letterSpacing = -0.02f })
         t.addView(label(sub, 12.5f, R.color.muted))
         box.addView(t, LinearLayout.LayoutParams(0, WRAP, 1f))
-        p.addView(box, lp(14))
+        p.addView(box, lp(16))
     }
 
     /** Texto de registro en un recuadro oscuro y seleccionable. Solo se usa dentro de las hojas de detalle. */
@@ -580,6 +618,12 @@ class MainActivity : Activity() {
 
     private fun buildHome(p: LinearLayout) {
         p.addView(heroCard(), lp(8))
+        // Ficha rápida de estado: cuántos avisos hay activos y qué método de privilegios está en uso
+        val activos = Events.GROUPS.sumOf { g -> g.events.count { Prefs.eventOnFor(this, it.id, landscapeView) } }
+        val total = Events.GROUPS.sumOf { it.events.size }
+        statGrid(p, listOf(
+            Triple("bolt", "$activos", "Avisos activos de $total"),
+            Triple("shield", avisosLabel(), "Vías de aviso en uso")))
         val main = card()
         main.addView(rowWithSwitch("Ryx Island", if (Prefs.islandOn(this)) "Activa" else "Apagada",
             Prefs.islandOn(this)) { v -> Prefs.setIslandOn(this, v); applyAll(); render() })
@@ -654,12 +698,13 @@ class MainActivity : Activity() {
             p.addView(c, lp(10))
         }
         // Accesos directos a los menús de primer nivel (Historial y Demon), igual que en Ajustes.
+        heading(p, "ATAJOS")
         val shortcuts = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
         shortcuts.addView(button("Historial", false) { subPage = "history"; render() },
             LinearLayout.LayoutParams(0, WRAP, 1f).apply { marginEnd = px(5) })
         shortcuts.addView(button("Demon", false) { subPage = "demon"; render() },
             LinearLayout.LayoutParams(0, WRAP, 1f).apply { marginStart = px(5) })
-        p.addView(shortcuts, lp(14))
+        p.addView(shortcuts, lp(8))
     }
 
     /** Sección «Demon»: todas las pruebas de la isla, aparte del resto de la app. */
@@ -720,21 +765,31 @@ class MainActivity : Activity() {
             "Encima" to Settings.canDrawOverlays(this),
             "A11y" to RyxAccessibility.isEnabled(this),
             "Shizuku" to Shell.shizukuGranted())
-        chips.forEach { (t, ok) ->
+        chips.forEachIndexed { i, chip ->
             row.addView(TextView(this).apply {
-                text = (if (ok) "● " else "○ ") + t
-                gravity = Gravity.CENTER; textSize = 13f
+                text = (if (chip.second) "● " else "○ ") + chip.first
+                gravity = Gravity.CENTER; textSize = 12.5f
                 setTypeface(typeface, Typeface.BOLD)
-                setTextColor(if (ok) 0xFF3DDC84.toInt() else Glass.MUTED)
-                setPadding(px(10), px(8), px(10), px(8))
-                background = Glass.pill(this@MainActivity, if (ok) 0x1A3DDC84 else 0x14FFFFFF,
-                    if (ok) 0x883DDC84.toInt() else 0x33FFFFFF, 18f)
+                setTextColor(if (chip.second) 0xFF3DDC84.toInt() else Glass.MUTED)
+                setPadding(px(8), px(9), px(8), px(9))
+                background = Glass.pill(this@MainActivity, if (chip.second) 0x1A3DDC84 else 0x14FFFFFF,
+                    if (chip.second) 0x883DDC84.toInt() else 0x33FFFFFF, 16f)
                 setOnClickListener { subPage = "perms"; render() }
-            }, LinearLayout.LayoutParams(0, WRAP, 1f).apply { marginStart = px(3); marginEnd = px(3) })
+            }, LinearLayout.LayoutParams(0, WRAP, 1f).apply { if (i > 0) marginStart = px(6) })
         }
         c.addView(row)
         c.addView(label("Toca para abrir Permisos. En verde, lo que ya está concedido.", 12f, R.color.muted), lp(8))
         p.addView(c, lp(10))
+    }
+
+    /** Resumen corto de las vías de aviso activas, para la ficha de Inicio. */
+    private fun avisosLabel(): String {
+        val vias = ArrayList<String>()
+        if (notifEnabled()) vias.add("Avisos")
+        if (Settings.canDrawOverlays(this)) vias.add("Encima")
+        if (RyxAccessibility.isEnabled(this)) vias.add("A11y")
+        if (Shell.privileged(this)) vias.add(Shell.label(this))
+        return if (vias.isEmpty()) "Ninguna" else vias.joinToString(" · ")
     }
 
     // ---------------- Probar eventos (dentro de Isla) ----------------
@@ -767,6 +822,9 @@ class MainActivity : Activity() {
 
     private fun buildLayout(p: LinearLayout) {
         pageHero(p, "palette", 0xFF7B5CE0.toInt(), "Diseño", "Estilos, temas, tipografía y color de la isla")
+        heroStat(p, 0xFF7B5CE0.toInt(), listOf(
+            "Estilo" to Styles.byId(Prefs.style(this)).label,
+            "Tema" to Glass.theme.label))
         val st = titled(p, "Estilo de la isla", "Toca uno para verlo arriba y en la isla real")
         Styles.ALL.chunked(2).forEach { pair ->
             val r = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
@@ -982,6 +1040,12 @@ class MainActivity : Activity() {
         diagCard(p, "signal", 0xFF3F7BEA.toInt(), "Diagnóstico del puente",
             "Últimos avisos que cruzaron entre el sistema y la isla, con el detalle a un toque.", Prefs.notifDiag(this))
 
+        val ct = titled(p, "Conectividad", "El aviso de red era el que más aparecía: así se controla")
+        ct.addView(segmented(listOf("Siempre", "Al cambiar", "Nunca"), Prefs.netMode(this), true) { Prefs.setNetMode(this, it) }, lp(10))
+        ct.addView(label("«Al cambiar» (por defecto): solo se anuncia «Conectado a la red …» cuando entra una red nueva o " +
+            "cuando pasa un buen rato desde el último aviso, nunca por las revalidaciones de la ROM. «Nunca» silencia " +
+            "los avisos de red y los de Wi‑Fi apagado.", 12f, R.color.muted), lp(8))
+
         val ic = titled(p, "Iconos de la isla", "Del sistema o modificados")
         ic.addView(segmented(listOf("Sistema", "Notificación", "Monocromo"), Prefs.iconMode(this), true) { Prefs.setIconMode(this, it) }, lp(10))
         ic.addView(label("Forma del icono", 13f, R.color.muted, true), lp(12))
@@ -1074,6 +1138,34 @@ class MainActivity : Activity() {
 
     private fun buildWindow(p: LinearLayout) {
         val kind = Prefs.fwKind(this)
+        // ── Permisos (lo primero: sin ellos el formato libre y los avisos se quedan a medias) ──
+        val pm = titled(p, "Permisos", "Todo lo que Ryx puede hacer sin Shizuku ni root")
+        pm.addView(statusList(PermGrant.status(this)), lp(6))
+        pm.addView(label("Puedes dar todo de una vez. Con Shizuku o root, Ryx se concede los permisos solo (botón de abajo). " +
+            "Sin ellos, se copia UN comando de ADB y se pega una sola vez: queda para siempre, no hay que repetirlo. " +
+            "El comando concede dibujar encima, escribir ajustes del sistema, acceso de uso, notificaciones, Bluetooth " +
+            "y desbloquea las ventanas libres.", 12f, R.color.muted), lp(8))
+        pm.addView(button("Quitar permisos con Shizuku/root", Shell.privileged(this)) {
+            Thread {
+                val r = PermGrant.grant(this)
+                runOnUiThread { render(); dialog("Permisos concedidos con ${Shell.label(this)}", r + "\n\nSi algo no se aplicó, usa el comando de ADB.") }
+            }.start()
+        }, lp(8))
+        pm.addView(button("Copiar comando de ADB (una sola vez)", false) {
+            try {
+                (getSystemService(CLIPBOARD_SERVICE) as ClipboardManager).setPrimaryClip(ClipData.newPlainText("ryx", PermGrant.adbCommand(this)))
+                dialog("Comando copiado al portapapeles",
+                    "Pégalo en una consola de ADB conectada al teléfono (con el reloj de arena, sin tocar nada más). " +
+                    "Concede todos los permisos y desbloquea el formato libre de golpe:\n\n" +
+                    PermGrant.adbCommand(this) + "\n\nTambién puedes pedir el permiso de notificaciones, el de dibujar encima " +
+                    "y el acceso de uso a mano en Ajustes.")
+            } catch (e: Exception) { toast("No pude copiar el comando") }
+        }, lp(8))
+        pm.addView(button("Pedir permiso de notificaciones", !AppNotify.allowed(this)) { askNotifPermission() }, lp(8))
+        pm.addView(button("Abrir el acceso de uso del sistema", false) {
+            try { startActivity(Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS)) } catch (e: Exception) { toast("No se pudo abrir") }
+        }, lp(8))
+
         val so = titled(p, "Formato libre y burbujas", "Se abre encima de la app en la que estás, sin sacarte de ella")
         so.addView(segmented(listOf("Formato libre (rápido)", "Burbuja (Android 17)"), kind, true) { Prefs.setFwKind(this, it); render() }, lp(8))
         so.addView(label(if (kind == 1)
@@ -1151,6 +1243,23 @@ class MainActivity : Activity() {
         diagCard(p, "code", 0xFF6A62E8.toInt(), "Diagnóstico",
             "Estado real de la última apertura en ventana libre. Se muestra en detalle, sin llenar la pantalla.",
             Prefs.lastLog(this))
+    }
+
+    /** Lista compacta de permisos: nombre a la izquierda y estado (✔/✗) a la derecha, en filas finas. */
+    private fun statusList(items: List<Pair<String, Boolean>>): LinearLayout {
+        val box = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        items.forEachIndexed { i, (name, ok) ->
+            val r = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
+            r.addView(TextView(this).apply {
+                text = if (ok) "✔" else "○"; textSize = 15f; typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+                setTextColor(if (ok) Glass.ACCENT else Glass.MUTED)
+                setPadding(0, 0, px(12), 0)
+            })
+            r.addView(label(name, 14f, R.color.text), LinearLayout.LayoutParams(0, WRAP, 1f))
+            r.addView(label(if (ok) "Listo" else "Falta", 12f, if (ok) R.color.green else R.color.gold, true))
+            box.addView(r, lp(if (i == 0) 2 else 9))
+        }
+        return box
     }
 
     private fun statusRow(parent: LinearLayout, name: String, value: String, ok: Boolean) {
@@ -1862,6 +1971,48 @@ class MainActivity : Activity() {
     private fun label(t: String, size: Float, color: Int, bold: Boolean = false) = TextView(this).apply {
         text = t; textSize = size; setTextColor(if (color == R.color.gold) Glass.ACCENT else col(color))
         typeface = if (bold) Typeface.create("sans-serif-medium", Typeface.BOLD) else Typeface.create("sans-serif", Typeface.NORMAL)
+    }
+
+    /** Fila de datos rápidos bajo la cabecera: pastillas con «etiqueta: valor», estilo panel moderno. */
+    private fun heroStat(p: LinearLayout, color: Int, items: List<Pair<String, String>>) {
+        if (items.isEmpty()) return
+        val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+        val rgb = color and 0x00FFFFFF
+        for ((i, kv) in items.withIndex()) {
+            val cell = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                setPadding(px(14), px(11), px(14), px(11))
+                background = Glass.pill(this@MainActivity, (rgb or 0x26000000), (rgb or 0x66000000).toInt(), 18f)
+            }
+            cell.addView(label(kv.first.uppercase(), 10f, R.color.muted, true).apply { letterSpacing = 0.1f })
+            cell.addView(label(kv.second, 13.5f, R.color.text, true).apply {
+                maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END
+            }, LinearLayout.LayoutParams(WRAP, WRAP).apply { topMargin = px(3) })
+            row.addView(cell, LinearLayout.LayoutParams(0, WRAP, 1f).apply { if (i > 0) marginStart = px(8) })
+        }
+        p.addView(row, lp(10))
+    }
+
+    /** Rejilla de 2 columnas de «fichas» con icono: título, dato grande y pie. Para Inicio y Ajustes. */
+    private fun statGrid(p: LinearLayout, cells: List<Triple<String, String, String>>) {
+        cells.chunked(2).forEach { pair ->
+            val r = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+            pair.forEach { (iconName, value, title) ->
+                val c = card().apply { background = Glass.card(this@MainActivity, 24f) }
+                val top = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
+                top.addView(tileIcon(iconName, 0xFF232833.toInt(), Glass.ACCENT),
+                    LinearLayout.LayoutParams(px(38), px(38)).apply { marginEnd = px(10) })
+                top.addView(label(value, 21f, R.color.text, true).apply { letterSpacing = -0.02f },
+                    LinearLayout.LayoutParams(0, WRAP, 1f))
+                c.addView(top)
+                c.addView(label(title, 12.5f, R.color.muted).apply {
+                    maxLines = 2; ellipsize = android.text.TextUtils.TruncateAt.END
+                }, lp(9))
+                r.addView(c, LinearLayout.LayoutParams(0, WRAP, 1f).apply { marginStart = px(5); marginEnd = px(5) })
+            }
+            if (pair.size == 1) r.addView(View(this), LinearLayout.LayoutParams(0, 1, 1f))
+            p.addView(r, lp(10))
+        }
     }
 
     private fun card() = LinearLayout(this).apply {

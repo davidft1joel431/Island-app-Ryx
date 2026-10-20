@@ -201,6 +201,31 @@ class NotifListener : NotificationListenerService() {
         registerSystemReceivers()
         main.removeCallbacks(watch); main.postDelayed(watch, 2500)
         if (Prefs.hideHeadsUp(this)) Thread { Shell.setHeadsUp(this, false) }.start()
+        checkUpdatesInBackground()          // aviso de versión nueva aunque la app no esté abierta
+    }
+
+    /**
+     * Mira si hay versión nueva cada 12 h y lo avisa en el panel del sistema. Corre en el hilo de historial (sin
+     * tocar la interfaz) para no molestar al servicio. Si no hay permiso de notificaciones no se pone nada.
+     */
+    private fun checkUpdatesInBackground() {
+        if (System.currentTimeMillis() - Prefs.updLast(this) < 12 * 3600_000L) return
+        histExec.execute {
+            try {
+                Prefs.setUpdLast(this, System.currentTimeMillis())
+                val r = Updater.check(this)
+                val i = r.info
+                if (i != null && i.newer) {
+                    val key = if (i.version.isNotEmpty()) i.version else i.name
+                    if (key != Prefs.updSeen(this)) {
+                        AppNotify.update(this, i.version, i.name, i.apk, i.page, i.notes)
+                        Prefs.setUpdSeen(this, key)
+                    }
+                } else if (i != null && Prefs.updSeen(this).isNotEmpty()) {
+                    Prefs.setUpdSeen(this, ""); AppNotify.clearUpdate(this)
+                }
+            } catch (e: Throwable) {}
+        }
     }
 
     override fun onListenerDisconnected() {
@@ -502,7 +527,9 @@ class NotifListener : NotificationListenerService() {
                     if (t.isEmpty() || t == last) return
                     last = t
                     main.removeCallbacks(offlineTask)
-                    if (t == "wifi") showWifi() else showEvent(t)
+                    // Wi-Fi se decide más abajo (allí se conoce el nombre de la red); de datos y VPN solo se avisa
+                    // si cambia de verdad o si ha pasado un buen rato desde la última vez.
+                    if (t == "wifi") showWifi() else if (netOnce(t)) showEvent(t)
                 }
                 override fun onLost(n: android.net.Network) {
                     last = ""
@@ -583,6 +610,28 @@ class NotifListener : NotificationListenerService() {
     private val WIFI_AP_ACTION = "android.net.wifi.WIFI_AP_STATE_CHANGED"
     private val offlineTask = Runnable { showNoNet("Red desactivada") }
 
+    /**
+     * ¿Toca anunciar la conexión en la isla otra vez?
+     *
+     * El sistema manda `onCapabilitiesChanged` muchas veces por una misma conexión (revalidaciones, cambio de señal,
+     * portal cautivo, ida y vuelta entre datos y Wi‑Fi…) y el aviso de conectividad reaparecía una y otra vez: era lo
+     * más molesto de la isla. Aquí solo se anuncia si cambia la red/transporte de verdad (clave distinta) o si ha
+     * pasado un buen rato desde la última vez. Con el modo 2 no se anuncia nunca.
+     *
+     * 0 = avisar siempre · 1 = solo al cambiar de verdad (por defecto) · 2 = sin avisos de red
+     */
+    private fun netOnce(key: String): Boolean {
+        val mode = Prefs.netMode(this)
+        if (mode == 2) return false
+        val now = System.currentTimeMillis()
+        val same = key == Prefs.netKey(this)
+        val fresh = now - Prefs.netAt(this) < if (mode == 0) 45_000L else 15 * 60_000L
+        if (same && fresh) return false
+        Prefs.setNetKey(this, key)
+        Prefs.setNetAt(this, now)
+        return true
+    }
+
     /** Nombre de la red Wi-Fi conectada. Primero por el propio sistema y, si la ROM lo oculta, con Shizuku/root. */
     private fun currentSsid(): String? {
         try {
@@ -615,9 +664,12 @@ class NotifListener : NotificationListenerService() {
 
     private fun renderWifi(ssid: String?) {
         if (!Prefs.islandOn(this) || !Prefs.eventOn(this, "wifi")) return
+        // Mismo nombre de red poco antes → no se vuelve a anunciar (la ROM lo pide decenas de veces por sesión)
+        if (!netOnce("wifi|" + (ssid ?: ""))) return
         val blue = 0xFF0A84FF.toInt()
         val body = if (ssid != null) "Conectado a la red «$ssid»" else "Conectado a una red Wi-Fi"
-        show(packageName, "Wi-Fi", body, eventIcon("wifi", blue), true, true, "sys:wifi", false,
+        // Se muestra COMPACTA (sin desplegar): al tocarla se abren sus botones, así no interrumpe cada vez que aparece
+        show(packageName, "Wi-Fi", body, eventIcon("wifi", blue), true, false, "sys:wifi", false,
             sig = "sys:wifi|$ssid", target = "wifi", label = "Wi-Fi", accentOverride = blue,
             actions = listOf(
                 CardAction("Cambiar red", blue, true, dismiss = true) { openTarget("wifi") },
@@ -627,8 +679,9 @@ class NotifListener : NotificationListenerService() {
     /** Red caída o Wi-Fi apagado: aviso en ROJO. */
     private fun showNoNet(title: String) {
         if (!Prefs.islandOn(this) || !Prefs.eventOn(this, "offline")) return
+        if (!netOnce("offline")) return
         val red = 0xFFFF453A.toInt()
-        show(packageName, title, "Sin conexión a Internet", eventIcon("wifi_off", red), true, true, "sys:offline", false,
+        show(packageName, title, "Sin conexión a Internet", eventIcon("wifi_off", red), true, false, "sys:offline", false,
             sig = "sys:offline|$title", target = "wifi", label = "Red", accentOverride = red,
             actions = listOf(
                 CardAction("Wi-Fi", 0xFF0A84FF.toInt(), false, dismiss = true) { openTarget("wifi") },
