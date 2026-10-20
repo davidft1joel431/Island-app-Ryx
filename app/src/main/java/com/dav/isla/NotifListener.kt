@@ -862,11 +862,19 @@ class NotifListener : NotificationListenerService() {
     // ---------- Construccion de la isla ----------
 
     private val cornerTargets = ArrayList<GradientDrawable>()
+    private val idleTargets = ArrayList<GradientDrawable>()
     private var bgCard: Drawable? = null
     private var bgIdle: Drawable? = null
     private var blend = 0f
 
     private fun setCorners(r: Float) { cornerTargets.forEach { it.cornerRadius = r } }
+    private fun setIdleCorners(r: Float) { idleTargets.forEach { it.cornerRadius = r } }
+
+    /** Radio de la isla contraída: lo que elijas en Diseño → Isla contraída, o el del estilo. */
+    private fun idleCornerPx(): Float {
+        val cd = Prefs.idleCornerDp(this)
+        return px(if (cd >= 0) cd.toFloat() else style.cornerDp).toFloat()
+    }
 
     /** 0 = aspecto de reposo, 1 = tarjeta; se mezclan al abrir y cerrar. */
     private fun setBlend(b: Float) {
@@ -875,17 +883,17 @@ class NotifListener : NotificationListenerService() {
         bgIdle?.setAlpha((255 * (1f - b)).toInt().coerceIn(0, 255))
     }
 
-    private fun lookDrawable(sp: IslandLook.Spec, r: Float, accent: Int?): Drawable {
+    private fun lookDrawable(sp: IslandLook.Spec, r: Float, accent: Int?, into: ArrayList<GradientDrawable> = cornerTargets): Drawable {
         val base = GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, intArrayOf(sp.top, sp.bottom)).apply {
             cornerRadius = r
             if (accent != null) setStroke(maxOf(1, px(1.6f)), (accent and 0x00FFFFFF) or 0xB0000000.toInt())
             else if (sp.rimDp > 0f) setStroke(maxOf(1, px(sp.rimDp)), sp.rim)
         }
-        cornerTargets.add(base)
+        into.add(base)
         if (sp.shine == 0) return base
         val glow = GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, intArrayOf(sp.shine, 0x00FFFFFF))
             .apply { cornerRadius = r }
-        cornerTargets.add(glow)
+        into.add(glow)
         return LayerDrawable(arrayOf(base, glow)).apply {
             val i = px(1)
             setLayerInset(1, i, i, i, i)
@@ -895,9 +903,11 @@ class NotifListener : NotificationListenerService() {
     private fun buildBackground(s: IslandStyle, accent: Int? = null): Drawable {
         val cd = Prefs.cornerDp(this)
         val r = px(if (cd >= 0) cd.toFloat() else s.cornerDp).toFloat()
+        val rIdle = idleCornerPx()
         cornerTargets.clear()
-        val card = lookDrawable(IslandLook.card(this, s), r, accent)
-        val idle = lookDrawable(IslandLook.idle(this), r, null)
+        idleTargets.clear()
+        val card = lookDrawable(IslandLook.card(this, s), r, accent, cornerTargets)
+        val idle = lookDrawable(IslandLook.idle(this), rIdle, null, idleTargets)
         bgCard = card; bgIdle = idle
         val layers = LayerDrawable(arrayOf(card, idle))
         setBlend(if (expanded) 1f else 0f)
@@ -1722,10 +1732,14 @@ class NotifListener : NotificationListenerService() {
         val fromH = (row?.minimumHeight ?: idleH); val toH = if (toExpanded) expH else idleH
         val cd = Prefs.cornerDp(this)
         val cornerPx = px(if (cd >= 0) cd.toFloat() else style.cornerDp).toFloat()
+        val cornerIdle = idleCornerPx()
         val fromR = cornerTargets.firstOrNull()?.cornerRadius ?: (idleH / 2f)
         val fromB = blend
         val toB = if (toExpanded) 1f else 0f
-        val toR = if (toExpanded) minOf(cornerPx, toH / 2f + px(4)) else idleH / 2f
+        // Al abrir: del radio de reposo al de la tarjeta. Al cerrar: al revés. Cada capa mantiene su propio radio.
+        val toR = if (toExpanded) minOf(cornerPx, toH / 2f + px(4)) else cornerIdle
+        val fromRIdle = idleTargets.firstOrNull()?.cornerRadius ?: cornerIdle
+        val toRIdle = if (toExpanded) cornerPx else cornerIdle
         val maxW = resources.displayMetrics.widthPixels
         val a = ValueAnimator.ofFloat(0f, 1f)
         a.duration = if (toExpanded) Motion.expandMs(this) else Motion.collapseMs(this)
@@ -1736,6 +1750,7 @@ class NotifListener : NotificationListenerService() {
             params.width = lerp(fromW.toFloat(), toW.toFloat(), t).toInt().coerceIn(px(40), maxW)
             row?.minimumHeight = lerp(fromH.toFloat(), toH.toFloat(), t).toInt().coerceAtLeast(idleH)
             setCorners(lerp(fromR, toR, t.coerceIn(0f, 1f)))
+            setIdleCorners(lerp(fromRIdle, toRIdle, t.coerceIn(0f, 1f)))
             setBlend(lerp(fromB, toB, t.coerceIn(0f, 1f)))
             val c = if (toExpanded) ((time - 0.08f) / 0.42f).coerceIn(0f, 1f) else (1f - time / 0.4f).coerceIn(0f, 1f)
             setContentAlpha(c)

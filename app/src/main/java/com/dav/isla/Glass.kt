@@ -23,6 +23,7 @@ data class AppTheme(val id: String, val label: String, val accent: Int, val glow
 
 object Glass {
     val THEMES = listOf(
+        AppTheme("yellow", "Amarillo", 0xFFFFC857.toInt(), 0x30FFC857, 0x26FF8A4C),
         AppTheme("ryx", "Naranja Ryx", 0xFFFF8A4C.toInt(), 0x30FF7A3D, 0x264F7CFF),
         AppTheme("ocean", "Océano", 0xFF4DA3FF.toInt(), 0x304DA3FF, 0x2600D4C8),
         AppTheme("forest", "Bosque", 0xFF4ADE80.toInt(), 0x3040D87A, 0x26F2C94C),
