@@ -191,6 +191,17 @@ object Prefs {
         (0 until a.length()).map { val o = a.getJSONObject(it)
             HistItem(o.optString("p"), o.optString("t"), o.optString("x"), o.optLong("ts"), o.optString("i"), o.optString("k")) }
     } catch (e: Exception) { emptyList() }
+
+    /**
+     * Fuerza una lectura fresca del historial desde el disco. Sirve para el gesto «arrastra hacia abajo para
+     * actualizar»: por si el servicio de notificaciones escribió algo mientras la app estaba en segundo plano.
+     * Se hace en el hilo que llama (es una lectura pequeña) y se devuelve la lista ya actualizada.
+     */
+    @Suppress("ApplySharedPref")
+    fun reloadHist(c: Context): List<HistItem> {
+        try { sp(c).edit().commit() } catch (e: Exception) {}
+        return histAll(c)
+    }
     fun clearHist(c: Context) {
         sp(c).edit().remove("hist2").apply()
         histDir(c).listFiles()?.forEach { it.delete() }

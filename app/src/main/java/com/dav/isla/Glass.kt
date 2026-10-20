@@ -260,3 +260,109 @@ class MaxHeightScroll(c: Context, private val maxH: Int) : android.widget.Scroll
         super.onMeasure(w, View.MeasureSpec.makeMeasureSpec(maxH, View.MeasureSpec.AT_MOST))
     }
 }
+
+/**
+ * Contenedor con «arrastra hacia abajo para actualizar». Cuando la lista ya está arriba del todo y el dedo
+ * baja lo suficiente, dispara [onRefresh] y muestra una pastilla con «Actualizando…» hasta que se llama a
+ * [done]. No depende de androidx: es todo Android de base, como el resto de la interfaz.
+ *
+ * Es un FrameLayout con un ScrollView dentro; las vistas que se le añadan van al ScrollView.
+ */
+class PullRefreshScroll(c: Context) : android.widget.FrameLayout(c) {
+    /** Se llama al soltar, si el arrastre pasó del umbral. Debe terminar llamando a [done]. */
+    var onRefresh: (() -> Unit)? = null
+    /** Texto que se muestra mientras se recarga. */
+    var refreshHint: String = "Actualizando…"
+
+    private val density = resources.displayMetrics.density
+    private val slop = android.view.ViewConfiguration.get(c).scaledTouchSlop
+    private val threshold = (72 * density).toInt()
+    private var y0 = 0f
+    private var pulling = false
+    private var offset = 0f
+    private var refreshing = false
+    private lateinit var inner: android.widget.ScrollView
+    private var indicator: android.widget.TextView? = null
+
+    init {
+        inner = android.widget.ScrollView(c).apply {
+            isVerticalScrollBarEnabled = false
+            layoutParams = LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT)
+        }
+        addView(inner)
+    }
+
+    /** Las vistas se añaden al ScrollView interno, igual que a un ScrollView normal. */
+    override fun addView(child: View) {
+        if (!this::inner.isInitialized || child === inner) super.addView(child) else inner.addView(child)
+    }
+
+    /** Termina la recarga y esconde el indicador. */
+    fun done() {
+        refreshing = false
+        post {
+            indicator?.animate()?.alpha(0f)?.setDuration(140)?.withEndAction { indicator?.visibility = View.GONE }?.start()
+            inner.smoothScrollTo(0, 0)
+        }
+    }
+
+    private fun ensureIndicator() {
+        if (indicator != null) return
+        val tv = android.widget.TextView(context).apply {
+            text = refreshHint
+            textSize = 12.5f
+            setTextColor(Glass.TEXT)
+            gravity = android.view.Gravity.CENTER
+            typeface = android.graphics.Typeface.create("sans-serif-medium", android.graphics.Typeface.BOLD)
+            setPadding((14 * density).toInt(), (7 * density).toInt(), (14 * density).toInt(), (7 * density).toInt())
+            background = Glass.pill(context, Glass.SURFACE_HI, Glass.HAIR, 14f)
+            alpha = 0f
+            visibility = View.GONE
+        }
+        addView(tv, LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT)
+            .apply { gravity = android.view.Gravity.TOP or android.view.Gravity.CENTER_HORIZONTAL; topMargin = (14 * density).toInt() })
+        indicator = tv
+    }
+
+    override fun onInterceptTouchEvent(ev: android.view.MotionEvent): Boolean {
+        when (ev.actionMasked) {
+            android.view.MotionEvent.ACTION_DOWN -> { y0 = ev.rawY; pulling = false; offset = 0f }
+            android.view.MotionEvent.ACTION_MOVE -> {
+                if (inner.scrollY <= 0 && !refreshing && ev.rawY - y0 > slop) { pulling = true; return true }
+            }
+        }
+        return super.onInterceptTouchEvent(ev)
+    }
+
+    override fun onTouchEvent(ev: android.view.MotionEvent): Boolean {
+        when (ev.actionMasked) {
+            android.view.MotionEvent.ACTION_MOVE -> {
+                if (pulling && !refreshing) {
+                    offset = (ev.rawY - y0).coerceAtMost(threshold * 2f)
+                    ensureIndicator()
+                    indicator?.visibility = View.VISIBLE
+                    indicator?.alpha = (offset / threshold).coerceIn(0f, 1f)
+                    indicator?.text = if (offset >= threshold) "Suelta para actualizar" else refreshHint
+                    inner.translationY = offset * 0.4f
+                    return true
+                }
+            }
+            android.view.MotionEvent.ACTION_UP, android.view.MotionEvent.ACTION_CANCEL -> {
+                if (pulling) {
+                    inner.translationY = 0f
+                    if (offset >= threshold && !refreshing) {
+                        refreshing = true
+                        ensureIndicator()
+                        indicator?.visibility = View.VISIBLE
+                        indicator?.alpha = 1f
+                        indicator?.text = refreshHint
+                        onRefresh?.invoke() ?: done()
+                    } else indicator?.visibility = View.GONE
+                    pulling = false
+                    return true
+                }
+            }
+        }
+        return super.onTouchEvent(ev)
+    }
+}

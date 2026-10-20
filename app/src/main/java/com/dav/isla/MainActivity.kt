@@ -60,6 +60,8 @@ class MainActivity : Activity() {
     // Historial: búsqueda por texto y por app (se reconstruye solo la lista, sin perder el cursor del buscador)
     private var histQuery = ""
     private var histFilter = ""
+    /** Apps marcadas en el filtro del historial: se puede elegir (marcar) y quitar (desmarcar) la que sea. */
+    private val histApps = HashSet<String>()
     private var histBox: LinearLayout? = null
     private var pendingHtml = ""
     private var rootStatus = "Sin comprobar"
@@ -532,7 +534,12 @@ class MainActivity : Activity() {
                 "demon" -> buildDemon(page)
                 else -> buildPerms(page)
             }
-            content.addView(ScrollView(this).apply { addView(page); isVerticalScrollBarEnabled = false })
+            if (sp == "history") content.addView(PullRefreshScroll(this).apply {
+                refreshHint = "Buscando lo último…"
+                addView(page)
+                onRefresh = { Prefs.reloadHist(this@MainActivity); fillHist(); postDelayed({ done() }, 350) }
+            })
+            else content.addView(ScrollView(this).apply { addView(page); isVerticalScrollBarEnabled = false })
             return
         }
         when (tab) {
@@ -542,7 +549,18 @@ class MainActivity : Activity() {
             3 -> buildHistory(page)
             else -> buildSettings(page)
         }
-        val scroll = ScrollView(this).apply { addView(page); isVerticalScrollBarEnabled = false }
+        val scroll: View = if (tab == 3) {
+            // Historial: arrastra hacia abajo para volver a cargar lo último del historial.
+            PullRefreshScroll(this).apply {
+                refreshHint = "Buscando lo último…"
+                addView(page)
+                onRefresh = {
+                    Prefs.reloadHist(this@MainActivity)
+                    fillHist()
+                    postDelayed({ done() }, 350)
+                }
+            }
+        } else ScrollView(this).apply { addView(page); isVerticalScrollBarEnabled = false }
         val fixed: View? = when (tab) { 2 -> buildPreview(); else -> null }
         if (fixed != null) {
             val colm = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
@@ -1388,45 +1406,72 @@ class MainActivity : Activity() {
         sum.addView(summaryChip("settings", 0xFF2DAA55.toInt(), "$nSys", "Sistema"),
             LinearLayout.LayoutParams(0, WRAP, 1f).apply { marginStart = px(4) })
         top.addView(sum)
-        top.addView(button("Borrar historial", false) { Prefs.clearHist(this); histQuery = ""; histFilter = ""; render() }, lp(10))
+        top.addView(button("Borrar historial", false) { Prefs.clearHist(this); histQuery = ""; histFilter = ""; histApps.clear(); render() }, lp(10))
         p.addView(top, lp(8))
 
         // Menú del historial (igual que el de Demon): separa Aplicaciones y Sistema en un solo toque.
-        val view = when (histFilter) { "__sys__" -> 2; "" -> 0; else -> 1 }
+        val view = when { histFilter == "__sys__" -> 2; histFilter != "" || histApps.isNotEmpty() -> 1; else -> 0 }
         val menu = card()
         menu.addView(label("Menú del historial", 16f, R.color.text, true))
         menu.addView(segmented(listOf("Todo", "Aplicaciones", "Sistema"), view) { i ->
             histFilter = when (i) { 1 -> "__apps__"; 2 -> "__sys__"; else -> "" }
+            if (i != 1) histApps.clear()   // la selección de apps solo tiene sentido en «Aplicaciones»
+            render()
         }, lp(10))
         menu.addView(label("Elige qué quieres ver: los avisos de tus apps y los del sistema van separados, como en la isla.", 12f, R.color.muted), lp(8))
         p.addView(menu, lp(8))
 
-        // Buscador: texto libre + filtro por aplicación (o Sistema)
+        // Buscador: texto libre + filtro por aplicación (o Sistema), con VARIAS apps a la vez.
         val search = card()
         search.addView(label("Buscar", 16f, R.color.text, true))
         search.addView(editText("Escribe para buscar en los mensajes…", histQuery) { q -> histQuery = q; fillHist() }, lp(8))
-        val chips = android.widget.HorizontalScrollView(this).apply { isHorizontalScrollBarEnabled = false }
-        val crow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; setPadding(0, px(6), 0, px(2)) }
-        val addF: (String, String, Int) -> Unit = { id, name, color ->
-            val on = histFilter == id
-            crow.addView(TextView(this).apply {
-                text = name; textSize = 12.5f; gravity = Gravity.CENTER
-                setTextColor(if (on) 0xFF10131A.toInt() else Glass.TEXT)
-                typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
-                setPadding(px(14), px(7), px(14), px(7))
-                background = Glass.pill(this@MainActivity,
-                    if (on) color else Glass.SURFACE_HI, if (on) color else Glass.HAIR, 14f)
-                setOnClickListener { histFilter = id; render() }
-            }, LinearLayout.LayoutParams(WRAP, WRAP).apply { marginEnd = px(8) })
-        }
         if (view != 2) {
-            all.filter { !Sys.isSystemPkg(it.pkg) }.groupBy { it.pkg }
-                .entries.sortedByDescending { e -> e.value.size }.take(12)
-                .forEach { (pkg, _) -> addF(pkg, appNameOf(pkg), 0xFF6A62E8.toInt()) }
-            if (crow.childCount > 0) {
-                search.addView(label("Filtrar por aplicación", 13f, R.color.muted, true), lp(8))
+            val apps = all.filter { !Sys.isSystemPkg(it.pkg) }.groupBy { it.pkg }
+                .entries.sortedByDescending { e -> e.value.size }
+            if (apps.isNotEmpty()) {
+                val head = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
+                val lbl = label(if (histApps.isEmpty()) "Filtrar por aplicación" else "Filtrar por aplicación · ${histApps.size} elegida" +
+                    (if (histApps.size == 1) "" else "s"), 13f, R.color.muted, true)
+                head.addView(lbl, LinearLayout.LayoutParams(0, WRAP, 1f))
+                // Atajos: marcar todas o quitarlas todas de una vez.
+                head.addView(TextView(this).apply {
+                    text = "Todas"; textSize = 12.5f; gravity = Gravity.CENTER
+                    setTextColor(Glass.TEXT); typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+                    setPadding(px(12), px(5), px(12), px(5))
+                    background = Glass.pill(this@MainActivity, Glass.SURFACE_HI, Glass.HAIR, 14f)
+                    setOnClickListener { histApps.clear(); apps.forEach { histApps.add(it.key) }; render() }
+                }, LinearLayout.LayoutParams(WRAP, WRAP).apply { marginEnd = px(6) })
+                head.addView(TextView(this).apply {
+                    text = "Ninguna"; textSize = 12.5f; gravity = Gravity.CENTER
+                    setTextColor(Glass.TEXT); typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+                    setPadding(px(12), px(5), px(12), px(5))
+                    background = Glass.pill(this@MainActivity, Glass.SURFACE_HI, Glass.HAIR, 14f)
+                    setOnClickListener { histApps.clear(); render() }
+                }, LinearLayout.LayoutParams(WRAP, WRAP))
+                search.addView(head, lp(8))
+
+                val chips = android.widget.HorizontalScrollView(this).apply { isHorizontalScrollBarEnabled = false }
+                val crow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; setPadding(0, px(6), 0, px(2)) }
+                apps.forEach { (pkg, _) ->
+                    val on = pkg in histApps
+                    crow.addView(TextView(this).apply {
+                        text = (if (on) "✓ " else "") + appNameOf(pkg); textSize = 12.5f; gravity = Gravity.CENTER
+                        setTextColor(if (on) 0xFF10131A.toInt() else Glass.TEXT)
+                        typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+                        setPadding(px(14), px(7), px(14), px(7))
+                        background = Glass.pill(this@MainActivity,
+                            if (on) 0xFF6A62E8.toInt() else Glass.SURFACE_HI,
+                            if (on) 0xFF6A62E8.toInt() else Glass.HAIR, 14f)
+                        // Tocar marca o desmarca ESTA app; se pueden marcar varias.
+                        setOnClickListener {
+                            if (on) histApps.remove(pkg) else histApps.add(pkg)
+                            render()
+                        }
+                    }, LinearLayout.LayoutParams(WRAP, WRAP).apply { marginEnd = px(8) })
+                }
                 chips.addView(crow)
                 search.addView(chips, lp(4))
+                search.addView(label("Toca una app para marcarla o desmarcarla · puedes elegir varias a la vez.", 12f, R.color.muted), lp(8))
             }
         }
         search.addView(button("Descargar como .html", true) { exportHtml() }, lp(12))
@@ -1480,7 +1525,8 @@ class MainActivity : Activity() {
         var items = Prefs.histAll(this)
         if (histFilter == "__sys__") items = items.filter { Sys.isSystemPkg(it.pkg) }
         else if (histFilter == "__apps__") items = items.filter { !Sys.isSystemPkg(it.pkg) }
-        else if (histFilter.isNotEmpty()) items = items.filter { it.pkg == histFilter }
+        // Varias apps marcadas: se muestra lo de CUALQUIERA de ellas.
+        if (histApps.isNotEmpty()) items = items.filter { it.pkg in histApps }
         if (q.isNotEmpty()) items = items.filter { it.title.lowercase().contains(q) || it.text.lowercase().contains(q) }
         return items
     }
