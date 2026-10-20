@@ -297,6 +297,25 @@ class NotifListener : NotificationListenerService() {
         }
     }
 
+    /**
+     * Refresco LIGERO: aplica el tamaño y la posición nuevos a la ventana que ya está puesta, sin quitarla ni
+     * volver a crearla. Se usa al mover los deslizadores de Diseño, donde solo cambia la geometría: antes cada
+     * paso destruía y recreaba la vista (parpadeo y tirones).
+     */
+    fun refreshLive() {
+        main.post {
+            val v = island ?: return@post
+            val p = lp ?: return@post
+            if (!attached || !::wm.isInitialized) return@post
+            try {
+                p.width = if (expanded) expandedWidth() else idleWidth()
+                p.x = px(Prefs.xOffsetDp(this)) + px(Prefs.sideMarginDp(this))
+                p.y = px(Prefs.yOffsetDp(this))
+                wm.updateViewLayout(v, p)
+            } catch (e: Exception) { applySettings() }
+        }
+    }
+
     override fun onNotificationPosted(sbn: StatusBarNotification) {
         if (sbn.packageName == packageName) return
         val n = sbn.notification

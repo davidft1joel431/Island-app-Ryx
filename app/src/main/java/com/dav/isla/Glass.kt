@@ -179,8 +179,13 @@ object Glass {
 
 /** Interruptor moderno: pista del acento con perilla blanca grande al encender; apagado, pista oscura con borde y perilla pequeña. */
 class GlassSwitch(c: Context) : View(c) {
+    /**
+     * Estado del interruptor. Al escribirlo se dibuja al momento (sin depender de que la vista ya esté
+     * en pantalla): antes, si se asignaba antes de estar «laid out», el cambio no se veía hasta el
+     * siguiente redibujado y el interruptor parecía quedarse quieto.
+     */
     var checked = false
-        set(v) { field = v; animateTo(v) }
+        set(v) { if (field != v) { field = v; animateTo(v) } }
     var onChange: ((Boolean) -> Unit)? = null
     private var t = 0f
     private var anim: ValueAnimator? = null
@@ -190,16 +195,26 @@ class GlassSwitch(c: Context) : View(c) {
 
     init {
         isClickable = true
+        isFocusable = true
+        // Realce pulsable: deja claro que se puede tocar aunque esté apagado.
+        foreground = null
         setOnClickListener {
             performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
-            checked = !checked; onChange?.invoke(checked)
+            checked = !checked
+            onChange?.invoke(checked)
         }
     }
+
+    /** Pone el valor sin avisar ([onChange] no se dispara). Útil al abrir un panel para reflejar el ajuste guardado. */
+    fun setCheckedSilently(v: Boolean) { checked = v }
 
     private fun animateTo(v: Boolean) {
         val to = if (v) 1f else 0f
         anim?.cancel()
+        // Sin animación cuando la vista todavía no está en pantalla: el valor se aplica ya y se ve al primer dibujado.
         if (!isAttachedToWindow || !isLaidOut) { t = to; invalidate(); return }
+        // Cambio inmediato del color base; la animación solo suaviza el recorrido de la perilla.
+        invalidate()
         anim = ValueAnimator.ofFloat(t, to).apply {
             duration = 200; interpolator = DecelerateInterpolator(1.6f)
             addUpdateListener { t = it.animatedValue as Float; invalidate() }

@@ -203,7 +203,8 @@ object Prefs {
     // ---- Gestos: 0 nada, 1 abrir app, 2 ventana (según el modo), 3 descartar, 4 siguiente, 5 anterior, 6 contraer, 7 detalle, 8 burbuja, 9 formato libre, 10 copiar, 11 silenciar app ----
     fun gTap(c: Context): Int = sp(c).getInt("g_tap", 7)
     fun setGTap(c: Context, v: Int) = sp(c).edit().putInt("g_tap", v).apply()
-    fun gDown(c: Context): Int = sp(c).getInt("g_down", 2)
+    // Deslizar hacia ABAJO contrae (cierra) la isla expandida: es lo que espera cualquiera al ver el asa.
+    fun gDown(c: Context): Int = sp(c).getInt("g_down", 6)
     fun setGDown(c: Context, v: Int) = sp(c).edit().putInt("g_down", v).apply()
     fun gUp(c: Context): Int = sp(c).getInt("g_up", 3)
     fun setGUp(c: Context, v: Int) = sp(c).edit().putInt("g_up", v).apply()
