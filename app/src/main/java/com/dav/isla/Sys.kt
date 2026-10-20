@@ -46,6 +46,42 @@ object Sys {
     /** App de viajes/transporte. */
     fun isRideApp(pkg: String): Boolean = pkg in RIDE
 
+    /**
+     * Apps de CHAT conocidas (mensajería). Se usan para la lectura por accesibilidad: cuando el usuario abre una
+     * de estas apps, Ryx puede leer el texto visible de la conversación y guardarlo en el Historial (incluidos
+     * los chats archivados o restringidos, que no publican notificación).
+     */
+    private val CHAT = setOf(
+        // WhatsApp y variantes
+        "com.whatsapp", "com.whatsapp.w4b",
+        // Telegram
+        "org.telegram.messenger", "org.telegram.messenger.web", "org.thunderdog.challegram",
+        "org.telegram.plus", "ir.ilmili.telegraph", "com.telegram.messenger",
+        // Instagram / Facebook / Messenger
+        "com.instagram.android", "com.facebook.katana", "com.facebook.orca", "com.facebook.lite",
+        "com.facebook.mlite", "com.instagram.lite", "com.instagram.barcelona",
+        // TikTok y su versión ligera; Wehe
+        "com.zhiliaoapp.musically", "com.ss.android.ugc.trill", "com.tiktok.lite",
+        "com.tiktok.lite.go", "com.tiktok.lite.musically", "com.wehe.app", "com.wehe",
+        // Otros de mensajería frecuentes
+        "org.thoughtcrime.securesms", "org.whispersystems.signal", "com.signal.android",
+        "com.snapchat.android", "com.discord", "com.twitter.android", "com.x.android",
+        "com.viber.voip", "com.tencent.mm", "com.kakao.talk", "jp.naver.line.android",
+        "com.imo.android.imoim", "com.imo.android.imoimbeta", "com.linkedin.android",
+        "com.google.android.apps.messaging", "com.samsung.android.messaging",
+        "com.android.mms", "com.miui.smsextra", "com.miui.smsextra.overseas",
+        "com.hellotext.hello", "com.textra", "com.pinger.textfree", "com.chomp.sms",
+        "com.microsoft.teams", "com.slack", "com.zhiliaoapp.musically.go",
+        "com.tencent.mobileqq", "com.tencent.tim", "com.whatsapp.w4b", "com.google.android.apps.dynamite"
+    )
+
+    /** ¿Es una app de chat/mensajería conocida? */
+    fun isChatApp(pkg: String): Boolean = pkg in CHAT ||
+        pkg.contains("whatsapp") || pkg.contains("telegram") || pkg.contains("messenger") ||
+        pkg.contains("tiktok") || pkg.contains("instagram") || pkg.contains("snapchat") ||
+        pkg.contains("discord") || pkg.contains("signal") || pkg.contains("messaging") ||
+        pkg.contains("wehe")
+
     /** Subcategoría del aviso dentro de «Sistema»: battery · wifi · net · bt · other. */
     fun kind(pkg: String, title: CharSequence?, text: CharSequence?): String {
         val s = ((title?.toString() ?: "") + " " + (text?.toString() ?: "")).lowercase()
