@@ -62,10 +62,112 @@ class RyxAccessibility : AccessibilityService() {
         when (event?.eventType) {
             AccessibilityEvent.TYPE_WINDOWS_CHANGED -> FloatFrame.onWindowsChanged()
             // Una app abrió una ventana: sus avisos pendientes en la isla ya se leyeron
-            AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED -> event?.packageName?.toString()?.let { NotifListener.instance?.onAppOpened(it) }
+            AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED -> event?.packageName?.toString()?.let {
+                NotifListener.instance?.onAppOpened(it)
+                onWindowChanged(it)
+            }
+            // El contenido de la pantalla cambió: en una app de chat, se lee el texto visible y se guarda
+            AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED -> {
+                val p = event?.packageName?.toString() ?: return
+                if (chatWanted(p)) scheduleRead(p)
+            }
         }
     }
     override fun onInterrupt() {}
+
+    // ─────────────────────────────────────────────────────────────────────────────────────────────
+    // LECTURA DE CHATS POR ACCESIBILIDAD
+    // Cuando el usuario abre una app de chat (WhatsApp, Telegram, Instagram, TikTok…), se lee el texto VISIBLE
+    // de la pantalla y se guarda en el Historial. Así se registran también los chats ARCHIVADOS o RESTRINGIDOS
+    // que el usuario abre (esos no publican notificación). No inventa nada: solo guarda lo que ya está en pantalla.
+    // ─────────────────────────────────────────────────────────────────────────────────────────────
+
+    private val chatHandler = Handler(Looper.getMainLooper())
+    private var readPending = false
+    private var lastReadHash = 0
+    private var lastReadAt = 0L
+
+    /** ¿Esta app es de chat Y el usuario activó la lectura por pantalla (y, si eligió apps, es una de ellas)? */
+    private fun chatWanted(pkg: String): Boolean {
+        if (pkg == packageName) return false
+        if (!Prefs.chatCapture(this)) return false
+        if (!Sys.isChatApp(pkg)) return false
+        val pick = Prefs.chatPkgs(this)
+        return pick.isEmpty() || pkg in pick
+    }
+
+    private fun onWindowChanged(pkg: String) {
+        if (chatWanted(pkg)) scheduleRead(pkg)
+    }
+
+    /** Se espera un pelín para que la pantalla termine de pintar y no leer a medias. */
+    private fun scheduleRead(pkg: String) {
+        if (readPending) return
+        readPending = true
+        chatHandler.postDelayed({
+            readPending = false
+            try { readChat(pkg) } catch (e: Throwable) {}
+        }, 900L)
+    }
+
+    /** Lee el texto visible de la conversación y lo guarda en el Historial (si hay algo nuevo). */
+    private fun readChat(pkg: String) {
+        if (!chatWanted(pkg)) return
+        val root = rootInActiveWindow ?: return
+        if (root.packageName?.toString() != pkg) return
+        val parts = ArrayList<String>()
+        collectText(root, parts, 0)
+        // Une y limpia líneas repetidas seguidas
+        val lines = ArrayList<String>()
+        for (p in parts) {
+            val t = p.trim()
+            if (t.isEmpty()) continue
+            if (lines.isNotEmpty() && lines.last() == t) continue
+            lines.add(t)
+        }
+        if (lines.isEmpty()) return
+        // Se queda con lo más reciente (hasta 40 líneas): el final de la conversación es lo que interesa.
+        val slice = if (lines.size > 40) lines.subList(lines.size - 40, lines.size) else lines
+        val text = slice.joinToString("\n")
+        // ¿Es distinto de lo último leído? (mismo texto no se vuelve a guardar)
+        val h = text.hashCode()
+        val now = System.currentTimeMillis()
+        if (h == lastReadHash && now - lastReadAt < 60_000L) return
+        lastReadHash = h; lastReadAt = now
+
+        val app = try {
+            val ai = packageManager.getApplicationInfo(pkg, 0)
+            packageManager.getApplicationLabel(ai).toString()
+        } catch (e: Exception) { pkg }
+        // Se guarda como una entrada del Historial, marcando que vino de la PANTALLA (no de una notificación).
+        val mark = if (Prefs.chatMarkScreen(this)) "\n(pantalla · ${app})" else ""
+        val thread = Thread {
+            try {
+                Prefs.addHist(this, pkg, "Chat en pantalla · $app", text + mark,
+                    "", "Pantalla", 1_500L)
+                Backup.maybeUpload(this)
+                Backup.autoLocal(this)
+            } catch (e: Throwable) {}
+        }
+        thread.start()
+    }
+
+    /** Recoge el texto de todos los nodos con texto (en orden de aparición en pantalla). */
+    private fun collectText(node: AccessibilityNodeInfo?, out: ArrayList<String>, depth: Int) {
+        if (node == null || depth > 60) return
+        val t = node.text?.toString()
+        val d = node.contentDescription?.toString()
+        if (!t.isNullOrBlank() && t.length > 1) out.add(t)
+        else if (!d.isNullOrBlank() && d.length > 1 && node.text.isNullOrBlank()) {
+            // Solo descripciones cuando NO hay texto: evita duplicar botones e iconos.
+            if (node.isClickable || node.isFocusable) out.add(d)
+        }
+        val n = node.childCount
+        for (i in 0 until n) {
+            val ch = try { node.getChild(i) } catch (e: Throwable) { null }
+            collectText(ch, out, depth + 1)
+        }
+    }
 
     /** Paquete de la app que está al frente ahora (la ventana activa). */
     fun currentPackage(): String? = try { rootInActiveWindow?.packageName?.toString() } catch (e: Exception) { null }

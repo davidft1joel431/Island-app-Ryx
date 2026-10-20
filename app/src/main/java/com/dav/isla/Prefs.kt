@@ -287,6 +287,24 @@ object Prefs {
     fun callApp(c: Context): String = sp(c).getString("call_app", "") ?: ""
     fun setCallApp(c: Context, v: String) = sp(c).edit().putString("call_app", v).apply()
 
+    // ---- Captura de chats por ACCESIBILIDAD ----
+    /**
+     * Leer por accesibilidad el texto visible de los chats que abres (incluidos los ARCHIVADOS y RESTRINGIDOS,
+     * que no publican notificación). Guarda lo que se ve en pantalla en el Historial. Por defecto: apagado, porque
+     * es lo más invasivo; el usuario lo activa a conciencia.
+     */
+    fun chatCapture(c: Context): Boolean = sp(c).getBoolean("chat_cap", false)
+    fun setChatCapture(c: Context, v: Boolean) = sp(c).edit().putBoolean("chat_cap", v).apply()
+
+    /** Apps de chat que se vigilan (por paquete). Vacío = todas las que Ryx reconozca como de chat. */
+    fun chatPkgs(c: Context): Set<String> =
+        (sp(c).getString("chat_pkgs", "") ?: "").split("\n").map { it.trim() }.filter { it.isNotEmpty() }.toSet()
+    fun setChatPkgs(c: Context, v: Set<String>) = sp(c).edit().putString("chat_pkgs", v.joinToString("\n")).apply()
+
+    /** Avisar en el Historial de que una entrada se capturó LEYENDO LA PANTALLA (no era una notificación). */
+    fun chatMarkScreen(c: Context): Boolean = sp(c).getBoolean("chat_mark", true)
+    fun setChatMarkScreen(c: Context, v: Boolean) = sp(c).edit().putBoolean("chat_mark", v).apply()
+
     // ---- Copia en la nube y actualizaciones ----
     fun cloudUri(c: Context): String = sp(c).getString("cloud_uri", "") ?: ""
     fun setCloudUri(c: Context, v: String) = sp(c).edit().putString("cloud_uri", v).apply()

@@ -1819,6 +1819,13 @@ class MainActivity : Activity() {
         permRow(b, "Acceso a notificaciones", "Lee mensajes, llamadas y alertas, y las registra", notifEnabled()) {
             startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS))
         }
+        permRow(b, "Accesibilidad (leer chats en pantalla)",
+            if (!RyxAccessibility.isEnabled(this)) "Para registrar los chats ARCHIVADOS o RESTRINGIDOS que abras (no mandan notificación)"
+            else if (Prefs.chatCapture(this)) "Activada la lectura de chats en pantalla"
+            else "Accesibilidad lista. Actívala abajo en «Chats en pantalla»",
+            RyxAccessibility.isEnabled(this)) {
+            if (RyxAccessibility.isEnabled(this)) chatCaptureDialog() else askAccessibility()
+        }
         // ---- Llamadas ----
         // El sistema SIEMPRE tiene una app de llamadas; Ryx la detecta y usa la predeterminada (o la que elijas).
         val dialerName = Calls.chosenLabel(this)
@@ -1953,6 +1960,61 @@ class MainActivity : Activity() {
             }
             b.addView(label("Con el permiso de contactos, Ryx detecta solo los favoritos (estrella). Sin él, usa la lista de arriba.",
                 12f, R.color.muted), lp(8))
+        }
+        dlgRef = dlg
+    }
+
+    /** Chats en pantalla: activar la lectura por accesibilidad y elegir qué apps vigilar. */
+    private fun chatCaptureDialog() {
+        var dlgRef: Dialog? = null
+        val dlg = sheet("Chats en pantalla") { b ->
+            val reload: () -> Unit = { dlgRef?.dismiss(); chatCaptureDialog() }
+            b.addView(rowWithSwitch("Registrar chats que abro",
+                "Ryx lee el texto VISIBLE cuando abres WhatsApp, Telegram, Instagram, TikTok y demás. " +
+                "Así se guardan también los chats ARCHIVADOS o RESTRINGIDOS (esos no mandan notificación).",
+                Prefs.chatCapture(this)) { Prefs.setChatCapture(this, it); reload() }, lp(4))
+            b.addView(rowWithSwitch("Marcar en el Historial",
+                "Añade «(pantalla · App)» a las entradas capturadas leyendo la pantalla, para distinguirlas de las notificaciones",
+                Prefs.chatMarkScreen(this)) { Prefs.setChatMarkScreen(this, it) }, lp(4))
+            if (!RyxAccessibility.isEnabled(this)) {
+                b.addView(label("Falta el servicio de accesibilidad: sin él, Ryx no puede leer la pantalla.",
+                    12f, R.color.gold, true), lp(8))
+                b.addView(button("Activar accesibilidad", true) { askAccessibility() }, lp(8))
+            }
+            // Apps de chat detectadas en el teléfono
+            val pm = packageManager
+            val intent = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
+            val installed = pm.queryIntentActivities(intent, 0)
+                .map { it.activityInfo.packageName }.distinct()
+                .filter { Sys.isChatApp(it) }
+                .map { it to try { pm.getApplicationLabel(pm.getApplicationInfo(it, 0)).toString() } catch (e: Exception) { it } }
+                .sortedBy { it.second.lowercase() }
+            val chosen = Prefs.chatPkgs(this)
+            b.addView(label("Apps de chat detectadas (${installed.size}). Si no marcas ninguna, se vigilan todas.",
+                12f, R.color.muted).apply { setPadding(0, px(10), 0, 0) })
+            if (installed.isEmpty()) {
+                b.addView(label("(No se reconoció ninguna app de chat instalada)", 12f, R.color.muted), lp(4))
+            }
+            installed.forEach { (p, name) ->
+                val on = chosen.contains(p)
+                val r = LinearLayout(this).apply {
+                    orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
+                    setPadding(px(6), px(8), px(6), px(8))
+                    setOnClickListener {
+                        val s = Prefs.chatPkgs(this@MainActivity).toMutableSet()
+                        if (on) s.remove(p) else s.add(p)
+                        Prefs.setChatPkgs(this@MainActivity, s); reload()
+                    }
+                }
+                r.addView(View(this).apply {
+                    background = android.graphics.drawable.GradientDrawable().apply {
+                        shape = android.graphics.drawable.GradientDrawable.OVAL
+                        setColor(if (on) Glass.ACCENT else Glass.SURFACE_HI) }
+                }, LinearLayout.LayoutParams(px(20), px(20)).apply { marginEnd = px(12) })
+                r.addView(label(name, 15f, R.color.text, on), LinearLayout.LayoutParams(0, WRAP, 1f))
+                r.addView(label(p, 10f, R.color.muted))
+                b.addView(r)
+            }
         }
         dlgRef = dlg
     }
