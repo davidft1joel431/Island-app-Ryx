@@ -202,14 +202,26 @@ class NotifListener : NotificationListenerService() {
         main.removeCallbacks(watch); main.postDelayed(watch, 2500)
         if (Prefs.hideHeadsUp(this)) Thread { Shell.setHeadsUp(this, false) }.start()
         checkUpdatesInBackground()          // aviso de versión nueva aunque la app no esté abierta
+        main.removeCallbacks(updWatch); main.postDelayed(updWatch, Prefs.updEverySec(this).coerceIn(15, 3600) * 1000L)
+        Backup.autoLocal(this)              // copia propia al arrancar el servicio
+    }
+
+    /** Revisa GitHub cada poco (por defecto 30 s) mientras el servicio está vivo. */
+    private val updWatch = object : Runnable {
+        override fun run() {
+            checkUpdatesInBackground()
+            main.postDelayed(this, Prefs.updEverySec(this@NotifListener).coerceIn(15, 3600) * 1000L)
+        }
     }
 
     /**
-     * Mira si hay versión nueva cada 12 h y lo avisa en el panel del sistema. Corre en el hilo de historial (sin
-     * tocar la interfaz) para no molestar al servicio. Si no hay permiso de notificaciones no se pone nada.
+     * Mira si hay versión nueva cada [Prefs.updEverySec] segundos (por defecto 30) y lo avisa. El aviso sale
+     * EN LA ISLA (no en el panel del sistema, salvo que se pida). Corre en el hilo de historial para no molestar
+     * al servicio. Si no hay nada nuevo, no se hace nada.
      */
     private fun checkUpdatesInBackground() {
-        if (System.currentTimeMillis() - Prefs.updLast(this) < 12 * 3600_000L) return
+        val gap = Prefs.updEverySec(this).coerceIn(15, 3600) * 1000L
+        if (System.currentTimeMillis() - Prefs.updLast(this) < gap) return
         histExec.execute {
             try {
                 Prefs.setUpdLast(this, System.currentTimeMillis())
@@ -218,8 +230,16 @@ class NotifListener : NotificationListenerService() {
                 if (i != null && i.newer) {
                     val key = if (i.version.isNotEmpty()) i.version else i.name
                     if (key != Prefs.updSeen(this)) {
-                        AppNotify.update(this, i.version, i.name, i.apk, i.page, i.notes)
                         Prefs.setUpdSeen(this, key)
+                        if (Prefs.updViaIsland(this)) {
+                            // El aviso va a la ISLA: título, versión y novedades; al tocarlo se abre la app para actualizar.
+                            val canIsland = Settings.canDrawOverlays(this) && Prefs.islandOn(this)
+                            if (canIsland) main.post { showUpdateCard(i) }
+                            else AppNotify.update(this, i.version, i.name, i.apk, i.page, i.notes)   // sin isla posible: al panel
+                        }
+                        if (!Prefs.updViaIsland(this) || Prefs.updAlsoPanel(this)) {
+                            AppNotify.update(this, i.version, i.name, i.apk, i.page, i.notes)
+                        }
                     }
                 } else if (i != null && Prefs.updSeen(this).isNotEmpty()) {
                     Prefs.setUpdSeen(this, ""); AppNotify.clearUpdate(this)
@@ -228,8 +248,21 @@ class NotifListener : NotificationListenerService() {
         }
     }
 
+    /** Aviso de versión nueva dentro de la isla. Tocar la tarjeta abre Ryx para actualizar. */
+    private fun showUpdateCard(i: Updater.Info) {
+        val v = if (i.version.isNotEmpty()) "v" + i.version else i.name
+        val line = i.notes.trim().lineSequence().firstOrNull { it.isNotBlank() }?.take(160)
+            ?: "Toca para ver novedades y descargar."
+        show(packageName, "Actualización de Ryx", "$v · $line", eventIcon("download", Glass.ACCENT),
+            true, true, "sys:update", false, "ev:update",
+            target = "update", label = "Ryx Island",
+            accentOverride = Glass.ACCENT)
+    }
+
+
     override fun onListenerDisconnected() {
         main.removeCallbacks(watch)
+        main.removeCallbacks(updWatch)
         try { unregisterReceiver(sysReceiver) } catch (e: Exception) {}
         main.post { removeNow() }
         restoreHeadsUp()
@@ -238,6 +271,7 @@ class NotifListener : NotificationListenerService() {
 
     override fun onDestroy() {
         main.removeCallbacks(watch)
+        main.removeCallbacks(updWatch)
         try { unregisterReceiver(sysReceiver) } catch (e: Exception) {}
         anim?.cancel()
         removeNow()
@@ -327,7 +361,11 @@ class NotifListener : NotificationListenerService() {
             // Los avisos del sistema se de-duplican durante más tiempo: no queremos cuatro avisos de batería seguidos.
             val win = if (Sys.isSystemPkg(hp)) 120_000L else 3_000L
             histExec.execute {      // disco y copia de seguridad fuera del hilo principal: la isla sale antes
-                try { Prefs.addHist(this, hp, ht, hx, saveBitmap(mediaBmp, mediaKind), mediaKind, win); Backup.maybeUpload(this) } catch (e: Exception) {}
+                try {
+                    Prefs.addHist(this, hp, ht, hx, saveBitmap(mediaBmp, mediaKind), mediaKind, win)
+                    Backup.maybeUpload(this)     // copia a la carpeta elegida (Drive u otra), si hay
+                    Backup.autoLocal(this)       // copia a la carpeta PROPIA de la app, sola y sin tocar nada
+                } catch (e: Exception) {}
             }
         }
 
@@ -1795,6 +1833,16 @@ class NotifListener : NotificationListenerService() {
     /** [kind]: null = el modo elegido en Ventana; 0 = formato libre; 1 = burbuja. */
     private fun openCurrent(floating: Boolean, kind: Int? = null) {
         val card = cards.getOrNull(cardIndex) ?: return
+        // Aviso de versión nueva: abre Ryx directamente en «Buscar actualizaciones».
+        if (card.target == "update") {
+            try {
+                startActivity(Intent(this, MainActivity::class.java).apply {
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+                    putExtra("ryx_manual_upd", true)
+                })
+            } catch (e: Exception) {}
+            dismissCurrent(); return
+        }
         // Eventos del sistema (batería, Wi-Fi…): llevan a su pantalla de Ajustes
         if (card.target != null) { openTarget(card.target); dismissCurrent(); return }
         val pkg = card.pkg

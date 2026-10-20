@@ -50,6 +50,7 @@ class MainActivity : Activity() {
     private var tab = 0
     private var subPage: String? = null
     private var lastKey: String? = null            // pantalla anterior: solo se anima al cambiar de pestaña
+    private var tabBarKey: String? = null          // pestaña dibujada en la barra: solo se rehace si cambia
     private var landscapeView = false
     private val expandedGroups = HashSet<String>().apply { add("power") }
     private var previewView: IslandPreview? = null
@@ -162,12 +163,22 @@ class MainActivity : Activity() {
             Shizuku.addBinderDeadListener(deadListener)
         } catch (e: Throwable) {}
         Backup.maybeUpload(this, 60 * 60_000L)
+        Backup.autoLocal(this)
         offerRestore()
         if (!RyxAccessibility.isEnabled(this) && !Prefs.a11yAsked(this)) {
             Prefs.setA11yAsked(this, true); askAccessibility()
         }
-        if (System.currentTimeMillis() - Prefs.updLast(this) > 12 * 3600_000L) checkUpdates(false)
+        if (System.currentTimeMillis() - Prefs.updLast(this) > Prefs.updEverySec(this) * 1000L) checkUpdates(false)
         handleExtras()
+    }
+
+    /** Revisa actualizaciones y refresca pantallas al volver a la app (sin molestar si ya se miró hace poco). */
+    override fun onResume() {
+        super.onResume()
+        updatePill()
+        if (tab == 3 || tab == 4 || subPage == "perms") render()
+        if (System.currentTimeMillis() - Prefs.updLast(this) > Prefs.updEverySec(this) * 1000L) checkUpdates(false)
+        Backup.autoLocal(this)
     }
 
     /** Aperturas pedidas desde fuera: el aviso de «hay versión nueva» del panel del sistema. */
@@ -398,13 +409,10 @@ class MainActivity : Activity() {
         super.onDestroy()
     }
 
-    override fun onResume() { super.onResume(); updatePill(); if (tab == 3 || tab == 4 || subPage == "perms") render() }
-
     @Suppress("DEPRECATION")
     override fun onBackPressed() {
         if (subPage != null) { subPage = null; render() } else super.onBackPressed()
     }
-
     private fun updatePill() {
         val on = Prefs.islandOn(this) && Settings.canDrawOverlays(this)
         activePill.text = if (on) "● Activa" else "● Inactiva"
@@ -423,37 +431,15 @@ class MainActivity : Activity() {
         // Al cambiar de pantalla, el contenido entra con un fundido corto; al refrescar la misma, no parpadea
         val key = subPage ?: "t$tab"
         val changed = key != lastKey
+        val tabChanged = tabBarKey != key
         lastKey = key
+        tabBarKey = key
         content.animate().cancel()
         if (changed) { content.alpha = 0f; content.animate().alpha(1f).setDuration(200).start() } else content.alpha = 1f
         updatePill()
-        tabBar.removeAllViews()
-        // Índice de la pestaña que debe verse resaltada: si hay subpágina (Permisos), se marca Ajustes (índice 4).
-        val activeTab = if (subPage == "perms") 4 else tab
-        tabs.forEachIndexed { i, (ic, name) ->
-            val sel = i == activeTab && (subPage == null || subPage == "perms" && i == 4)
-            val colr = if (sel) Glass.ACCENT else Glass.MUTED
-            val b = LinearLayout(this).apply {
-                orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER
-                setPadding(0, px(7), 0, px(7))
-                background = Glass.ripple(this@MainActivity, Glass.pill(this@MainActivity, 0, 0, 22f), 22f)
-                setOnClickListener {
-                    performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
-                    tab = i; subPage = null; render()
-                }
-            }
-            // Indicador tras el icono (como los menús modernos): solo el icono lleva la pastilla, la etiqueta queda debajo
-            val ind = FrameLayout(this).apply {
-                if (sel) background = Glass.pill(this@MainActivity, Glass.accentA(0x2E), 0, 16f)
-            }
-            ind.addView(icon(ic, 22, colr), FrameLayout.LayoutParams(px(22), px(22), Gravity.CENTER))
-            if (sel && changed) { ind.scaleX = 0.5f; ind.alpha = 0f; ind.animate().scaleX(1f).alpha(1f).setDuration(220).start() }
-            b.addView(ind, LinearLayout.LayoutParams(px(56), px(30)))
-            b.addView(label(name, 11f, R.color.text, true).apply {
-                setTextColor(if (sel) Glass.TEXT else Glass.MUTED); gravity = Gravity.CENTER
-            }, lp(3))
-            tabBar.addView(b, LinearLayout.LayoutParams(0, WRAP, 1f).apply { marginStart = px(2); marginEnd = px(2) })
-        }
+        // La barra de abajo solo se reconstruye (iconos, pastillas y animación) cuando cambia de pestaña.
+        // Antes se rehacía en cada refresco, y con ella cinco iconos: eso era lo que hacía lento el menú.
+        if (tabChanged) renderTabBar()
         content.removeAllViews()
         previewView = null; appsBox = null
         val page = LinearLayout(this).apply {
@@ -506,6 +492,37 @@ class MainActivity : Activity() {
             colm.addView(scroll, LinearLayout.LayoutParams(MATCH, 0, 1f))
             content.addView(colm)
         } else content.addView(scroll)
+    }
+
+    /** Barra de navegación de abajo. Se reconstruye solo al cambiar de pestaña (ver [render]). */
+    private fun renderTabBar() {
+        tabBar.removeAllViews()
+        // Índice de la pestaña que debe verse resaltada: si hay subpágina (Permisos), se marca Ajustes (índice 4).
+        val activeTab = if (subPage == "perms") 4 else tab
+        tabs.forEachIndexed { i, (ic, name) ->
+            val sel = i == activeTab && (subPage == null || subPage == "perms" && i == 4)
+            val colr = if (sel) Glass.ACCENT else Glass.MUTED
+            val b = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER
+                setPadding(0, px(7), 0, px(7))
+                background = Glass.ripple(this@MainActivity, Glass.pillCached(this@MainActivity, 0, 0, 22f), 22f)
+                setOnClickListener {
+                    performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+                    if (tab != i || subPage != null) { tab = i; subPage = null; render() }
+                }
+            }
+            // Indicador tras el icono (como los menús modernos): solo el icono lleva la pastilla, la etiqueta queda debajo
+            val ind = FrameLayout(this).apply {
+                if (sel) background = Glass.pillCached(this@MainActivity, Glass.accentA(0x2E), 0, 16f)
+            }
+            ind.addView(icon(ic, 22, colr), FrameLayout.LayoutParams(px(22), px(22), Gravity.CENTER))
+            if (sel) { ind.scaleX = 0.9f; ind.alpha = 0.7f; ind.animate().scaleX(1f).alpha(1f).setDuration(200).start() }
+            b.addView(ind, LinearLayout.LayoutParams(px(56), px(30)))
+            b.addView(label(name, 11f, R.color.text, true).apply {
+                setTextColor(if (sel) Glass.TEXT else Glass.MUTED); gravity = Gravity.CENTER
+            }, lp(3))
+            tabBar.addView(b, LinearLayout.LayoutParams(0, WRAP, 1f).apply { marginStart = px(2); marginEnd = px(2) })
+        }
     }
 
     /** Editor visual fijo arriba: muestra la parte superior de ESTE teléfono con la isla en vivo. */
@@ -661,7 +678,7 @@ class MainActivity : Activity() {
                     val isOn = Prefs.eventOnFor(this, ev.id, landscapeView)
                     val ex = Prefs.eventExpand(this, ev.id)
                     val chip = FrameLayout(this).apply {
-                        background = Glass.ripple(this@MainActivity, Glass.chip(this@MainActivity, isOn, 18f), 18f)
+                        background = Glass.ripple(this@MainActivity, Glass.chipCached(this@MainActivity, isOn, 18f), 18f)
                         val col2 = LinearLayout(this@MainActivity).apply {
                             orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER
                             setPadding(px(6), px(18), px(6), px(16))
@@ -783,7 +800,7 @@ class MainActivity : Activity() {
                 setTypeface(typeface, Typeface.BOLD)
                 setTextColor(if (chip.second) 0xFF3DDC84.toInt() else Glass.MUTED)
                 setPadding(px(8), px(10), px(8), px(10))
-                background = Glass.ripple(this@MainActivity, Glass.pill(this@MainActivity,
+                background = Glass.ripple(this@MainActivity, Glass.pillCached(this@MainActivity,
                     if (chip.second) 0x1F3DDC84 else Glass.SURFACE_HI, if (chip.second) 0x553DDC84 else Glass.HAIR, 14f), 14f)
                 setOnClickListener { subPage = "perms"; render() }
             }, LinearLayout.LayoutParams(0, WRAP, 1f).apply { if (i > 0) marginStart = px(6) })
@@ -902,7 +919,7 @@ class MainActivity : Activity() {
                 val cell = LinearLayout(this).apply {
                     orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER
                     setPadding(px(4), px(10), px(4), px(8))
-                    background = Glass.ripple(this@MainActivity, Glass.pill(this@MainActivity,
+                    background = Glass.ripple(this@MainActivity, Glass.pillCached(this@MainActivity,
                         if (on) Glass.withA(t.accent, 0x2A) else Glass.SURFACE_HI, if (on) t.accent else Glass.HAIR, 16f), 16f)
                     setOnClickListener { Prefs.setAppTheme(this@MainActivity, t.id); Glass.applyTheme(this@MainActivity); recreate() }
                 }
@@ -929,7 +946,7 @@ class MainActivity : Activity() {
             val cell = LinearLayout(this).apply {
                 orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER
                 setPadding(px(4), px(10), px(4), px(8))
-                background = Glass.ripple(this@MainActivity, Glass.chip(this@MainActivity, on, 16f), 16f)
+                background = Glass.ripple(this@MainActivity, Glass.chipCached(this@MainActivity, on, 16f), 16f)
                 setOnClickListener { Prefs.setIconShape(this@MainActivity, i); applyAll(); svc()?.showTest(); render() }
             }
             cell.addView(ShapedImageView(this).apply {
@@ -1266,13 +1283,16 @@ class MainActivity : Activity() {
         heading(p, "APARIENCIA")
         item(p, "palette", 0xFF7B5CE0.toInt(), "Tema de la app", "Color de acento de la aplicación", Glass.theme.label) { themeDialog() }
         heading(p, "DATOS")
-        item(p, "backup", 0xFF3F7BEA.toInt(), "Copia de seguridad", "Exporta o importa todos los ajustes", "") { backupDialog() }
+        item(p, "backup", 0xFF3F7BEA.toInt(), "Copia de seguridad",
+            if (Prefs.backupAuto(this)) "Automática en la carpeta de Ryx" else "Manual: exporta o importa ajustes",
+            if (Prefs.backupLast(this) > 0) relative(Prefs.backupLast(this)) else "") { backupDialog() }
         item(p, "upload", 0xFF2D8CCB.toInt(), "Copia en la nube",
             "Historial y ajustes en Google Drive u otra carpeta", if (Backup.configured(this)) "Activa" else "") { cloudDialog() }
         heading(p, "SISTEMA")
         item(p, "shield", 0xFF2DAA55.toInt(), "Permisos", "Superposición, acceso a notificaciones, batería", "") { subPage = "perms"; render() }
-        item(p, "download", 0xFF2DAA55.toInt(), "Buscar actualizaciones", "Consulta la última versión en GitHub",
-            "v${BuildConfig.VERSION_NAME}") { checkUpdates(true) }
+        item(p, "download", 0xFF2DAA55.toInt(), "Actualizaciones",
+            "Ryx mira GitHub cada ${Prefs.updEverySec(this)} s y te avisa en la isla",
+            "v${BuildConfig.VERSION_NAME}") { updateDialog() }
         item(p, "code", 0xFF5F6B80.toInt(), "Opciones de desarrollador", "Diagnóstico avanzado y pruebas internas", "") { devDialog() }
         item(p, "info", 0xFF5F6B80.toInt(), "Acerca de", "Versión y créditos", "") {
             dialog("Acerca de Ryx Island", "Ryx Island v${BuildConfig.VERSION_NAME}\nCreador: David Joel\n\nLa interfaz está inspirada en Smart Island, " +
@@ -1731,15 +1751,71 @@ class MainActivity : Activity() {
     }
 
     private fun backupDialog() = sheet("Copia de seguridad") { b ->
-        b.addView(button("Copiar ajustes al portapapeles", false) {
+        val last = Prefs.backupLast(this)
+        val copies = Backup.dir(this).listFiles()?.count { it.isFile } ?: 0
+        val status = when {
+            last <= 0 -> "Todavía no hay ninguna copia guardada."
+            else -> "Última copia: ${relative(last)} · $copies ${if (copies == 1) "copia" else "copias"} guardadas"
+        }
+        b.addView(label(status, 14f, R.color.text), lp(6))
+        b.addView(rowWithSwitch("Guardar copias solo", "Ryx crea su carpeta y guarda la copia por su cuenta, sin que pulses nada",
+            Prefs.backupAuto(this)) { v -> Prefs.setBackupAuto(this, v); if (v) Backup.autoLocal(this, true); render() })
+        b.addView(label("Guardar cada", 13f, R.color.muted, true), lp(12))
+        b.addView(segmented(listOf("15 min", "30 min", "1 h", "6 h"), when (Prefs.backupEveryMin(this)) {
+            15 -> 0; 60 -> 2; 360 -> 3; else -> 1 }, true) {
+            Prefs.setBackupEveryMin(this, listOf(15, 30, 60, 360)[it]); render()
+        }, lp(6))
+        b.addView(label("Copias que se conservan", 13f, R.color.muted, true), lp(12))
+        b.addView(segmented(listOf("3", "7", "14", "30"), when (Prefs.backupKeep(this)) {
+            3 -> 0; 14 -> 2; 30 -> 3; else -> 1 }, true) { Prefs.setBackupKeep(this, listOf(3, 7, 14, 30)[it]) }, lp(6))
+        b.addView(button("Guardar copia ahora", true) {
+            toast("Guardando…")
+            Thread { val r = Backup.writeLocal(this); runOnUiThread { toast(if (r.isEmpty()) "Copia guardada" else r); render() } }.start()
+        }, lp(12))
+        val locals = Backup.dir(this).listFiles()?.filter { it.isFile }?.sortedByDescending { it.name } ?: emptyList()
+        if (locals.isNotEmpty()) {
+            b.addView(label("Copias guardadas (toca para restaurar)", 13f, R.color.muted, true), lp(12))
+            locals.take(6).forEach { f ->
+                val when0 = f.name.removePrefix("ryx_").removeSuffix(".zip").toLongOrNull() ?: 0L
+                val size = "${f.length() / 1024} KB"
+                item(b, "backup", 0xFF3F7BEA.toInt(),
+                    if (when0 > 0) relative(when0) else f.name, size, "") {
+                    Thread {
+                        val msg = try { f.inputStream().use { Backup.restore(this, it) } } catch (e: Exception) { "No pude restaurar: ${e.message}" }
+                        runOnUiThread { applyAll(); render(); dialog("Restaurar copia", msg) }
+                    }.start()
+                }
+            }
+        }
+        b.addView(button("Ajustes al portapapeles", false) {
             (getSystemService(CLIPBOARD_SERVICE) as ClipboardManager)
                 .setPrimaryClip(ClipData.newPlainText("ryx", Prefs.exportAll(this))); toast("Ajustes copiados")
-        })
-        b.addView(button("Importar desde el portapapeles", false) {
+        }, lp(12))
+        b.addView(button("Ajustes desde el portapapeles", false) {
             val cb = getSystemService(CLIPBOARD_SERVICE) as ClipboardManager
             val txt = cb.primaryClip?.getItemAt(0)?.text?.toString() ?: ""
             if (Prefs.importAll(this, txt)) { applyAll(); render(); toast("Ajustes importados") } else toast("El portapapeles no tiene una copia válida")
         }, lp(8))
+        b.addView(label("Estas copias viven dentro de Ryx (carpeta propia de la app) y se guardan solas cada cierto tiempo " +
+            "o cuando llega algo nuevo al historial. Sobreviven a cerrar la app, pero no a desinstalarla: para eso, usa " +
+            "«Copia en la nube», que además deja el archivo en Google Drive u otra carpeta.", 12f, R.color.muted), lp(10))
+    }
+
+    /** Ajustes de actualizaciones: con qué frecuencia se mira GitHub y por dónde te avisa. */
+    private fun updateDialog() = sheet("Actualizaciones") { b ->
+        b.addView(label("Versión instalada: v${BuildConfig.VERSION_NAME}", 14f, R.color.text), lp(6))
+        b.addView(rowWithSwitch("Avisar con la isla", "Ryx te avisa dentro de la isla, no en el panel del sistema",
+            Prefs.updViaIsland(this)) { v -> Prefs.setUpdViaIsland(this, v) })
+        b.addView(rowWithSwitch("Avisar también en el panel", "Además del aviso de la isla, deja una notificación normal",
+            Prefs.updAlsoPanel(this)) { v -> Prefs.setUpdAlsoPanel(this, v) })
+        b.addView(label("Revisar GitHub cada", 13f, R.color.muted, true), lp(12))
+        b.addView(segmented(listOf("15 s", "30 s", "1 min", "5 min", "30 min"), when (Prefs.updEverySec(this)) {
+            15 -> 0; 60 -> 2; 300 -> 3; 1800 -> 4; else -> 1 }, true) {
+            Prefs.setUpdEverySec(this, listOf(15, 30, 60, 300, 1800)[it]); render()
+        }, lp(6))
+        b.addView(button("Buscar ahora", true) { checkUpdates(true) }, lp(12))
+        b.addView(label("Ryx consulta la última versión en GitHub mientras está en marcha. Cuando sale una nueva, " +
+            "la anuncia DENTRO de la isla: tócala para verlo todo y actualizar. Así no se mezcla con los avisos de tus apps.", 12f, R.color.muted), lp(8))
     }
 
     private fun cloudDialog() = sheet("Copia en la nube") { b ->
@@ -1964,7 +2040,7 @@ class MainActivity : Activity() {
             val cell = LinearLayout(this).apply {
                 orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER
                 setPadding(px(4), px(12), px(4), px(10))
-                background = Glass.ripple(this@MainActivity, Glass.chip(this@MainActivity, on, 16f), 16f)
+                background = Glass.ripple(this@MainActivity, Glass.chipCached(this@MainActivity, on, 16f), 16f)
                 setOnClickListener { onPick(if (i == 0) 0 else if (i == 1) 24 else 999) }
             }
             cell.addView(icon(icons[i], 26, if (on) Glass.ACCENT else Glass.MUTED))

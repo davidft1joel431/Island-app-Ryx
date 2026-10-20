@@ -131,6 +131,27 @@ object Glass {
             if (stroke != 0) setStroke(maxOf(1, dp(c, 1f).toInt()), stroke)
         }
 
+    // ---- Caché de dibujos ----
+    // Cada fila decorada creaba su propio «pill» y descodificaba su icono: en listas largas eso se nota al abrir.
+    // Se guardan por (relleno, borde, radio) y por (nombre, color). Se comparte el dibujo, cuya matriz sigue siendo
+    // la misma para todas las filas (nada se deforma), y se devuelve una copia solo cuando la vista necesita una.
+    private val pillCache = HashMap<String, Drawable>()
+    private val iconCache = HashMap<String, Drawable?>()
+
+    /**
+     * Igual que [pill] pero reutilizando el «molde»: se guarda por (relleno, borde, radio) y se devuelve una
+     * COPIA nueva (un dibujo solo puede servir a una vista a la vez). Evita recalcular el degradado en cada fila.
+     */
+    fun pillCached(c: Context, fill: Int, stroke: Int = 0, radiusDp: Float = 16f): Drawable {
+        val key = "$fill|$stroke|$radiusDp"
+        val base = pillCache.getOrPut(key) { pill(c, fill, stroke, radiusDp) }
+        return base.constantState?.newDrawable() ?: pill(c, fill, stroke, radiusDp)
+    }
+
+    /** Igual que [chip] pero reutilizando el molde: úsalo en listas largas (eventos, temas, formas…). */
+    fun chipCached(c: Context, on: Boolean, radiusDp: Float = 16f): Drawable =
+        pillCached(c, if (on) accentA(0x24) else SURFACE_HI, if (on) accentA(0x99) else HAIR, radiusDp)
+
     /** Casilla seleccionable (estilos, temas, formas…): con el acento si está elegida y neutra si no. */
     fun chip(c: Context, on: Boolean, radiusDp: Float = 16f): Drawable =
         pill(c, if (on) accentA(0x24) else SURFACE_HI, if (on) accentA(0x99) else HAIR, radiusDp)
@@ -142,10 +163,18 @@ object Glass {
     }
 
     fun icon(c: Context, name: String, color: Int): Drawable? {
-        val id = c.resources.getIdentifier("ic_$name", "drawable", c.packageName)
-        if (id == 0) return null
-        return c.getDrawable(id)?.mutate()?.also { it.setTintList(ColorStateList.valueOf(color)) }
+        val key = "$name|$color"
+        val base = iconCache.getOrPut(key) {
+            val id = c.resources.getIdentifier("ic_$name", "drawable", c.packageName)
+            if (id == 0) null
+            else c.getDrawable(id)?.mutate()?.also { it.setTintList(ColorStateList.valueOf(color)) }
+        } ?: return null
+        // Copia nueva por vista: un dibujo no puede servir a dos vistas a la vez (el tinte y las ondulaciones chocan).
+        return base.constantState?.newDrawable()?.mutate()?.also { it.setTintList(ColorStateList.valueOf(color)) } ?: base
     }
+
+    /** Otra instancia del mismo icono (para una vista que pueda teñirlo o animarlo aparte). */
+    fun iconCopy(c: Context, name: String, color: Int): Drawable? = icon(c, name, color)
 }
 
 /** Interruptor moderno: pista del acento con perilla blanca grande al encender; apagado, pista oscura con borde y perilla pequeña. */

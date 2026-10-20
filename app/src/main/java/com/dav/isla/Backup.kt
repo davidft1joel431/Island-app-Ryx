@@ -24,6 +24,57 @@ object Backup {
 
     fun configured(c: Context) = Prefs.cloudUri(c).isNotEmpty()
 
+    /** Carpeta PROPIA de la app (dentro de sus datos): aquí se guardan solas las copias, sin pedir nada. */
+    fun dir(c: Context): File = File(c.filesDir, "copias").also { it.mkdirs() }
+
+    /** Suma de comprobación sencilla de «lo que hay que guardar»: ajustes + historial + nº de imágenes. */
+    fun stamp(c: Context): String {
+        val h = Prefs.histRaw(c)
+        val n = Prefs.histDir(c).listFiles()?.size ?: 0
+        var x = 17L
+        x = x * 31 + Prefs.exportAll(c).hashCode()
+        x = x * 31 + h.hashCode()
+        x = x * 31 + n
+        return x.toString(16)
+    }
+
+    /**
+     * Escribe una copia DENTRO de la app, rotando: conserva las [Prefs.backupKeep] más recientes.
+     * Devuelve "" si salió bien o el motivo del fallo. Llamar fuera del hilo principal.
+     */
+    fun writeLocal(c: Context): String {
+        return try {
+            val d = dir(c)
+            val f = File(d, "ryx_" + System.currentTimeMillis() + ".zip")
+            f.outputStream().use { o -> write(c, o) }
+            val all = d.listFiles()?.filter { it.isFile }?.sortedByDescending { it.name } ?: emptyList()
+            val keep = Prefs.backupKeep(c).coerceIn(1, 50)
+            all.drop(keep).forEach { it.delete() }
+            Prefs.setBackupLast(c, System.currentTimeMillis())
+            Prefs.setBackupStamp(c, stamp(c))
+            ""
+        } catch (e: Exception) {
+            "No pude guardar la copia: ${e.message ?: e.javaClass.simpleName}"
+        }
+    }
+
+    /**
+     * Copia automática en la carpeta propia: solo si algo cambió (ajustes/historial/imágenes) y como mucho
+     * cada [Prefs.backupEveryMin] minutos. Es lo que evita tener que pulsar nada.
+     */
+    fun autoLocal(c: Context, force: Boolean = false) {
+        if (!Prefs.backupAuto(c) || running) return
+        val now = System.currentTimeMillis()
+        when {
+            force -> {}
+            stamp(c) == Prefs.backupStamp(c) -> return                       // nada nuevo
+            now - Prefs.backupLast(c) < Prefs.backupEveryMin(c) * 60_000L -> return
+        }
+        running = true
+        val app = c.applicationContext
+        Thread { try { writeLocal(app) } finally { running = false } }.start()
+    }
+
     fun write(c: Context, out: OutputStream) {
         ZipOutputStream(out).use { z ->
             z.putNextEntry(ZipEntry("ajustes.json")); z.write(Prefs.exportAll(c).toByteArray()); z.closeEntry()
