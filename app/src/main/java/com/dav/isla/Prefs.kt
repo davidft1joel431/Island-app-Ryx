@@ -65,8 +65,10 @@ object Prefs {
     fun setHeightDp(c: Context, v: Int) = sp(c).edit().putInt("idle_h", v).apply()
     fun xOffsetDp(c: Context): Int = sp(c).getInt("x_dp", 0)
     fun setXOffsetDp(c: Context, v: Int) = sp(c).edit().putInt("x_dp", v).apply()
-    fun cornerDp(c: Context): Int = sp(c).getInt("corner_dp", -1)   // -1 = el del estilo
+    fun cornerDp(c: Context): Int = sp(c).getInt("corner_dp", -1)   // -1 = el del estilo (isla expandida)
     fun setCornerDp(c: Context, v: Int) = sp(c).edit().putInt("corner_dp", v).apply()
+    fun idleCornerDp(c: Context): Int = sp(c).getInt("idle_corner_dp", -1)   // -1 = el del estilo (isla contraída)
+    fun setIdleCornerDp(c: Context, v: Int) = sp(c).edit().putInt("idle_corner_dp", v).apply()
     fun opacity(c: Context): Int = sp(c).getInt("opacity", 100)
     fun setOpacity(c: Context, v: Int) = sp(c).edit().putInt("opacity", v).apply()
     fun shadow(c: Context): Boolean = sp(c).getBoolean("shadow", false)
@@ -213,7 +215,7 @@ object Prefs {
     fun swipeDp(c: Context): Int = sp(c).getInt("swipe_dp", 50)   // distancia fija para deslizar: 50 dp
     fun setSwipeDp(c: Context, v: Int) = sp(c).edit().putInt("swipe_dp", v).apply()
     fun autoHideAfterTouch(c: Context): Boolean = true
-    fun appTheme(c: Context): String = sp(c).getString("app_theme", "ryx") ?: "ryx"
+    fun appTheme(c: Context): String = sp(c).getString("app_theme", "yellow") ?: "yellow"
     fun setAppTheme(c: Context, v: String) = sp(c).edit().putString("app_theme", v).apply()
 
     // ---- Aspecto: isla en reposo y tarjeta (cristal / color / transparencia) ----

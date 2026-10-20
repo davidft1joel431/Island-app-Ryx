@@ -133,13 +133,17 @@ class IslandPreview(c: Context) : View(c) {
         rect.set(cx - u(wdp) / 2f, top, cx + u(wdp) / 2f, top + u(hdp))
         val cd = Prefs.cornerDp(ctx)
         val cornerDp = if (cd >= 0) cd.toFloat() else st.cornerDp
+        val cdIdle = Prefs.idleCornerDp(ctx)
+        val idleCornerDp = if (cdIdle >= 0) cdIdle.toFloat() else st.cornerDp
+        // Cada capa usa su propio radio: la contraída puede ser cuadrada y la expandida circular, o al revés.
+        val crIdle = u(minOf(idleCornerDp, hdp / 2f))
         val cr2 = u(minOf(cornerDp, hdp / 2f))
         val idleSpec = IslandLook.idle(ctx)
         val cardSpec = IslandLook.card(ctx, st)
         val k = progress.coerceIn(0f, 1f)
 
         if (Prefs.shadow(ctx)) { p.setShadowLayer(u(10f), 0f, u(4f), 0x99000000.toInt()) }
-        drawLook(cv, idleSpec, cr2, 1f - k, s)
+        drawLook(cv, idleSpec, crIdle, 1f - k, s)
         p.clearShadowLayer()
         drawLook(cv, cardSpec, cr2, k, s)
 

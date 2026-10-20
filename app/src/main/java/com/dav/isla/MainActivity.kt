@@ -622,13 +622,7 @@ class MainActivity : Activity() {
         statGrid(p, listOf(
             Triple("bolt", "$activos", "Avisos activos de $total"),
             Triple("shield", avisosLabel(), "Vías de aviso en uso")))
-        val main = card()
-        main.addView(rowWithSwitch("Ryx Island", if (Prefs.islandOn(this)) "Activa" else "Apagada",
-            Prefs.islandOn(this)) { v -> Prefs.setIslandOn(this, v); applyAll(); render() })
-        p.addView(main, lp(8))
-        p.addView(segmented(listOf("Vertical", "Horizontal"), if (landscapeView) 1 else 0) {
-            landscapeView = it == 1; render()
-        }, lp(12))
+        // (La tarjeta con interruptor «Ryx Island» se eliminó: la tarjeta de arriba ya enciende y apaga con su botón.)
         statusStrip(p)
 
         Events.GROUPS.forEach { g ->
@@ -694,12 +688,42 @@ class MainActivity : Activity() {
             }
             p.addView(c, lp(10))
         }
+        // Comportamiento y visibilidad de la isla (vivían en Diseño; aquí es donde tienen sentido).
+        heading(p, "COMPORTAMIENTO")
+        val co = card()
+        co.addView(rowWithSwitch("Isla siempre visible", "Se queda en reposo junto a la cámara", Prefs.permanent(this)) { v ->
+            Prefs.setPermanent(this, v); applyAll() })
+        co.addView(rowWithSwitch("Vibrar al mostrar", "Una vibración corta al aparecer la isla", Prefs.vibrate(this)) {
+            Prefs.setVibrate(this, it)
+        })
+        p.addView(co, lp(8))
+
+        heading(p, "VISIBILIDAD")
+        val vi = card()
+        vi.addView(rowWithSwitch("Mostrar en la pantalla de bloqueo", "La isla aparece también con el teléfono bloqueado",
+            Prefs.lockScreen(this)) { Prefs.setLockScreen(this, it); applyAll() })
+        vi.addView(rowWithSwitch("Ocultar en juegos",
+            if (Foreground.hasAccess(this)) "Si detecta un juego abierto, la isla se esconde (las notificaciones siguen en el sistema)"
+            else "Necesita «Acceso de uso» para saber qué app está al frente",
+            Prefs.hideInGames(this)) { v ->
+            Prefs.setHideInGames(this, v)
+            if (v && !Foreground.hasAccess(this)) askUsageAccess()
+        })
+        val hid = Prefs.hideApps(this).size
+        vi.addView(button(if (hid == 0) "Ocultar en apps concretas…" else "Ocultar en apps concretas ($hid)", false) {
+            if (!Foreground.hasAccess(this)) { toast("Concede primero el acceso de uso"); askUsageAccess() }
+            pickApps("Ocultar la isla en…", Prefs.hideApps(this)) { Prefs.setHideApps(this, it) }
+        }, lp(10))
+        vi.addView(label("Un juego se detecta si la app se declara como juego (la mayoría de los instalados desde Play Store). " +
+            "Si alguno no se detecta, agrégalo en «Ocultar en apps concretas».", 12f, R.color.muted), lp(8))
+        p.addView(vi, lp(8))
+
         // Accesos directos a las pestañas, igual que en la barra de abajo.
         heading(p, "ATAJOS")
         val shortcuts = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
         shortcuts.addView(button("Historial", false) { tab = 3; subPage = null; render() },
             LinearLayout.LayoutParams(0, WRAP, 1f).apply { marginEnd = px(5) })
-        shortcuts.addView(button("Demon", false) { tab = 1; subPage = null; render() },
+        shortcuts.addView(button("Diseño", false) { tab = 2; subPage = null; render() },
             LinearLayout.LayoutParams(0, WRAP, 1f).apply { marginStart = px(5) })
         p.addView(shortcuts, lp(8))
     }
@@ -808,8 +832,9 @@ class MainActivity : Activity() {
     // ---------------- DISEÑO ----------------
 
     private fun buildLayout(p: LinearLayout) {
-        pageHero(p, "palette", 0xFF7B5CE0.toInt(), "Diseño", "Estilos, temas, tipografía y color de la isla")
-        heroStat(p, 0xFF7B5CE0.toInt(), listOf(
+        pageHero(p, "palette", 0xFF7C89FF.toInt(), "Diseño", "Todo lo visual: formas, colores, tamaños y animación")
+        heading(p, "ESTILO GENERAL")
+        heroStat(p, 0xFF7C89FF.toInt(), listOf(
             "Estilo" to Styles.byId(Prefs.style(this)).label,
             "Tema" to Glass.theme.label))
         val st = titled(p, "Estilo de la isla", "Toca uno para verlo arriba y en la isla real")
@@ -822,7 +847,9 @@ class MainActivity : Activity() {
             st.addView(r, lp(8))
         }
 
-        val ir = titled(p, "Isla en reposo (contraída)", "Cómo se ve cuando no hay nada abierto")
+        // ─────────────────────────── ISLA CONTRAÍDA ───────────────────────────
+        heading(p, "ISLA CONTRAÍDA")
+        val ir = titled(p, "Isla contraída", "Su forma, su color y su tamaño cuando no hay nada abierto")
         val mode = Prefs.idleMode(this)
         ir.addView(segmented(listOf("Negro", "Cristal", "Color", "Acento"), mode, true) {
             Prefs.setIdleMode(this, it); applyAll(); svc()?.showTest()
@@ -832,39 +859,42 @@ class MainActivity : Activity() {
             colorRow(ir, Prefs.idleColor(this)) { Prefs.setIdleColor(this, it); applyAll(); svc()?.showTest(); render() }
             hexRow(ir) { Prefs.setIdleColor(this, it); applyAll(); svc()?.showTest(); previewView?.refresh() }
         }
+        shapeRow(ir, Prefs.idleCornerDp(this)) { Prefs.setIdleCornerDp(this, it); applyAll(); svc()?.showTest(); previewView?.refresh() }
+        seekRow(ir, "Radio de esquina fino", "dp", 0, 50, Prefs.idleCornerDp(this).coerceIn(0, 50)) { Prefs.setIdleCornerDp(this, it); svc()?.showTest() }
         seekRow(ir, if (mode == 1) "Transparencia del cristal" else "Opacidad", "%", 15, 100, Prefs.idleOpacity(this)) { Prefs.setIdleOpacity(this, it) }
         seekRow(ir, "Borde", "dp", 0, 4, Prefs.idleBorder(this).let { if (it >= 0) it else if (mode == 1) 1 else 0 }) { Prefs.setIdleBorder(this, it) }
         ir.addView(rowWithSwitch("Desenfoque del fondo (experimental)", "Android 12+. Puede verse un rectángulo desenfocado detrás de la isla.",
             Prefs.idleBlur(this)) { v -> Prefs.setIdleBlur(this, v); applyAll(); svc()?.showTest() })
+        seekRow(ir, "Ancho en reposo", "dp", 60, 220, Prefs.idleWidthDp(this)) { Prefs.setIdleWidthDp(this, it) }
+        seekRow(ir, "Alto en reposo", "dp", 20, 60, Prefs.heightDp(this)) { Prefs.setHeightDp(this, it) }
+        seekRow(ir, "Margen lateral mínimo", "dp", 0, 40, Prefs.sideMarginDp(this)) { Prefs.setSideMarginDp(this, it) }
+        seekRow(ir, "Posición vertical (margen superior)", "dp", 0, 80, Prefs.yOffsetDp(this)) { Prefs.setYOffsetDp(this, it) }
+        seekRow(ir, "Posición horizontal", "dp", -100, 100, Prefs.xOffsetDp(this)) { Prefs.setXOffsetDp(this, it) }
 
-        val cr = titled(p, "Tarjeta expandida", "Cristal, color y transparencia")
+        // ─────────────────────────── ISLA EXPANDIDA ───────────────────────────
+        heading(p, "ISLA EXPANDIDA")
+        val cr = titled(p, "Isla expandida", "La tarjeta que se abre con la notificación: cristal, color y forma")
         cr.addView(rowWithSwitch("Efecto cristal (Liquid Glass)", "Translúcida, con brillo arriba y borde de luz", Prefs.cardGlass(this)) { v ->
             Prefs.setCardGlass(this, v); applyAll(); svc()?.showTest(); previewView?.refresh() })
         cr.addView(label("Color de la tarjeta", 13f, R.color.muted, true), lp(12))
         colorRow(cr, Prefs.cardColor(this)) { Prefs.setCardColor(this, it); applyAll(); svc()?.showTest(); render() }
         hexRow(cr) { Prefs.setCardColor(this, it); applyAll(); svc()?.showTest(); previewView?.refresh() }
+        shapeRow(cr, Prefs.cornerDp(this)) { Prefs.setCornerDp(this, it); applyAll(); svc()?.showTest(); previewView?.refresh() }
+        seekRow(cr, "Radio de esquina fino", "dp", 0, 50, Prefs.cornerDp(this).coerceIn(0, 50)) { Prefs.setCornerDp(this, it) }
         seekRow(cr, "Transparencia", "%", 15, 100, Prefs.opacity(this)) { Prefs.setOpacity(this, it) }
-
-        val sz = titled(p, "Tamaño y posición", "Mira el cambio arriba, en la vista previa")
-        seekRow(sz, "Ancho en reposo", "dp", 60, 220, Prefs.idleWidthDp(this)) { Prefs.setIdleWidthDp(this, it) }
-        seekRow(sz, "Alto", "dp", 20, 60, Prefs.heightDp(this)) { Prefs.setHeightDp(this, it) }
-        seekRow(sz, "Ancho expandido", "dp", 220, 420,
+        seekRow(cr, "Ancho expandido", "dp", 220, 420,
             Prefs.expandedWidthDp(this).let { if (it > 0) it else Styles.byId(Prefs.style(this)).expandedWidthDp }) { Prefs.setExpandedWidthDp(this, it) }
-        seekRow(sz, "Margen lateral mínimo", "dp", 0, 40, Prefs.sideMarginDp(this)) { Prefs.setSideMarginDp(this, it) }
-        seekRow(sz, "Posición vertical (margen superior)", "dp", 0, 80, Prefs.yOffsetDp(this)) { Prefs.setYOffsetDp(this, it) }
-        seekRow(sz, "Posición horizontal", "dp", -100, 100, Prefs.xOffsetDp(this)) { Prefs.setXOffsetDp(this, it) }
-        seekRow(sz, "Radio de esquina", "dp", 0, 50, Prefs.cornerDp(this).coerceAtLeast(0)) { Prefs.setCornerDp(this, it) }
-        sz.addView(button("Restablecer tamaño y posición", false) {
+        cr.addView(rowWithSwitch("Sombra bajo la isla", "Da profundidad a la tarjeta", Prefs.shadow(this)) { v ->
+            Prefs.setShadow(this, v); applyAll(); svc()?.showTest(); previewView?.refresh() })
+        cr.addView(button("Restablecer tamaño y posición", false) {
             Prefs.setXOffsetDp(this, 0); Prefs.setYOffsetDp(this, 8); Prefs.setSideMarginDp(this, 12)
             Prefs.setExpandedWidthDp(this, -1); Prefs.setCornerDp(this, -1); Prefs.setIdleWidthDp(this, 96); Prefs.setHeightDp(this, 32)
             applyAll(); svc()?.showTest(); render()
         }, lp(12))
 
-        val ap = titled(p, "Apariencia")
-        ap.addView(rowWithSwitch("Sombra bajo la isla", "", Prefs.shadow(this)) { v ->
-            Prefs.setShadow(this, v); applyAll(); svc()?.showTest(); previewView?.refresh() })
-
-        val ac = titled(p, "Acento de la app", "Color de los botones, interruptores y detalles")
+        // ─────────────────────────── ACENTO DE LA APP ───────────────────────────
+        heading(p, "ACENTO DE LA APP")
+        val ac = titled(p, "Color de acento", "Botones, interruptores y detalles. Por defecto: Amarillo")
         Glass.THEMES.chunked(3).forEach { rowThemes ->
             val r = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
             rowThemes.forEach { t ->
@@ -886,38 +916,50 @@ class MainActivity : Activity() {
             ac.addView(r, lp(6))
         }
 
-        val tp = titled(p, "Tipografía", "Cómo se ve el texto de la isla")
-        tp.addView(rowWithSwitch("Título en negrita", "El título se resalta; el cuerpo se lee en letra normal",
+        // ─────────────────────────── DISEÑO DE NOTIFICACIONES ───────────────────────────
+        heading(p, "DISEÑO DE NOTIFICACIONES")
+        val dn = titled(p, "Iconos de la notificación", "De dónde sale el icono y cómo se recorta")
+        dn.addView(segmented(listOf("Sistema", "Notificación", "Monocromo"), Prefs.iconMode(this), true) {
+            Prefs.setIconMode(this, it); applyAll(); svc()?.showTest(); render()
+        }, lp(10))
+        dn.addView(label("Forma del icono", 13f, R.color.muted, true), lp(12))
+        val shapes = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+        listOf("Círculo", "Squircle", "Flor", "Hexágono").forEachIndexed { i, n ->
+            val on = Prefs.iconShape(this) == i
+            val cell = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER
+                setPadding(px(4), px(10), px(4), px(8))
+                background = Glass.ripple(this@MainActivity, Glass.chip(this@MainActivity, on, 16f), 16f)
+                setOnClickListener { Prefs.setIconShape(this@MainActivity, i); applyAll(); svc()?.showTest(); render() }
+            }
+            cell.addView(ShapedImageView(this).apply {
+                shape = i; setImageResource(R.drawable.logo); scaleType = ImageView.ScaleType.CENTER_CROP
+            }, LinearLayout.LayoutParams(px(40), px(40)))
+            cell.addView(label(n, 11f, R.color.text, true).apply { gravity = Gravity.CENTER }, lp(6))
+            shapes.addView(cell, LinearLayout.LayoutParams(0, WRAP, 1f).apply { marginStart = px(3); marginEnd = px(3) })
+        }
+        dn.addView(shapes, lp(6))
+        dn.addView(rowWithSwitch("Color inteligente", "El borde toma el color del icono de la app", Prefs.smartColor(this)) {
+            Prefs.setSmartColor(this, it); applyAll(); svc()?.showTest()
+        })
+        dn.addView(rowWithSwitch("Título en negrita", "El título se resalta; el cuerpo se lee en letra normal",
             Prefs.fontBold(this)) { v -> Prefs.setFontBold(this, v); applyAll(); svc()?.showTest() })
 
-        val an = titled(p, "Animación", "Resorte estilo HyperOS 3: sube un poco y se asienta")
-        an.addView(segmented(listOf("Relajada", "Normal", "Ágil"), Prefs.speed(this), true) { Prefs.setSpeed(this, it) }, lp(10))
-        seekRow(an, "Tiempo visible", "s", 2, 15, Prefs.durationSeconds(this)) { Prefs.setDurationSeconds(this, it) }
+        // ─────────────────────────── CONTENIDO Y PRIVACIDAD ───────────────────────────
+        heading(p, "CONTENIDO Y PRIVACIDAD")
+        val pr = titled(p, "Privacidad", "Palabras que se ocultan en la isla y en el historial")
+        pr.addView(editText("palabra1, palabra2…", Prefs.hiddenWordsRaw(this)) { Prefs.setHiddenWords(this, it) }, lp(8))
 
-        val co = titled(p, "Comportamiento")
-        co.addView(rowWithSwitch("Isla siempre visible", "Se queda en reposo junto a la cámara", Prefs.permanent(this)) { v ->
-            Prefs.setPermanent(this, v); applyAll() })
-        co.addView(rowWithSwitch("Vibrar al mostrar", "", Prefs.vibrate(this)) { Prefs.setVibrate(this, it) })
+        val ap = titled(p, "Apps", "Apague las que no quiera ver en la isla (cada copia clonada se controla por separado)")
+        ap.addView(editText("Buscar app…", appQuery) { q -> appQuery = q; fillApps() }, lp(8))
+        val box = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        appsBox = box
+        ap.addView(box, lp(6))
+        fillApps()
 
-        val vi = titled(p, "Visibilidad", "Cuándo se muestra la isla")
-        vi.addView(rowWithSwitch("Mostrar en la pantalla de bloqueo", "La isla aparece también con el teléfono bloqueado",
-            Prefs.lockScreen(this)) { Prefs.setLockScreen(this, it); applyAll() })
-        vi.addView(rowWithSwitch("Ocultar en juegos",
-            if (Foreground.hasAccess(this)) "Si detecta un juego abierto, la isla se esconde (las notificaciones siguen en el sistema)"
-            else "Necesita «Acceso de uso» para saber qué app está al frente",
-            Prefs.hideInGames(this)) { v ->
-            Prefs.setHideInGames(this, v)
-            if (v && !Foreground.hasAccess(this)) askUsageAccess()
-        })
-        val hid = Prefs.hideApps(this).size
-        vi.addView(button(if (hid == 0) "Ocultar en apps concretas…" else "Ocultar en apps concretas ($hid)", false) {
-            if (!Foreground.hasAccess(this)) { toast("Concede primero el acceso de uso"); askUsageAccess() }
-            pickApps("Ocultar la isla en…", Prefs.hideApps(this)) { Prefs.setHideApps(this, it) }
-        }, lp(10))
-        vi.addView(label("Un juego se detecta si la app se declara como juego (la mayoría de los instalados desde Play Store). " +
-            "Si alguno no se detecta, agrégalo en «Ocultar en apps concretas».", 12f, R.color.muted), lp(8))
-
-        val ge = titled(p, "Gestos", "Con la isla abierta. Si hay varias notificaciones, se acumulan a la derecha.")
+        // ─────────────────────────── GESTOS ───────────────────────────
+        heading(p, "GESTOS")
+        val ge = titled(p, "Gestos de la isla", "Con la isla abierta. Si hay varias notificaciones, se acumulan a la derecha.")
         gestureRow(ge, "Tocar", Prefs.gTap(this)) { Prefs.setGTap(this, it) }
         gestureRow(ge, "Deslizar hacia abajo", Prefs.gDown(this)) { Prefs.setGDown(this, it) }
         gestureRow(ge, "Deslizar hacia arriba", Prefs.gUp(this)) { Prefs.setGUp(this, it) }
@@ -933,8 +975,19 @@ class MainActivity : Activity() {
             "En la vista de detalle: tocar abre la app, jalar hacia abajo usa el gesto de arriba y hacia arriba vuelve. " +
             "Prueba con «Simular acumulación» en la pestaña Isla.", 12f, R.color.muted), lp(8))
 
-        // La antigua pestaña «Puente» se reparte aquí: comportamiento del sistema + formato libre y ventana.
-        // (Antes vivían en pestañas propias; ahora todo el aspecto y el comportamiento se editan en Diseño).
+        // ─────────────────────────── ANIMACIÓN ───────────────────────────
+        heading(p, "ANIMACIÓN")
+        val an = titled(p, "Movimiento", "Resorte estilo HyperOS 3: sube un poco y se asienta")
+        an.addView(segmented(listOf("Relajada", "Normal", "Ágil"), Prefs.speed(this), true) { Prefs.setSpeed(this, it) }, lp(10))
+        seekRow(an, "Tiempo visible", "s", 2, 15, Prefs.durationSeconds(this)) { Prefs.setDurationSeconds(this, it) }
+        an.addView(rowWithSwitch("Vibrar al mostrar", "Una vibración corta al aparecer la isla", Prefs.vibrate(this)) {
+            Prefs.setVibrate(this, it)
+        })
+        an.addView(rowWithSwitch("Vista horizontal", "Previsualiza y aplica la isla en horizontal",
+            landscapeView) { landscapeView = it; render() })
+
+        // ─────────────────────────── SISTEMA Y AVISOS ───────────────────────────
+        heading(p, "SISTEMA Y AVISOS")
         buildBridge(p)
         buildWindow(p)
     }
@@ -1007,7 +1060,6 @@ class MainActivity : Activity() {
     // ---------------- SISTEMA Y AVISOS (parte de Diseño) ----------------
 
     private fun buildBridge(p: LinearLayout) {
-        pageHero(p, "signal", 0xFF3F7BEA.toInt(), "Sistema y avisos", "Cómo se relacionan la isla y el sistema")
         val only = titled(p, "Solo la isla", "La isla registra y muestra; el sistema se calla")
         only.addView(rowWithSwitch("Bloquear notificaciones del sistema", "Quita la del panel cuando la isla la muestra",
             Prefs.blockSystem(this)) { Prefs.setBlockSystem(this, it) })
@@ -1025,7 +1077,6 @@ class MainActivity : Activity() {
         })
         only.addView(rowWithSwitch("Quitar lo que ya leí", "Al abrir la app o cancelarse el aviso, sale de la isla y no vuelve",
             Prefs.autoRead(this)) { Prefs.setAutoRead(this, it) })
-        only.addView(rowWithSwitch("Mostrar con el teléfono bloqueado", "", Prefs.lockScreen(this)) { Prefs.setLockScreen(this, it) })
         only.addView(label("Llamadas, multimedia, navegación y alarmas se quedan en el sistema para no romper sus controles. " +
             "Sin ocultar los avisos emergentes, Android puede mostrar el aviso un instante antes de que la isla lo quite.", 12f, R.color.muted), lp(8))
         diagCard(p, "signal", 0xFF3F7BEA.toInt(), "Diagnóstico del puente",
@@ -1036,37 +1087,6 @@ class MainActivity : Activity() {
         ct.addView(label("«Al cambiar» (por defecto): solo se anuncia «Conectado a la red …» cuando entra una red nueva o " +
             "cuando pasa un buen rato desde el último aviso, nunca por las revalidaciones de la ROM. «Nunca» silencia " +
             "los avisos de red y los de Wi‑Fi apagado.", 12f, R.color.muted), lp(8))
-
-        val ic = titled(p, "Iconos de la isla", "Del sistema o modificados")
-        ic.addView(segmented(listOf("Sistema", "Notificación", "Monocromo"), Prefs.iconMode(this), true) { Prefs.setIconMode(this, it) }, lp(10))
-        ic.addView(label("Forma del icono", 13f, R.color.muted, true), lp(12))
-        val shapes = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
-        listOf("Círculo", "Squircle", "Flor", "Hexágono").forEachIndexed { i, n ->
-            val on = Prefs.iconShape(this) == i
-            val cell = LinearLayout(this).apply {
-                orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER
-                setPadding(px(4), px(10), px(4), px(8))
-                background = Glass.ripple(this@MainActivity, Glass.chip(this@MainActivity, on, 16f), 16f)
-                setOnClickListener { Prefs.setIconShape(this@MainActivity, i); applyAll(); svc()?.showTest(); render() }
-            }
-            cell.addView(ShapedImageView(this).apply {
-                shape = i; setImageResource(R.drawable.logo); scaleType = ImageView.ScaleType.CENTER_CROP
-            }, LinearLayout.LayoutParams(px(40), px(40)))
-            cell.addView(label(n, 11f, R.color.text, true).apply { gravity = Gravity.CENTER }, lp(6))
-            shapes.addView(cell, LinearLayout.LayoutParams(0, WRAP, 1f).apply { marginStart = px(3); marginEnd = px(3) })
-        }
-        ic.addView(shapes, lp(6))
-        ic.addView(rowWithSwitch("Color inteligente", "El borde toma el color del icono de la app", Prefs.smartColor(this)) { Prefs.setSmartColor(this, it) })
-
-        val pr = titled(p, "Privacidad", "Palabras que se ocultan en la isla y en el historial")
-        pr.addView(editText("palabra1, palabra2…", Prefs.hiddenWordsRaw(this)) { Prefs.setHiddenWords(this, it) }, lp(8))
-
-        val ap = titled(p, "Apps", "Apague las que no quiera ver en la isla (cada copia clonada se controla por separado)")
-        ap.addView(editText("Buscar app…", appQuery) { q -> appQuery = q; fillApps() }, lp(8))
-        val box = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
-        appsBox = box
-        ap.addView(box, lp(6))
-        fillApps()
     }
 
     private fun appIcon(key: String): Drawable? = iconCache.getOrPut(key) {
@@ -1127,34 +1147,6 @@ class MainActivity : Activity() {
     // ---------------- VENTANA FLOTANTE (parte de Diseño) ----------------
 
     private fun buildWindow(p: LinearLayout) {
-        // ── Permisos: solo un atajo; el detalle está en Ajustes → Permisos ──
-        val pm = titled(p, "Permisos para la ventana", "Todo lo que Ryx puede hacer sin Shizuku ni root")
-        pm.addView(statusList(PermGrant.status(this)), lp(6))
-        pm.addView(label("Puedes dar todo de una vez. Con Shizuku o root, Ryx se concede los permisos solo (botón de abajo). " +
-            "Sin ellos, se copia UN comando de ADB y se pega una sola vez: queda para siempre, no hay que repetirlo. " +
-            "El comando concede dibujar encima, escribir ajustes del sistema, acceso de uso, notificaciones, Bluetooth " +
-            "y desbloquea las ventanas libres.", 12f, R.color.muted), lp(8))
-        pm.addView(button("Quitar permisos con Shizuku/root", Shell.privileged(this)) {
-            Thread {
-                val r = PermGrant.grant(this)
-                runOnUiThread { render(); dialog("Permisos concedidos con ${Shell.label(this)}", r + "\n\nSi algo no se aplicó, usa el comando de ADB.") }
-            }.start()
-        }, lp(8))
-        pm.addView(button("Copiar comando de ADB (una sola vez)", false) {
-            try {
-                (getSystemService(CLIPBOARD_SERVICE) as ClipboardManager).setPrimaryClip(ClipData.newPlainText("ryx", PermGrant.adbCommand(this)))
-                dialog("Comando copiado al portapapeles",
-                    "Pégalo en una consola de ADB conectada al teléfono (con el reloj de arena, sin tocar nada más). " +
-                    "Concede todos los permisos y desbloquea el formato libre de golpe:\n\n" +
-                    PermGrant.adbCommand(this) + "\n\nTambién puedes pedir el permiso de notificaciones, el de dibujar encima " +
-                    "y el acceso de uso a mano en Ajustes.")
-            } catch (e: Exception) { toast("No pude copiar el comando") }
-        }, lp(8))
-        pm.addView(button("Pedir permiso de notificaciones", !AppNotify.allowed(this)) { askNotifPermission() }, lp(8))
-        pm.addView(button("Abrir el acceso de uso del sistema", false) {
-            try { startActivity(Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS)) } catch (e: Exception) { toast("No se pudo abrir") }
-        }, lp(8))
-
         val so = titled(p, "Formato libre", "Se abre encima de la app en la que estás, sin sacarte de ella")
         // La «Burbuja» (Android 17) se retiró del diseño: queda solo el formato libre.
         so.addView(label(
@@ -1955,6 +1947,32 @@ class MainActivity : Activity() {
             })
         }
         parent.addView(head, lp(14)); parent.addView(seek, LinearLayout.LayoutParams(MATCH, WRAP))
+    }
+
+    /**
+     * Fila de FORMA: cuadrado, redondeado o circular. Es un atajo visual del «radio de esquina»,
+     * para no tener que arrastrar el deslizador a mano: escribe el valor en [onPick] (0 = cuadrado,
+     * 24 = redondeado, 999 = circular/pastilla).
+     */
+    private fun shapeRow(parent: LinearLayout, current: Int, onPick: (Int) -> Unit) {
+        val shape = when { current <= 1 -> 0; current >= 900 -> 2; else -> 1 }
+        val names = listOf("Cuadrado", "Redondeado", "Circular")
+        val icons = listOf("window", "expand", "ball")
+        val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+        names.forEachIndexed { i, n ->
+            val on = i == shape
+            val cell = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER
+                setPadding(px(4), px(12), px(4), px(10))
+                background = Glass.ripple(this@MainActivity, Glass.chip(this@MainActivity, on, 16f), 16f)
+                setOnClickListener { onPick(if (i == 0) 0 else if (i == 1) 24 else 999) }
+            }
+            cell.addView(icon(icons[i], 26, if (on) Glass.ACCENT else Glass.MUTED))
+            cell.addView(label(n, 11.5f, R.color.text, true).apply { gravity = Gravity.CENTER }, lp(6))
+            row.addView(cell, LinearLayout.LayoutParams(0, WRAP, 1f).apply { marginStart = px(3); marginEnd = px(3) })
+        }
+        parent.addView(label("Forma", 13f, R.color.muted, true), lp(12))
+        parent.addView(row, lp(6))
     }
 
     private fun rowWithSwitch(title: String, sub: String, checked: Boolean, onChange: (Boolean) -> Unit) =
