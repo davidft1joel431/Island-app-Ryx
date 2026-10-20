@@ -646,37 +646,35 @@ class MainActivity : Activity() {
         statusStrip(p)
 
         Events.GROUPS.forEach { g ->
-            val on = g.events.count { Prefs.eventOnFor(this, it.id, landscapeView) }
-            val c = card()
-            val open = g.id in expandedGroups
-            val top = LinearLayout(this).apply {
-                orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
-                setOnClickListener { if (open) expandedGroups.remove(g.id) else expandedGroups.add(g.id); render() }
-            }
-            top.addView(tileIcon(g.symbol), LinearLayout.LayoutParams(px(44), px(44)).apply { marginEnd = px(14) })
-            val t = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
-            t.addView(label(g.label, 16.5f, R.color.text, true))
-            t.addView(label("$on de ${g.events.size} activos", 13f, R.color.muted))
-            top.addView(t, LinearLayout.LayoutParams(0, WRAP, 1f))
-            top.addView(icon("expand", 20, Glass.ACCENT).apply {
-                setPadding(px(6), px(6), px(6), px(6))
-                setOnClickListener {
-                    val v = !g.events.all { Prefs.eventExpand(this@MainActivity, it.id) }
-                    g.events.forEach { Prefs.setEventExpand(this@MainActivity, it.id, v) }
-                    toast(if (v) "${g.label}: se abre expandida" else "${g.label}: solo aviso breve"); render()
-                }
-            })
-            top.addView(makeSwitch(on > 0) { v ->
-                g.events.forEach { Prefs.setEventOnFor(this, it.id, landscapeView, v) }; render()
-            }, LinearLayout.LayoutParams(WRAP, WRAP).apply { marginStart = px(6) })
-            top.addView(icon(if (open) "chev_up" else "chev_down", 22, Glass.MUTED).apply { setPadding(px(6), 0, 0, 0) })
-            c.addView(top)
-            if (open) {
+            val on0 = g.events.count { Prefs.eventOnFor(this, it.id, landscapeView) }
+            var subLabel: TextView? = null
+            collapsibleCard(p, g.id, false, head = { top ->
+                top.addView(tileIcon(g.symbol), LinearLayout.LayoutParams(px(44), px(44)).apply { marginEnd = px(14) })
+                val t = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+                t.addView(label(g.label, 16.5f, R.color.text, true))
+                val sl = label("$on0 de ${g.events.size} activos", 13f, R.color.muted)
+                subLabel = sl
+                t.addView(sl)
+                top.addView(t, LinearLayout.LayoutParams(0, WRAP, 1f))
+                top.addView(icon("expand", 20, Glass.ACCENT).apply {
+                    setPadding(px(6), px(6), px(6), px(6))
+                    setOnClickListener {
+                        val v = !g.events.all { Prefs.eventExpand(this@MainActivity, it.id) }
+                        g.events.forEach { Prefs.setEventExpand(this@MainActivity, it.id, v) }
+                        toast(if (v) "${g.label}: se abre expandida" else "${g.label}: solo aviso breve"); render()
+                    }
+                })
+                top.addView(makeSwitch(on0 > 0) { v ->
+                    g.events.forEach { Prefs.setEventOnFor(this, it.id, landscapeView, v) }
+                    // Se actualiza el contador en el sitio, sin rehacer la pantalla.
+                    subLabel?.text = "${if (v) g.events.size else 0} de ${g.events.size} activos"
+                }, LinearLayout.LayoutParams(WRAP, WRAP).apply { marginStart = px(6) })
+            }, body = { b ->
                 var row: LinearLayout? = null
                 g.events.forEachIndexed { i, ev ->
                     if (i % 2 == 0) {
                         row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
-                        c.addView(row, lp(8))
+                        b.addView(row, lp(8))
                     }
                     val isOn = Prefs.eventOnFor(this, ev.id, landscapeView)
                     val ex = Prefs.eventExpand(this, ev.id)
@@ -692,9 +690,8 @@ class MainActivity : Activity() {
                         }
                         addView(col2, FrameLayout.LayoutParams(MATCH, WRAP))
                         addView(icon("expand", 16, if (ex && isOn) Glass.ACCENT else 0x66B4B8A6).apply {
-                            setOnClickListener {
-                                Prefs.setEventExpand(this@MainActivity, ev.id, !ex); render()
-                            }
+                            isClickable = true
+                            setOnClickListener { Prefs.setEventExpand(this@MainActivity, ev.id, !ex); render() }
                         }, FrameLayout.LayoutParams(px(16), px(16), Gravity.TOP or Gravity.END).apply {
                             topMargin = px(10); marginEnd = px(10)
                         })
@@ -703,10 +700,9 @@ class MainActivity : Activity() {
                     row!!.addView(chip, LinearLayout.LayoutParams(0, WRAP, 1f).apply { marginStart = px(5); marginEnd = px(5) })
                 }
                 if (g.events.size % 2 == 1) row!!.addView(View(this), LinearLayout.LayoutParams(0, 1, 1f))
-                c.addView(label("Toca para activar o desactivar · la flecha ⤢ elige si se abre expandida",
+                b.addView(label("Toca para activar o desactivar · la flecha ⤢ elige si se abre expandida",
                     12f, R.color.muted), lp(10))
-            }
-            p.addView(c, lp(10))
+            })
         }
         // Comportamiento y visibilidad de la isla (vivían en Diseño; aquí es donde tienen sentido).
         heading(p, "COMPORTAMIENTO")
@@ -1614,50 +1610,38 @@ class MainActivity : Activity() {
         p.addView(c, lp(10))
     }
 
-    /** Grupo de historial de una aplicación (con su icono), desplegable. */
+    /** Grupo de historial de una aplicación (con su icono), desplegable en el sitio. */
     private fun appHistoryGroup(p: LinearLayout, pkg: String, items: List<Prefs.HistItem>) {
         val pm = packageManager
         val appName = try { pm.getApplicationLabel(pm.getApplicationInfo(pkg, 0)).toString() } catch (e: Exception) { pkg }
-        val key = "h_$pkg"
-        val open = key !in expandedGroups          // por defecto abiertas
-        val c = card()
-        val h = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
-            setOnClickListener { if (open) expandedGroups.add(key) else expandedGroups.remove(key); render() }
-        }
-        h.addView(ShapedImageView(this).apply {
-            shape = Prefs.iconShape(this@MainActivity); setImageDrawable(appIcon(pkg)); scaleType = ImageView.ScaleType.CENTER_CROP
-        }, LinearLayout.LayoutParams(px(42), px(42)).apply { marginEnd = px(12) })
-        val t = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
-        t.addView(label(appName, 17f, R.color.text, true))
-        t.addView(label("${items.size} notificaciones", 12f, R.color.muted))
-        h.addView(t, LinearLayout.LayoutParams(0, WRAP, 1f))
-        h.addView(icon(if (open) "chev_up" else "chev_down", 22, Glass.MUTED))
-        c.addView(h)
-        if (open) items.take(25).forEach { h2 -> c.addView(historyItemRow(h2, px(54))) }
-        p.addView(c, lp(10))
+        collapsibleCard(p, "h_$pkg", true, head = { h ->
+            h.addView(ShapedImageView(this).apply {
+                shape = Prefs.iconShape(this@MainActivity); setImageDrawable(appIcon(pkg)); scaleType = ImageView.ScaleType.CENTER_CROP
+            }, LinearLayout.LayoutParams(px(42), px(42)).apply { marginEnd = px(12) })
+            val t = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+            t.addView(label(appName, 17f, R.color.text, true))
+            t.addView(label("${items.size} notificaciones", 12f, R.color.muted))
+            h.addView(t, LinearLayout.LayoutParams(0, WRAP, 1f))
+        }, body = { b ->
+            b.setPadding(0, px(2), 0, 0)
+            items.take(25).forEach { h2 -> b.addView(historyItemRow(h2, px(54))) }
+        })
     }
 
-    /** Grupo de historial del sistema (Batería, Wi-Fi, Red…), desplegable. */
+    /** Grupo de historial del sistema (Batería, Wi-Fi, Red…), desplegable en el sitio. */
     private fun sysHistoryGroup(p: LinearLayout, kind: String, items: List<Prefs.HistItem>) {
-        val key = "hs_$kind"
-        val open = key !in expandedGroups
         val color = Sys.color(kind)
-        val c = card()
-        val h = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
-            setOnClickListener { if (open) expandedGroups.add(key) else expandedGroups.remove(key); render() }
-        }
-        h.addView(tileIcon(Sys.symbol(kind), (color and 0x00FFFFFF) or 0x33000000, color),
-            LinearLayout.LayoutParams(px(42), px(42)).apply { marginEnd = px(12) })
-        val t = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
-        t.addView(label(Sys.label(kind), 17f, R.color.text, true))
-        t.addView(label("${items.size} avisos del sistema", 12f, R.color.muted))
-        h.addView(t, LinearLayout.LayoutParams(0, WRAP, 1f))
-        h.addView(icon(if (open) "chev_up" else "chev_down", 22, Glass.MUTED))
-        c.addView(h)
-        if (open) items.take(25).forEach { h2 -> c.addView(historyItemRow(h2, px(54))) }
-        p.addView(c, lp(10))
+        collapsibleCard(p, "hs_$kind", true, head = { h ->
+            h.addView(tileIcon(Sys.symbol(kind), (color and 0x00FFFFFF) or 0x33000000, color),
+                LinearLayout.LayoutParams(px(42), px(42)).apply { marginEnd = px(12) })
+            val t = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+            t.addView(label(Sys.label(kind), 17f, R.color.text, true))
+            t.addView(label("${items.size} avisos del sistema", 12f, R.color.muted))
+            h.addView(t, LinearLayout.LayoutParams(0, WRAP, 1f))
+        }, body = { b ->
+            b.setPadding(0, px(2), 0, 0)
+            items.take(25).forEach { h2 -> b.addView(historyItemRow(h2, px(54))) }
+        })
     }
 
     /** Una entrada del historial: título, texto, imagen (si hay), tipo y hora. */
@@ -2006,20 +1990,120 @@ class MainActivity : Activity() {
         c.addView(r); p.addView(c, lp(10))
     }
 
+    /**
+     * Sección con cabecera desplegable. La barra de arriba (título + flecha) ABRE y CIERRA la sección EN EL SITIO,
+     * con una animación corta de altura y opacidad, sin rehacer toda la pantalla. El estado se recuerda en
+     * [expandedGroups] para que sobreviva a cualquier refresco. Antes, tocar la barra llamaba a [render], que
+     * reconstruía la página entera: se sentía lento y la cabecera parecía «no responder».
+     */
     private fun section(p: LinearLayout, title: String, sub: String, body: (LinearLayout) -> Unit) {
-        val open = "sec_$title" in expandedGroups
-        val c = if (open) card() else LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(px(16), px(14), px(16), px(14)) }
-        val top = LinearLayout(this).apply {
+        collapsibleCard(p, "sec_$title", false, head = { top ->
+            val t = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+            t.addView(label(title, 17f, R.color.text, true)); t.addView(label(sub, 13f, R.color.muted))
+            top.addView(t, LinearLayout.LayoutParams(0, WRAP, 1f))
+        }, body = { b ->
+            b.setPadding(0, px(8), 0, 0)
+            body(b)
+        }, topMargin = 6)
+    }
+
+    /** Ejecuta [block] al terminar la animación (sin depender de androidx). */
+    private inline fun android.animation.Animator.doOnEndCompat(crossinline block: () -> Unit) {
+        addListener(object : android.animation.AnimatorListenerAdapter() {
+            override fun onAnimationEnd(a: android.animation.Animator) { block() }
+        })
+    }
+
+    /**
+     * Cabecera desplegable genérica: la barra de arriba (contenido [head] + flecha) abre y cierra su cuerpo
+     * EN EL SITIO, sin rehacer la pantalla. [defaultOpen] fija el estado cuando la clave todavía no existe.
+     */
+    private fun collapsibleCard(
+        parent: LinearLayout, key: String, defaultOpen: Boolean,
+        head: (LinearLayout) -> Unit, body: (LinearLayout) -> Unit, topMargin: Int = 10
+    ) {
+        val open0 = if (expandedGroups.contains(key)) true else if (expandedGroups.contains("\u0000close_$key")) false else defaultOpen
+        val c = card()
+        val chev = icon(if (open0) "chev_up" else "chev_down", 22, Glass.MUTED)
+        val h = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
-            setOnClickListener { val k = "sec_$title"; if (open) expandedGroups.remove(k) else expandedGroups.add(k); render() }
+            background = Glass.ripple(this@MainActivity, Glass.pill(this@MainActivity, 0, 0, 16f), 16f)
         }
-        val t = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
-        t.addView(label(title, 17f, R.color.text, true)); t.addView(label(sub, 13f, R.color.muted))
-        top.addView(t, LinearLayout.LayoutParams(0, WRAP, 1f))
-        top.addView(icon(if (open) "chev_up" else "chev_down", 22, Glass.MUTED))
-        c.addView(top)
-        if (open) { val b = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }; body(b); c.addView(b, lp(8)) }
-        p.addView(c, lp(6))
+        head(h)
+        h.addView(chev)
+        c.addView(h)
+        val b = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; visibility = if (open0) View.VISIBLE else View.GONE }
+        body(b)
+        c.addView(b)
+        if (open0) b.setPadding(0, px(2), 0, 0)
+
+        fun remember(open: Boolean) {
+            // Se guardan ambos estados: reabrir conserva la elección del usuario entre refrescos.
+            if (open) { expandedGroups.add(key); expandedGroups.remove("\u0000close_$key") }
+            else { expandedGroups.remove(key); expandedGroups.add("\u0000close_$key") }
+        }
+        fun apply(open: Boolean, animate: Boolean) {
+            remember(open)
+            chev.setImageDrawable(Glass.icon(this@MainActivity, if (open) "chev_up" else "chev_down", Glass.MUTED))
+            if (!animate) { b.visibility = if (open) View.VISIBLE else View.GONE; return }
+            if (open) {
+                b.visibility = View.VISIBLE; b.alpha = 0f
+                b.measure(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)
+                val target = b.measuredHeight
+                val anim = android.animation.ValueAnimator.ofInt(0, target)
+                anim.duration = 220; anim.interpolator = android.view.animation.DecelerateInterpolator(1.8f)
+                anim.addUpdateListener { b.layoutParams = LinearLayout.LayoutParams(MATCH, it.animatedValue as Int); b.requestLayout() }
+                anim.doOnEndCompat { b.layoutParams = LinearLayout.LayoutParams(MATCH, WRAP); b.requestLayout() }
+                anim.start(); b.animate().alpha(1f).setDuration(200).start()
+            } else {
+                val anim = android.animation.ValueAnimator.ofInt(maxOf(b.height, 1), 0)
+                anim.duration = 180; anim.interpolator = android.view.animation.DecelerateInterpolator(1.8f)
+                anim.addUpdateListener { b.layoutParams = LinearLayout.LayoutParams(MATCH, it.animatedValue as Int); b.requestLayout() }
+                anim.doOnEndCompat { b.visibility = View.GONE; b.layoutParams = LinearLayout.LayoutParams(MATCH, WRAP); b.requestLayout() }
+                anim.start(); b.animate().alpha(0f).setDuration(140).start()
+            }
+        }
+        // La barra responde al toque (abre/cierra) y al deslizar (arriba abre, abajo cierra). Se comprueba primero
+        // que el toque NO haya caído en un control de la cabecera (interruptor, icono ⤢…): esos siguen a lo suyo.
+        val slop = android.view.ViewConfiguration.get(this).scaledTouchSlop
+        h.setOnTouchListener(object : android.view.View.OnTouchListener {
+            private var y0 = 0f
+            private var moved = false
+            private var ours = false
+            private fun hitClickable(v: View, x: Float, y: Float): Boolean {
+                if (v !== h && v.isClickable && v.visibility == View.VISIBLE) {
+                    val loc = IntArray(2); v.getLocationOnScreen(loc)
+                    if (x >= loc[0] && x <= loc[0] + v.width && y >= loc[1] && y <= loc[1] + v.height) return true
+                }
+                if (v is android.view.ViewGroup) for (i in 0 until v.childCount) if (hitClickable(v.getChildAt(i), x, y)) return true
+                return false
+            }
+            override fun onTouch(v: View, e: android.view.MotionEvent): Boolean {
+                when (e.actionMasked) {
+                    android.view.MotionEvent.ACTION_DOWN -> {
+                        y0 = e.rawY; moved = false
+                        ours = !hitClickable(h, e.rawX, e.rawY)   // ¿el toque fue en zona «libre» de la cabecera?
+                        return ours
+                    }
+                    android.view.MotionEvent.ACTION_MOVE -> {
+                        if (!ours) return false
+                        if (kotlin.math.abs(e.rawY - y0) > slop) moved = true
+                        return true
+                    }
+                    android.view.MotionEvent.ACTION_UP -> {
+                        if (!ours) return false
+                        val dy = e.rawY - y0
+                        if (dy > slop * 2) apply(false, true)
+                        else if (dy < -slop * 2) apply(true, true)
+                        else if (!moved) apply(expandedGroups.contains(key).not(), true)   // era un toque
+                        return true
+                    }
+                    android.view.MotionEvent.ACTION_CANCEL -> return ours
+                }
+                return false
+            }
+        })
+        parent.addView(c, lp(topMargin))
     }
 
     private fun permRow(p: LinearLayout, title: String, sub: String, ok: Boolean, click: () -> Unit) {
