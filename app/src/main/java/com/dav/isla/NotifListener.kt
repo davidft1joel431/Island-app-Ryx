@@ -1757,11 +1757,29 @@ class NotifListener : NotificationListenerService() {
             val last = msgs?.lastOrNull() as? android.os.Bundle
             val mime = last?.getString("type") ?: ""
             val uri = last?.getString("uri")
-            if (bmp == null && uri != null && mime.startsWith("image/")) {
+            // La URI del adjunto es la fuente MÁS fiable: es el archivo real que mandó la app.
+            if (bmp == null && uri != null) {
                 try {
-                    contentResolver.openInputStream(android.net.Uri.parse(uri))?.use { bmp = BitmapFactory.decodeStream(it) }
-                    kind = if (mime.contains("webp") || mime.contains("png")) "Sticker" else "Imagen"
+                    contentResolver.openInputStream(android.net.Uri.parse(uri))?.use {
+                        bmp = BitmapFactory.decodeStream(it)
+                    }
+                    if (bmp != null) kind = when {
+                        mime.contains("webp") || mime.contains("png") -> "Sticker"
+                        else -> "Imagen"
+                    }
                 } catch (e: Exception) {}
+            }
+            // Varias apps ponen la imagen grande aparte de EXTRA_PICTURE (Telegram, Instagram, Gmail…).
+            if (bmp == null) {
+                bmp = try { ex.getParcelable<Bitmap>(Notification.EXTRA_LARGE_ICON_BIG) } catch (e: Throwable) { null }
+                if (bmp != null) kind = "Imagen"
+            }
+            if (bmp == null && Build.VERSION.SDK_INT >= 31) {
+                bmp = try {
+                    ex.getParcelable<android.graphics.drawable.Icon>(Notification.EXTRA_LARGE_ICON_BIG)
+                        ?.loadDrawable(this)?.let { toBitmap(it) }
+                } catch (e: Throwable) { null }
+                if (bmp != null) kind = "Imagen"
             }
             if (kind.isEmpty()) kind = when {
                 mime.startsWith("audio/") -> "Audio"

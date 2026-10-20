@@ -1636,7 +1636,10 @@ class MainActivity : Activity() {
             val f = java.io.File(Prefs.histDir(this), h.img)
             if (f.exists() && f.length() < 600_000) try {
                 val b64 = android.util.Base64.encodeToString(f.readBytes(), android.util.Base64.NO_WRAP)
-                sb.append("<img src=\"data:image/png;base64,").append(b64).append("\">")
+                // El tipo real del archivo (JPEG o PNG), no siempre PNG: los stickers se guardan en PNG y el
+                // resto en JPEG. Si se declara mal, el navegador no muestra la imagen.
+                val mime = if (esPng(f)) "image/png" else "image/jpeg"
+                sb.append("<img src=\"data:").append(mime).append(";base64,").append(b64).append("\">")
             } catch (e: Exception) {}
         }
         sb.append("<div class=\"meta\">")
@@ -1652,6 +1655,14 @@ class MainActivity : Activity() {
 
     private fun esc(s: String): String =
         s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+
+    /** ¿El archivo es un PNG? (se mira su firma real, no la extensión: se guardan en .img). */
+    private fun esPng(f: java.io.File): Boolean = try {
+        val head = ByteArray(8)
+        java.io.FileInputStream(f).use { it.read(head) }
+        head.size == 8 && head[0] == 0x89.toByte() && head[1] == 0x50.toByte() &&
+            head[2] == 0x4E.toByte() && head[3] == 0x47.toByte()
+    } catch (e: Exception) { false }
 
     /** Encabezado de sección del historial, con icono, título y número de avisos. */
     private fun historyHeader(p: LinearLayout, iconName: String, color: Int, title: String, count: Int) {
@@ -1764,6 +1775,13 @@ class MainActivity : Activity() {
                 }
                 r.addView(iv, LinearLayout.LayoutParams(px(if (h2.kind == "Sticker") 110 else 190), px(if (h2.kind == "Sticker") 110 else 130)).apply { topMargin = px(6) })
             }
+        } else if (h2.kind.startsWith("Foto") || h2.kind.startsWith("Vídeo") || h2.kind.startsWith("Video") ||
+                   h2.kind.startsWith("Sticker") || h2.kind.startsWith("GIF") || h2.kind.startsWith("Audio") ||
+                   h2.kind.startsWith("Documento") || h2.kind.startsWith("Ver una vez")) {
+            // Entrada capturada LEYENDO LA PANTALLA: la accesibilidad no da los píxeles, así que solo se sabe
+            // el TIPO del adjunto. Se dice claro para que no parezca que falta la imagen.
+            r.addView(label("📎 ${h2.kind} · visto en pantalla (sin imagen: la accesibilidad no da los píxeles)",
+                11f, R.color.gold).apply { setPadding(0, px(4), 0, 0) })
         }
         val foot = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(0, px(2), 0, 0) }
         if (h2.kind.isNotEmpty()) {
