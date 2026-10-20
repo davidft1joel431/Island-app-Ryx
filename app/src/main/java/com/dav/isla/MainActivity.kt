@@ -248,15 +248,62 @@ class MainActivity : Activity() {
         Intent(Intent.ACTION_OPEN_DOCUMENT_TREE).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or
             Intent.FLAG_GRANT_WRITE_URI_PERMISSION or Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION), REQ_TREE)
 
-    /** Instalación nueva y sin historial: ofrece traer la copia guardada (una sola vez). */
+    /**
+     * Al abrir la app con el historial vacío (instalación nueva o datos reiniciados), mira si hay un respaldo
+     * disponible y PREGUNTA antes de restaurar. Fuentes, en orden:
+     *  1) la carpeta propia «ryx respaldo»;
+     *  2) la copia en la nube (Google Drive / OneDrive), si hay una carpeta elegida con archivo.
+     * Nada se restaura sin que el usuario lo confirme.
+     */
     private fun offerRestore() {
-        if (Prefs.restoreAsked(this) || Prefs.histAll(this).isNotEmpty() || Backup.configured(this)) return
+        if (Prefs.restoreAsked(this) || Prefs.histAll(this).isNotEmpty()) return
         Prefs.setRestoreAsked(this, true)
-        glass(AlertDialog.Builder(this).setTitle("¿Restaurar tu historial?")
-            .setMessage("Si ya tenías una copia de Ryx Island (por ejemplo en Google Drive), puedes traerla ahora: " +
-                "recupera tus ajustes y el historial de notificaciones.")
-            .setPositiveButton("Elegir copia") { _, _ -> pickRestore() }
-            .setNegativeButton("Ahora no", null).show())
+        Thread {
+            val local = Backup.latestLocal(this)
+            val cloud = if (Backup.configured(this)) Backup.cloudFileUri(this) else null
+            runOnUiThread {
+                if (isFinishing) return@runOnUiThread
+                when {
+                    local != null -> glass(AlertDialog.Builder(this).setTitle("¿Restaurar tu respaldo?")
+                        .setMessage("Encontré un respaldo en la carpeta «${Backup.FOLDER}». " +
+                            "¿Quieres recuperar tus ajustes y el historial de notificaciones?")
+                        .setPositiveButton("Restaurar") { _, _ -> restoreLocal(local) }
+                        .setNegativeButton("Ahora no", null).show())
+                    cloud != null -> glass(AlertDialog.Builder(this).setTitle("¿Restaurar desde la nube?")
+                        .setMessage("Encontré una copia en la nube (ryx_respaldo.zip). " +
+                            "¿Quieres traerla y recuperar tus ajustes y el historial de notificaciones?")
+                        .setPositiveButton("Restaurar") { _, _ -> restoreFromCloud() }
+                        .setNegativeButton("Ahora no", null).show())
+                    else -> glass(AlertDialog.Builder(this).setTitle("¿Restaurar tu historial?")
+                        .setMessage("Si ya tenías una copia de Ryx Island (por ejemplo en Google Drive), puedes traerla ahora: " +
+                            "recupera tus ajustes y el historial de notificaciones.")
+                        .setPositiveButton("Elegir copia") { _, _ -> pickRestore() }
+                        .setNegativeButton("Ahora no", null).show())
+                }
+            }
+        }.start()
+    }
+
+    /** Restaura una copia de la carpeta propia y avisa del resultado. */
+    private fun restoreLocal(f: java.io.File) {
+        toast("Restaurando…")
+        Thread {
+            val msg = try { f.inputStream().use { Backup.restore(this, it) } } catch (e: Exception) { "No pude restaurar: ${e.message}" }
+            runOnUiThread { applyAll(); render(); dialog("Restaurar respaldo", msg) }
+        }.start()
+    }
+
+    /** Trae la copia de la nube a la carpeta propia y la restaura (con confirmación previa). */
+    private fun restoreFromCloud() {
+        toast("Trayendo la copia…")
+        Thread {
+            val err = Backup.pullCloud(this)
+            if (err.isNotEmpty()) { runOnUiThread { dialog("Restaurar desde la nube", err) }; return@Thread }
+            val f = Backup.latestLocal(this)
+            val msg = if (f == null) "No se pudo leer la copia." else try { f.inputStream().use { Backup.restore(this, it) } }
+                catch (e: Exception) { "No pude restaurar: ${e.message}" }
+            runOnUiThread { applyAll(); render(); dialog("Restaurar desde la nube", msg) }
+        }.start()
     }
 
     private fun openUrl(u: String) {
@@ -1300,10 +1347,10 @@ class MainActivity : Activity() {
         item(p, "palette", 0xFF7B5CE0.toInt(), "Tema de la app", "Color de acento de la aplicación", Glass.theme.label) { themeDialog() }
         heading(p, "DATOS")
         item(p, "backup", 0xFF3F7BEA.toInt(), "Copia de seguridad",
-            if (Prefs.backupAuto(this)) "Automática en la carpeta de Ryx" else "Manual: exporta o importa ajustes",
+            if (Prefs.backupAuto(this)) "Automática cada 30 s en «${Backup.FOLDER}»" else "Manual: exporta o importa ajustes",
             if (Prefs.backupLast(this) > 0) relative(Prefs.backupLast(this)) else "") { backupDialog() }
         item(p, "upload", 0xFF2D8CCB.toInt(), "Copia en la nube",
-            "Historial y ajustes en Google Drive u otra carpeta", if (Backup.configured(this)) "Activa" else "") { cloudDialog() }
+            "Solo si usas Google Drive u OneDrive", if (Backup.configured(this)) "Activa" else "Sin carpeta") { cloudDialog() }
         heading(p, "SISTEMA")
         item(p, "shield", 0xFF2DAA55.toInt(), "Permisos", "Superposición, acceso a notificaciones, batería", "") { subPage = "perms"; render() }
         item(p, "download", 0xFF2DAA55.toInt(), "Actualizaciones",
@@ -1758,16 +1805,16 @@ class MainActivity : Activity() {
         val last = Prefs.backupLast(this)
         val copies = Backup.dir(this).listFiles()?.count { it.isFile } ?: 0
         val status = when {
-            last <= 0 -> "Todavía no hay ninguna copia guardada."
-            else -> "Última copia: ${relative(last)} · $copies ${if (copies == 1) "copia" else "copias"} guardadas"
+            last <= 0 -> "Todavía no hay ningún respaldo guardado."
+            else -> "Último respaldo: ${relative(last)} · $copies ${if (copies == 1) "copia" else "copias"} en «${Backup.FOLDER}»"
         }
         b.addView(label(status, 14f, R.color.text), lp(6))
-        b.addView(rowWithSwitch("Guardar copias solo", "Ryx crea su carpeta y guarda la copia por su cuenta, sin que pulses nada",
+        b.addView(rowWithSwitch("Guardar copias solo", "Ryx crea su carpeta «ryx respaldo» y guarda la copia por su cuenta, sin que pulses nada",
             Prefs.backupAuto(this)) { v -> Prefs.setBackupAuto(this, v); if (v) Backup.autoLocal(this, true) })
         b.addView(label("Guardar cada", 13f, R.color.muted, true), lp(12))
-        b.addView(segmented(listOf("15 min", "30 min", "1 h", "6 h"), when (Prefs.backupEveryMin(this)) {
-            15 -> 0; 60 -> 2; 360 -> 3; else -> 1 }, true) {
-            Prefs.setBackupEveryMin(this, listOf(15, 30, 60, 360)[it])
+        b.addView(segmented(listOf("30 s", "1 min", "5 min", "30 min"), when (Prefs.backupEverySec(this)) {
+            60 -> 1; 300 -> 2; 1800 -> 3; else -> 0 }, true) {
+            Prefs.setBackupEverySec(this, listOf(30, 60, 300, 1800)[it])
         }, lp(6))
         b.addView(label("Copias que se conservan", 13f, R.color.muted, true), lp(12))
         b.addView(segmented(listOf("3", "7", "14", "30"), when (Prefs.backupKeep(this)) {
@@ -1776,9 +1823,10 @@ class MainActivity : Activity() {
             toast("Guardando…")
             Thread { val r = Backup.writeLocal(this); runOnUiThread { toast(if (r.isEmpty()) "Copia guardada" else r); render() } }.start()
         }, lp(12))
-        val locals = Backup.dir(this).listFiles()?.filter { it.isFile }?.sortedByDescending { it.name } ?: emptyList()
+        val locals = Backup.dir(this).listFiles()?.filter { it.isFile && it.name.endsWith(".zip") }
+            ?.sortedByDescending { it.name } ?: emptyList()
         if (locals.isNotEmpty()) {
-            b.addView(label("Copias guardadas (toca para restaurar)", 13f, R.color.muted, true), lp(12))
+            b.addView(label("Respaldos guardados en «${Backup.FOLDER}» (toca para restaurar)", 13f, R.color.muted, true), lp(12))
             locals.take(6).forEach { f ->
                 val when0 = f.name.removePrefix("ryx_").removeSuffix(".zip").toLongOrNull() ?: 0L
                 val size = "${f.length() / 1024} KB"
@@ -1800,14 +1848,26 @@ class MainActivity : Activity() {
             val txt = cb.primaryClip?.getItemAt(0)?.text?.toString() ?: ""
             if (Prefs.importAll(this, txt)) { applyAll(); render(); toast("Ajustes importados") } else toast("El portapapeles no tiene una copia válida")
         }, lp(8))
-        b.addView(label("Estas copias viven dentro de Ryx (carpeta propia de la app) y se guardan solas cada cierto tiempo " +
-            "o cuando llega algo nuevo al historial. Sobreviven a cerrar la app, pero no a desinstalarla: para eso, usa " +
-            "«Copia en la nube», que además deja el archivo en Google Drive u otra carpeta.", 12f, R.color.muted), lp(10))
+        b.addView(label("Estos respaldos viven dentro de Ryx, en su carpeta «${Backup.FOLDER}», y se guardan solos cada 30 segundos " +
+            "cuando algo cambia (historial o ajustes). Sobreviven a cerrar la app, pero no a desinstalarla: para eso, usa " +
+            "«Copia en la nube», que además deja el archivo en Google Drive u OneDrive.", 12f, R.color.muted), lp(10))
     }
 
     /** Ajustes de actualizaciones: con qué frecuencia se mira GitHub y por dónde te avisa. */
     private fun updateDialog() = sheet("Actualizaciones") { b ->
         b.addView(label("Versión instalada: v${BuildConfig.VERSION_NAME}", 14f, R.color.text), lp(6))
+        // Detección del respaldo propio: al abrir la app, si hay una copia y el historial está vacío, se pregunta.
+        val hasLocal = Backup.hasLocal(this)
+        val hasCloud = Backup.configured(this) && Backup.cloudFileUri(this) != null
+        val respTxt = when {
+            hasLocal -> "Respaldo encontrado en «${Backup.FOLDER}»" + (if (Prefs.histAll(this).isEmpty()) " · se ofrecerá al abrir" else "")
+            Prefs.backupAuto(this) -> "Respaldo propio activo (carpeta «${Backup.FOLDER}»), todavía sin copias"
+            else -> "Respaldo propio desactivado"
+        }
+        b.addView(label(respTxt, 13f, R.color.muted), lp(6))
+        if (hasLocal || hasCloud) b.addView(button("Restaurar el respaldo encontrado", true) {
+            if (hasLocal) Backup.latestLocal(this)?.let { restoreLocal(it) } else restoreFromCloud()
+        }, lp(8))
         b.addView(rowWithSwitch("Avisar con la isla", "Ryx te avisa dentro de la isla, no en el panel del sistema",
             Prefs.updViaIsland(this)) { v -> Prefs.setUpdViaIsland(this, v) })
         b.addView(rowWithSwitch("Avisar también en el panel", "Además del aviso de la isla, deja una notificación normal",
@@ -1824,9 +1884,13 @@ class MainActivity : Activity() {
 
     private fun cloudDialog() = sheet("Copia en la nube") { b ->
         val last = Prefs.cloudLast(this)
-        b.addView(label(if (Backup.configured(this)) "Carpeta elegida ✔" + (if (last > 0) "\nÚltima copia: " +
-            android.text.format.DateUtils.getRelativeTimeSpanString(last, System.currentTimeMillis(),
-                android.text.format.DateUtils.MINUTE_IN_MILLIS) else "") else "Todavía no hay carpeta elegida.", 14f, R.color.text), lp(6))
+        val cloudTxt = when {
+            !Backup.configured(this) -> "Todavía no hay carpeta elegida.\nEsta sección solo se usa si tienes Google Drive u OneDrive."
+            last > 0 -> "Carpeta elegida ✔\nÚltima copia: " + android.text.format.DateUtils.getRelativeTimeSpanString(
+                last, System.currentTimeMillis(), android.text.format.DateUtils.MINUTE_IN_MILLIS)
+            else -> "Carpeta elegida ✔ · aún sin copias"
+        }
+        b.addView(label(cloudTxt, 14f, R.color.text), lp(6))
         b.addView(button("Elegir carpeta (Google Drive u otra)", true) { pickCloudFolder() }, lp(10))
         b.addView(button("Guardar copia ahora", false) {
             toast("Guardando…")
@@ -1835,10 +1899,23 @@ class MainActivity : Activity() {
                 runOnUiThread { toast(if (r.isEmpty()) "Copia guardada" else r) }
             }.start()
         }, lp(8))
-        b.addView(button("Restaurar desde una copia", false) { pickRestore() }, lp(8))
-        b.addView(label("En el selector que se abre, entra a Google Drive y elige o crea una carpeta. Ryx guarda ahí un archivo " +
-            "(ryx_respaldo.zip) con tus ajustes, el historial y sus imágenes, y lo actualiza solo cuando llegan notificaciones. " +
-            "Como queda en tu Drive, sigue ahí aunque desinstales la app; al reinstalar, usa «Restaurar».", 12f, R.color.muted), lp(10))
+        b.addView(button("Buscar copia en la nube", false) {
+            toast("Buscando…")
+            Thread {
+                val has = Backup.configured(this) && Backup.hasCloud(this)
+                runOnUiThread {
+                    if (has) glass(AlertDialog.Builder(this).setTitle("Hay una copia en la nube")
+                        .setMessage("Encontré «ryx_respaldo.zip» en tu carpeta. ¿Quieres traerla y restaurarla ahora?")
+                        .setPositiveButton("Restaurar") { _, _ -> restoreFromCloud() }
+                        .setNegativeButton("Ahora no", null).show())
+                    else dialog("Copia en la nube", "No encontré ninguna copia en la carpeta elegida.")
+                }
+            }.start()
+        }, lp(8))
+        b.addView(button("Restaurar desde un archivo", false) { pickRestore() }, lp(8))
+        b.addView(label("En el selector que se abre, entra a Google Drive (o OneDrive) y elige o crea una carpeta. Ryx guarda ahí un archivo " +
+            "(ryx_respaldo.zip) con tus ajustes, el historial y sus imágenes. Al abrir la app, si hay una carpeta con copia y tu historial " +
+            "está vacío, Ryx te pregunta si quieres restaurarla. Como queda en tu Drive, sigue ahí aunque desinstales la app.", 12f, R.color.muted), lp(10))
         b.addView(label("Además, Android respalda estos datos con la copia de seguridad de tu cuenta de Google y los " +
             "restaura al reinstalar desde la tienda. Al instalar un APK a mano, Android a veces no los restaura: para eso sirve la carpeta.",
             12f, R.color.muted), lp(8))
