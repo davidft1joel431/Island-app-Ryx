@@ -93,6 +93,9 @@ class MainActivity : Activity() {
     private fun svc() = NotifListener.instance
     private fun applyAll() { svc()?.applySettings() }
 
+    /** Refresco ligero de la isla (geometría) sin destruir la vista; útil mientras se mueve un deslizador. */
+    private fun live() { svc()?.refreshLive(); previewView?.refresh() }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         Glass.applyTheme(this)
@@ -873,20 +876,20 @@ class MainActivity : Activity() {
         }, lp(10))
         if (mode != 0) {
             ir.addView(label(if (mode == 1) "Tinte del cristal" else "Color", 13f, R.color.muted, true), lp(12))
-            colorRow(ir, Prefs.idleColor(this)) { Prefs.setIdleColor(this, it); applyAll(); svc()?.showTest(); render() }
+            colorRow(ir, Prefs.idleColor(this)) { Prefs.setIdleColor(this, it); applyAll(); svc()?.showTest(); previewView?.refresh() }
             hexRow(ir) { Prefs.setIdleColor(this, it); applyAll(); svc()?.showTest(); previewView?.refresh() }
         }
         shapeRow(ir, Prefs.idleCornerDp(this)) { Prefs.setIdleCornerDp(this, it); applyAll(); svc()?.showTest(); previewView?.refresh() }
-        seekRow(ir, "Radio de esquina fino", "dp", 0, 50, Prefs.idleCornerDp(this).coerceIn(0, 50)) { Prefs.setIdleCornerDp(this, it); svc()?.showTest() }
+        seekRow(ir, "Radio de esquina fino", "dp", 0, 50, Prefs.idleCornerDp(this).coerceIn(0, 50)) { Prefs.setIdleCornerDp(this, it); applyAll(); svc()?.showTest() }
         seekRow(ir, if (mode == 1) "Transparencia del cristal" else "Opacidad", "%", 15, 100, Prefs.idleOpacity(this)) { Prefs.setIdleOpacity(this, it) }
         seekRow(ir, "Borde", "dp", 0, 4, Prefs.idleBorder(this).let { if (it >= 0) it else if (mode == 1) 1 else 0 }) { Prefs.setIdleBorder(this, it) }
         ir.addView(rowWithSwitch("Desenfoque del fondo (experimental)", "Android 12+. Puede verse un rectángulo desenfocado detrás de la isla.",
             Prefs.idleBlur(this)) { v -> Prefs.setIdleBlur(this, v); applyAll(); svc()?.showTest() })
-        seekRow(ir, "Ancho en reposo", "dp", 60, 220, Prefs.idleWidthDp(this)) { Prefs.setIdleWidthDp(this, it) }
-        seekRow(ir, "Alto en reposo", "dp", 20, 60, Prefs.heightDp(this)) { Prefs.setHeightDp(this, it) }
-        seekRow(ir, "Margen lateral mínimo", "dp", 0, 40, Prefs.sideMarginDp(this)) { Prefs.setSideMarginDp(this, it) }
-        seekRow(ir, "Posición vertical (margen superior)", "dp", 0, 80, Prefs.yOffsetDp(this)) { Prefs.setYOffsetDp(this, it) }
-        seekRow(ir, "Posición horizontal", "dp", -100, 100, Prefs.xOffsetDp(this)) { Prefs.setXOffsetDp(this, it) }
+        seekRow(ir, "Ancho en reposo", "dp", 60, 220, Prefs.idleWidthDp(this)) { Prefs.setIdleWidthDp(this, it); live() }
+        seekRow(ir, "Alto en reposo", "dp", 20, 60, Prefs.heightDp(this)) { Prefs.setHeightDp(this, it); live() }
+        seekRow(ir, "Margen lateral mínimo", "dp", 0, 40, Prefs.sideMarginDp(this)) { Prefs.setSideMarginDp(this, it); live() }
+        seekRow(ir, "Posición vertical (margen superior)", "dp", 0, 80, Prefs.yOffsetDp(this)) { Prefs.setYOffsetDp(this, it); live() }
+        seekRow(ir, "Posición horizontal", "dp", -100, 100, Prefs.xOffsetDp(this)) { Prefs.setXOffsetDp(this, it); live() }
 
         // ─────────────────────────── ISLA EXPANDIDA ───────────────────────────
         heading(p, "ISLA EXPANDIDA")
@@ -894,13 +897,13 @@ class MainActivity : Activity() {
         cr.addView(rowWithSwitch("Efecto cristal (Liquid Glass)", "Translúcida, con brillo arriba y borde de luz", Prefs.cardGlass(this)) { v ->
             Prefs.setCardGlass(this, v); applyAll(); svc()?.showTest(); previewView?.refresh() })
         cr.addView(label("Color de la tarjeta", 13f, R.color.muted, true), lp(12))
-        colorRow(cr, Prefs.cardColor(this)) { Prefs.setCardColor(this, it); applyAll(); svc()?.showTest(); render() }
+        colorRow(cr, Prefs.cardColor(this)) { Prefs.setCardColor(this, it); applyAll(); svc()?.showTest(); previewView?.refresh() }
         hexRow(cr) { Prefs.setCardColor(this, it); applyAll(); svc()?.showTest(); previewView?.refresh() }
         shapeRow(cr, Prefs.cornerDp(this)) { Prefs.setCornerDp(this, it); applyAll(); svc()?.showTest(); previewView?.refresh() }
-        seekRow(cr, "Radio de esquina fino", "dp", 0, 50, Prefs.cornerDp(this).coerceIn(0, 50)) { Prefs.setCornerDp(this, it) }
-        seekRow(cr, "Transparencia", "%", 15, 100, Prefs.opacity(this)) { Prefs.setOpacity(this, it) }
+        seekRow(cr, "Radio de esquina fino", "dp", 0, 50, Prefs.cornerDp(this).coerceIn(0, 50)) { Prefs.setCornerDp(this, it); applyAll(); svc()?.showTest() }
+        seekRow(cr, "Transparencia", "%", 15, 100, Prefs.opacity(this)) { Prefs.setOpacity(this, it); live() }
         seekRow(cr, "Ancho expandido", "dp", 220, 420,
-            Prefs.expandedWidthDp(this).let { if (it > 0) it else Styles.byId(Prefs.style(this)).expandedWidthDp }) { Prefs.setExpandedWidthDp(this, it) }
+            Prefs.expandedWidthDp(this).let { if (it > 0) it else Styles.byId(Prefs.style(this)).expandedWidthDp }) { Prefs.setExpandedWidthDp(this, it); live() }
         cr.addView(rowWithSwitch("Sombra bajo la isla", "Da profundidad a la tarjeta", Prefs.shadow(this)) { v ->
             Prefs.setShadow(this, v); applyAll(); svc()?.showTest(); previewView?.refresh() })
         cr.addView(button("Restablecer tamaño y posición", false) {
@@ -937,22 +940,28 @@ class MainActivity : Activity() {
         heading(p, "DISEÑO DE NOTIFICACIONES")
         val dn = titled(p, "Iconos de la notificación", "De dónde sale el icono y cómo se recorta")
         dn.addView(segmented(listOf("Sistema", "Notificación", "Monocromo"), Prefs.iconMode(this), true) {
-            Prefs.setIconMode(this, it); applyAll(); svc()?.showTest(); render()
+            Prefs.setIconMode(this, it); applyAll(); svc()?.showTest()
         }, lp(10))
         dn.addView(label("Forma del icono", 13f, R.color.muted, true), lp(12))
         val shapes = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+        val shapeCells = ArrayList<LinearLayout>()
+        fun paintShapes(sel: Int) {
+            shapeCells.forEachIndexed { i, cell ->
+                cell.background = Glass.ripple(this@MainActivity, Glass.chipCached(this@MainActivity, i == sel, 16f), 16f)
+            }
+        }
         listOf("Círculo", "Squircle", "Flor", "Hexágono").forEachIndexed { i, n ->
-            val on = Prefs.iconShape(this) == i
             val cell = LinearLayout(this).apply {
                 orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER
                 setPadding(px(4), px(10), px(4), px(8))
-                background = Glass.ripple(this@MainActivity, Glass.chipCached(this@MainActivity, on, 16f), 16f)
-                setOnClickListener { Prefs.setIconShape(this@MainActivity, i); applyAll(); svc()?.showTest(); render() }
+                background = Glass.ripple(this@MainActivity, Glass.chipCached(this@MainActivity, Prefs.iconShape(this@MainActivity) == i, 16f), 16f)
+                setOnClickListener { paintShapes(i); Prefs.setIconShape(this@MainActivity, i); applyAll(); svc()?.showTest() }
             }
             cell.addView(ShapedImageView(this).apply {
                 shape = i; setImageResource(R.drawable.logo); scaleType = ImageView.ScaleType.CENTER_CROP
             }, LinearLayout.LayoutParams(px(40), px(40)))
             cell.addView(label(n, 11f, R.color.text, true).apply { gravity = Gravity.CENTER }, lp(6))
+            shapeCells.add(cell)
             shapes.addView(cell, LinearLayout.LayoutParams(0, WRAP, 1f).apply { marginStart = px(3); marginEnd = px(3) })
         }
         dn.addView(shapes, lp(6))
@@ -1018,9 +1027,18 @@ class MainActivity : Activity() {
     private fun colorRow(parent: LinearLayout, current: Int, onPick: (Int) -> Unit) {
         val sv = android.widget.HorizontalScrollView(this).apply { isHorizontalScrollBarEnabled = false }
         val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(0, px(4), 0, px(4)) }
+        val views = ArrayList<TextView>()
+        // Se re-ilumina sola al tocar: el anillo del color elegido cambia al instante, sin rehacer la pantalla.
+        fun paint(sel: Int) {
+            views.forEachIndexed { i, tv ->
+                val c = if (i == 0) 0 else swatchColors[i - 1]
+                val on = c == sel
+                (tv.background as? android.graphics.drawable.GradientDrawable)?.setStroke(px(if (on) 3 else 1), if (on) Glass.ACCENT else 0x55FFFFFF)
+            }
+        }
         (listOf(0) + swatchColors).forEach { c ->
             val on = current == c
-            row.addView(TextView(this).apply {
+            val tv = TextView(this).apply {
                 gravity = Gravity.CENTER; textSize = 11f; setTextColor(Glass.TEXT)
                 if (c == 0) text = "Auto"
                 background = android.graphics.drawable.GradientDrawable().apply {
@@ -1028,8 +1046,10 @@ class MainActivity : Activity() {
                     setColor(if (c == 0) 0x22FFFFFF else c)
                     setStroke(px(if (on) 3 else 1), if (on) Glass.ACCENT else 0x55FFFFFF)
                 }
-                setOnClickListener { onPick(c) }
-            }, LinearLayout.LayoutParams(px(42), px(42)).apply { marginEnd = px(8) })
+                setOnClickListener { paint(c); onPick(c) }
+            }
+            views.add(tv)
+            row.addView(tv, LinearLayout.LayoutParams(px(42), px(42)).apply { marginEnd = px(8) })
         }
         sv.addView(row)
         parent.addView(sv, lp(6))
@@ -1759,11 +1779,11 @@ class MainActivity : Activity() {
         }
         b.addView(label(status, 14f, R.color.text), lp(6))
         b.addView(rowWithSwitch("Guardar copias solo", "Ryx crea su carpeta y guarda la copia por su cuenta, sin que pulses nada",
-            Prefs.backupAuto(this)) { v -> Prefs.setBackupAuto(this, v); if (v) Backup.autoLocal(this, true); render() })
+            Prefs.backupAuto(this)) { v -> Prefs.setBackupAuto(this, v); if (v) Backup.autoLocal(this, true) })
         b.addView(label("Guardar cada", 13f, R.color.muted, true), lp(12))
         b.addView(segmented(listOf("15 min", "30 min", "1 h", "6 h"), when (Prefs.backupEveryMin(this)) {
             15 -> 0; 60 -> 2; 360 -> 3; else -> 1 }, true) {
-            Prefs.setBackupEveryMin(this, listOf(15, 30, 60, 360)[it]); render()
+            Prefs.setBackupEveryMin(this, listOf(15, 30, 60, 360)[it])
         }, lp(6))
         b.addView(label("Copias que se conservan", 13f, R.color.muted, true), lp(12))
         b.addView(segmented(listOf("3", "7", "14", "30"), when (Prefs.backupKeep(this)) {
@@ -1811,7 +1831,7 @@ class MainActivity : Activity() {
         b.addView(label("Revisar GitHub cada", 13f, R.color.muted, true), lp(12))
         b.addView(segmented(listOf("15 s", "30 s", "1 min", "5 min", "30 min"), when (Prefs.updEverySec(this)) {
             15 -> 0; 60 -> 2; 300 -> 3; 1800 -> 4; else -> 1 }, true) {
-            Prefs.setUpdEverySec(this, listOf(15, 30, 60, 300, 1800)[it]); render()
+            Prefs.setUpdEverySec(this, listOf(15, 30, 60, 300, 1800)[it])
         }, lp(6))
         b.addView(button("Buscar ahora", true) { checkUpdates(true) }, lp(12))
         b.addView(label("Ryx consulta la última versión en GitHub mientras está en marcha. Cuando sale una nueva, " +
@@ -1876,7 +1896,7 @@ class MainActivity : Activity() {
     private fun dialog(title: String, msg: String) =
         glass(AlertDialog.Builder(this).setTitle(title).setMessage(msg).setPositiveButton("Cerrar", null).show())
 
-    /** Hoja inferior con asa: sube desde abajo, con las esquinas de arriba redondeadas. */
+    /** Hoja inferior con asa: sube desde abajo, con las esquinas de arriba redondeadas, y se cierra deslizando hacia abajo. */
     private fun sheet(title: String, build: (LinearLayout) -> Unit) {
         val dlg = Dialog(this)
         dlg.requestWindowFeature(Window.FEATURE_NO_TITLE)
@@ -1884,8 +1904,12 @@ class MainActivity : Activity() {
             orientation = LinearLayout.VERTICAL; background = Glass.sheet(this@MainActivity, 28f)
             setPadding(px(22), px(10), px(22), px(18))
         }
-        box.addView(View(this).apply { background = Glass.pill(this@MainActivity, 0x33FFFFFF, 0, 4f) },
-            LinearLayout.LayoutParams(px(38), px(4)).apply { gravity = Gravity.CENTER_HORIZONTAL; bottomMargin = px(14) })
+        // Asa: zona táctil ancha (invisible) con la barrita visible dentro, para poder deslizar cómodamente.
+        val handle = android.widget.FrameLayout(this)
+        handle.addView(View(this).apply { background = Glass.pill(this@MainActivity, 0x33FFFFFF, 0, 2f) },
+            android.widget.FrameLayout.LayoutParams(px(38), px(4), Gravity.CENTER))
+        box.addView(handle,
+            LinearLayout.LayoutParams(px(96), px(26)).apply { gravity = Gravity.CENTER_HORIZONTAL; bottomMargin = px(6) })
         box.addView(label(title, 20f, R.color.text, true).apply { letterSpacing = -0.01f })
         val inner = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         build(inner)
@@ -1900,6 +1924,35 @@ class MainActivity : Activity() {
             setLayout(android.view.WindowManager.LayoutParams.MATCH_PARENT, android.view.WindowManager.LayoutParams.WRAP_CONTENT)
             setWindowAnimations(android.R.style.Animation_InputMethod)
         }
+        // El asa indica «desliza hacia abajo»: ese gesto ahora SÍ cierra la hoja (antes no hacía nada).
+        // El arrastre se escucha SOLO en el asa: así el contenido de dentro sigue desplazándose con normalidad.
+        val touchSlop = android.view.ViewConfiguration.get(this).scaledTouchSlop
+        handle.setOnTouchListener(object : android.view.View.OnTouchListener {
+            private var y0 = 0f
+            private var dragging = false
+            override fun onTouch(v: View, e: android.view.MotionEvent): Boolean {
+                when (e.actionMasked) {
+                    android.view.MotionEvent.ACTION_DOWN -> { y0 = e.rawY; dragging = false; return true }
+                    android.view.MotionEvent.ACTION_MOVE -> {
+                        val dy = e.rawY - y0
+                        if (dy > touchSlop) dragging = true
+                        if (dragging) box.translationY = maxOf(0f, dy)
+                        return true
+                    }
+                    android.view.MotionEvent.ACTION_UP, android.view.MotionEvent.ACTION_CANCEL -> {
+                        val dy = e.rawY - y0
+                        if (dragging && dy > px(90)) {
+                            // Cae hacia abajo y se cierra, como una hoja de verdad.
+                            box.animate().translationY(box.height.toFloat())
+                                .setDuration(160).withEndAction { dlg.dismiss() }.start()
+                        } else box.animate().translationY(0f).setDuration(160).start()
+                        dragging = false
+                        return true
+                    }
+                }
+                return false
+            }
+        })
         dlg.setOnDismissListener { render() }
         dlg.show()
     }
@@ -1984,23 +2037,39 @@ class MainActivity : Activity() {
     }
 
     /** Selector segmentado: pista oscura y segmento elegido elevado (o con el acento si [green]). */
+    /**
+     * Selector de opciones tipo «pastilla». Se actualiza SOLO al tocar: cada opción se re-ilumina a sí misma.
+     * Antes dependía de [render], que reconstruye la pantalla principal pero NO la hoja abierta encima,
+     * así que dentro de una hoja el toque no cambiaba nada a la vista.
+     */
     private fun segmented(opts: List<String>, selected: Int, green: Boolean = false, onPick: (Int) -> Unit): LinearLayout =
         LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             background = Glass.pill(this@MainActivity, 0xFF0E1014.toInt(), Glass.HAIR, 16f)
             setPadding(px(4), px(4), px(4), px(4))
-            opts.forEachIndexed { i, o ->
-                val sel = i == selected
-                addView(TextView(this@MainActivity).apply {
-                    text = o; gravity = Gravity.CENTER; textSize = 14f
-                    typeface = Typeface.create("sans-serif-medium", if (sel) Typeface.BOLD else Typeface.NORMAL)
-                    setTextColor(if (sel) (if (green) Glass.onAccent() else Glass.TEXT) else Glass.MUTED)
-                    setPadding(px(6), px(11), px(6), px(11))
-                    background = Glass.ripple(this@MainActivity, Glass.pill(this@MainActivity,
-                        if (sel) (if (green) Glass.ACCENT else Glass.SURFACE_TOP) else 0, 0, 12f), 12f)
-                    setOnClickListener { onPick(i); render() }
-                }, LinearLayout.LayoutParams(0, WRAP, 1f))
+            val views = ArrayList<TextView>(opts.size)
+            fun paint(sel: Int) {
+                views.forEachIndexed { i, tv ->
+                    val on = i == sel
+                    tv.typeface = Typeface.create("sans-serif-medium", if (on) Typeface.BOLD else Typeface.NORMAL)
+                    tv.setTextColor(if (on) (if (green) Glass.onAccent() else Glass.TEXT) else Glass.MUTED)
+                    tv.background = Glass.ripple(this@MainActivity, Glass.pill(this@MainActivity,
+                        if (on) (if (green) Glass.ACCENT else Glass.SURFACE_TOP) else 0, 0, 12f), 12f)
+                }
             }
+            opts.forEachIndexed { i, o ->
+                val tv = TextView(this@MainActivity).apply {
+                    text = o; gravity = Gravity.CENTER; textSize = 14f
+                    setPadding(px(6), px(11), px(6), px(11))
+                    setOnClickListener {
+                        // Se ilumina al instante (funciona igual dentro de una hoja) y luego avisa al ajuste.
+                        paint(i); onPick(i)
+                    }
+                }
+                views.add(tv)
+                addView(tv, LinearLayout.LayoutParams(0, WRAP, 1f))
+            }
+            paint(selected)
         }
 
     /** Control deslizante: nombre a la izquierda, valor en el acento a la derecha. */
@@ -2019,7 +2088,7 @@ class MainActivity : Activity() {
                     vl.text = "${p + lo} $unit"; onChange(p + lo); previewView?.refresh()
                 }
                 override fun onStartTrackingTouch(s: SeekBar?) {}
-                override fun onStopTrackingTouch(s: SeekBar?) { svc()?.let { it.applySettings(); it.showTest() } }
+                override fun onStopTrackingTouch(s: SeekBar?) { svc()?.let { it.refreshLive(); it.showTest() } }
             })
         }
         parent.addView(head, lp(14)); parent.addView(seek, LinearLayout.LayoutParams(MATCH, WRAP))
@@ -2031,36 +2100,64 @@ class MainActivity : Activity() {
      * 24 = redondeado, 999 = circular/pastilla).
      */
     private fun shapeRow(parent: LinearLayout, current: Int, onPick: (Int) -> Unit) {
-        val shape = when { current <= 1 -> 0; current >= 900 -> 2; else -> 1 }
         val names = listOf("Cuadrado", "Redondeado", "Circular")
         val icons = listOf("window", "expand", "ball")
         val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+        val cells = ArrayList<LinearLayout>(names.size)
+        val marks = ArrayList<ImageViewHolder>(names.size)
+        // Se re-ilumina sola al tocar (igual que [segmented]): así funciona dentro de una hoja sin depender de [render].
+        fun paint(shape: Int) {
+            names.forEachIndexed { i, _ ->
+                val on = i == shape
+                cells[i].background = Glass.ripple(this@MainActivity, Glass.chipCached(this@MainActivity, on, 16f), 16f)
+                marks[i].iv.setImageDrawable(Glass.icon(this@MainActivity, icons[i], if (on) Glass.ACCENT else Glass.MUTED))
+            }
+        }
         names.forEachIndexed { i, n ->
-            val on = i == shape
+            val iv = icon(icons[i], 26, Glass.MUTED)
+            marks.add(ImageViewHolder(iv))
             val cell = LinearLayout(this).apply {
                 orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER
                 setPadding(px(4), px(12), px(4), px(10))
-                background = Glass.ripple(this@MainActivity, Glass.chipCached(this@MainActivity, on, 16f), 16f)
-                setOnClickListener { onPick(if (i == 0) 0 else if (i == 1) 24 else 999) }
+                background = Glass.ripple(this@MainActivity, Glass.chipCached(this@MainActivity, false, 16f), 16f)
+                setOnClickListener { paint(i); onPick(if (i == 0) 0 else if (i == 1) 24 else 999) }
             }
-            cell.addView(icon(icons[i], 26, if (on) Glass.ACCENT else Glass.MUTED))
+            cell.addView(iv)
             cell.addView(label(n, 11.5f, R.color.text, true).apply { gravity = Gravity.CENTER }, lp(6))
+            cells.add(cell)
             row.addView(cell, LinearLayout.LayoutParams(0, WRAP, 1f).apply { marginStart = px(3); marginEnd = px(3) })
         }
+        paint(when { current <= 1 -> 0; current >= 900 -> 2; else -> 1 })
         parent.addView(label("Forma", 13f, R.color.muted, true), lp(12))
         parent.addView(row, lp(6))
     }
 
-    private fun rowWithSwitch(title: String, sub: String, checked: Boolean, onChange: (Boolean) -> Unit) =
-        LinearLayout(this).apply {
+    /** Envoltura mínima para poder repintar el icono de una celda de forma. */
+    private class ImageViewHolder(val iv: ImageView)
+
+    /**
+     * Fila con interruptor. El interruptor se actualiza al instante al tocarlo (o al tocar la fila entera) y el
+     * fila devuelve su vista para poder reflejar cambios externos sin reconstruir la pantalla.
+     */
+    private fun rowWithSwitch(title: String, sub: String, checked: Boolean, onChange: (Boolean) -> Unit): LinearLayout {
+        val row = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
-            setPadding(0, px(10), 0, px(6))
-            val t = LinearLayout(this@MainActivity).apply { orientation = LinearLayout.VERTICAL }
-            t.addView(label(title, 16f, R.color.text, true))
-            if (sub.isNotEmpty()) t.addView(label(sub, 13f, R.color.muted).apply { setPadding(0, px(1), 0, 0) })
-            addView(t, LinearLayout.LayoutParams(0, WRAP, 1f).apply { marginEnd = px(14) })
-            addView(makeSwitch(checked, onChange))
+            setPadding(px(6), px(10), px(6), px(6))
+            background = Glass.ripple(this@MainActivity, Glass.pill(this@MainActivity, 0, 0, 14f), 14f)
         }
+        val col = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        col.addView(label(title, 16f, R.color.text, true))
+        if (sub.isNotEmpty()) col.addView(label(sub, 13f, R.color.muted).apply { setPadding(0, px(1), 0, 0) })
+        row.addView(col, LinearLayout.LayoutParams(0, WRAP, 1f).apply { marginEnd = px(14) })
+        val sw = makeSwitch(checked, onChange)
+        row.addView(sw)
+        // Tocar toda la fila también cambia el interruptor (y su reflejo visual va con él).
+        row.setOnClickListener {
+            sw.checked = !sw.checked
+            sw.onChange?.invoke(sw.checked)
+        }
+        return row
+    }
 
     private fun lp(top: Int) = LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = px(top) }
 
@@ -2117,8 +2214,9 @@ class MainActivity : Activity() {
     }
 
     private fun makeSwitch(checked: Boolean, onChange: (Boolean) -> Unit) = GlassSwitch(this).apply {
-        this.checked = checked
+        // onChange primero: así el valor inicial nunca se confunde con un toque del usuario.
         this.onChange = onChange
+        this.checked = checked
     }
 
     /** Botón: lleno con el acento (texto de máximo contraste) o tonal con un velo del acento; con destello al tocar. */
