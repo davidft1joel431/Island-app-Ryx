@@ -57,6 +57,14 @@ class RyxAccessibility : AccessibilityService() {
 
     override fun onServiceConnected() { instance = this }
     override fun onUnbind(intent: Intent?): Boolean { hideCurtain(); instance = null; return super.onUnbind(intent) }
+
+    override fun onDestroy() {
+        instance = null
+        // Sin esto, el hilo de lectura de chats seguía vivo tras desactivar el servicio.
+        try { chatWork.shutdownNow() } catch (e: Throwable) {}
+        hideCurtain()
+        super.onDestroy()
+    }
     /** Cambios de ventanas (mover, redimensionar, cerrar): la barra de Ryx se entera al instante y se pega a la ventana real. */
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         when (event?.eventType) {
@@ -82,10 +90,12 @@ class RyxAccessibility : AccessibilityService() {
     // que el usuario abre (esos no publican notificación). No inventa nada: solo guarda lo que ya está en pantalla.
     // ─────────────────────────────────────────────────────────────────────────────────────────────
 
-    private val chatHandler = Handler(Looper.getMainLooper())
-    private var readPending = false
+    private val chatWork = java.util.concurrent.Executors.newSingleThreadExecutor()
+    // scheduleRead corre en el hilo principal y el trabajo termina en chatWork: el estado debe ser atómico.
+    private val readPending = java.util.concurrent.atomic.AtomicBoolean(false)
     private var lastReadHash = 0
     private var lastReadAt = 0L
+    private var lastReadTry = 0L
 
     /** ¿Esta app es de chat Y el usuario activó la lectura por pantalla (y, si eligió apps, es una de ellas)? */
     private fun chatWanted(pkg: String): Boolean {
@@ -100,14 +110,19 @@ class RyxAccessibility : AccessibilityService() {
         if (chatWanted(pkg)) scheduleRead(pkg)
     }
 
-    /** Se espera un pelín para que la pantalla termine de pintar y no leer a medias. */
+    /**
+     * Se espera un pelín para que la pantalla termine de pintar y no leer a medias. La lectura corre en un hilo
+     * APARTE: recorrer el árbol de vistas bloquea, y hacerlo en el hilo principal congelaba la isla. Además se
+     * limita a una lectura cada 1,5 s como mucho: `typeWindowContentChanged` dispara sin parar en todas las apps.
+     */
     private fun scheduleRead(pkg: String) {
-        if (readPending) return
-        readPending = true
-        chatHandler.postDelayed({
-            readPending = false
-            try { readChat(pkg) } catch (e: Throwable) {}
-        }, 900L)
+        val now = System.currentTimeMillis()
+        if (now - lastReadTry < 1_500L) return
+        if (!readPending.compareAndSet(false, true)) return
+        lastReadTry = now
+        chatWork.execute {
+            try { readChat(pkg) } catch (e: Throwable) {} finally { readPending.set(false) }
+        }
     }
 
     /** Lee el texto visible de la conversación y lo guarda en el Historial (si hay algo nuevo). */
@@ -117,7 +132,9 @@ class RyxAccessibility : AccessibilityService() {
         if (root.packageName?.toString() != pkg) return
         val parts = ArrayList<String>()
         val media = ArrayList<String>()
-        collectText(root, parts, media, 0)
+        // Se lee una sola vez por recorrido: antes se consultaba SharedPreferences en CADA nodo del árbol.
+        val wantMedia = Prefs.chatMedia(this)
+        collectText(root, parts, media, 0, wantMedia)
         // Une y limpia líneas repetidas seguidas
         val lines = ArrayList<String>()
         for (p in parts) {
@@ -147,33 +164,47 @@ class RyxAccessibility : AccessibilityService() {
         // se registra qué se envió y quién, sin hacer ninguna captura de pantalla: discreto, sin gasto de memoria
         // ni de almacenamiento, y sin el aviso del sistema (que sí aparece con takeScreenshot en muchas ROMs).
         val kinds = ArrayList<String>()
-        val wantMedia = Prefs.chatMedia(this)
         for (m in media) if (wantMedia && !kinds.contains(m)) kinds.add(m)
         val kind = if (kinds.isEmpty()) "Pantalla" else kinds.joinToString(" · ")
         val body = if (kinds.isEmpty()) text + mark
                    else text + mark + "\n" + kinds.joinToString(" · ") { "📎 $it" }
-        val thread = Thread {
-            try {
-                Prefs.addHist(this, pkg, "Chat en pantalla · $app", body, "", kind, 1_500L)
-                Backup.maybeUpload(this)
-                Backup.autoLocal(this)
-            } catch (e: Throwable) {}
-        }
-        thread.start()
+        // Se reutiliza el mismo ejecutor: antes cada lectura creaba un Thread nuevo, y con árboles grandes
+        // podían acumularse decenas. El guardado va detrás de la lectura, en orden y sin desbordar el sistema.
+        try {
+            chatWork.execute {
+                try {
+                    Prefs.addHist(this, pkg, "Chat en pantalla · $app", body, "", kind, 1_500L)
+                    Backup.maybeUpload(this)
+                    Backup.autoLocal(this)
+                } catch (e: Throwable) {}
+            }
+        } catch (e: Throwable) {}
     }
 
     /** Recoge el texto de todos los nodos con texto (en orden de aparición en pantalla). */
     private fun collectText(node: AccessibilityNodeInfo?, out: ArrayList<String>,
-                            media: ArrayList<String>, depth: Int) {
-        if (node == null || depth > 60) return
+                            media: ArrayList<String>, depth: Int, wantMedia: Boolean) {
+        if (node == null || depth > 40) return
         val t = node.text?.toString()
         val d = node.contentDescription?.toString()
-        val hint = try { node.hintText?.toString() } catch (e: Throwable) { null }
-        val tool = try { node.tooltipText?.toString() } catch (e: Throwable) { null }
-        val vid = try { node.viewIdResourceName } catch (e: Throwable) { null }
-        // ¿Es un nodo de MEDIA? Se mira su descripción, su pista, su tooltip, su identificador interno y su clase.
-        val kind = mediaKind(d, hint, tool, vid, node.className?.toString())
-        if (kind != null) media.add(kind)
+        // MEDIA: solo se miran los campos "caros" (viewId/hint/tooltip) si el nodo tiene algo de texto, y se
+        // descarta al instante si la cadena no contiene ninguna pista de adjunto. Mirarlos en TODOS los nodos
+        // (miles) era lo que ponía el sistema lento.
+        val cheap = ((d ?: "") + " " + (t ?: "")).lowercase()
+        if (wantMedia && cheap.isNotEmpty()) {
+            if (cheap.contains("sticker") || cheap.contains("foto") || cheap.contains("photo") ||
+                cheap.contains("image") || cheap.contains("imagen") || cheap.contains("video") ||
+                cheap.contains("vídeo") || cheap.contains("audio") || cheap.contains("voz") ||
+                cheap.contains("voice") || cheap.contains("gif") || cheap.contains("ver una vez") ||
+                cheap.contains("view once") || cheap.contains("document") || cheap.contains("pdf") ||
+                cheap.contains("ubicaci") || cheap.contains("location") || cheap.contains("figura")) {
+                val hint = try { node.hintText?.toString() } catch (e: Throwable) { null }
+                val tool = try { node.tooltipText?.toString() } catch (e: Throwable) { null }
+                val vid = try { node.viewIdResourceName } catch (e: Throwable) { null }
+                val kind = mediaKind(d, hint, tool, vid, node.className?.toString())
+                if (kind != null && !media.contains(kind)) media.add(kind)
+            }
+        }
 
         val label = when {
             !t.isNullOrBlank() && t.length > 1 -> t
@@ -186,7 +217,7 @@ class RyxAccessibility : AccessibilityService() {
         val n = node.childCount
         for (i in 0 until n) {
             val ch = try { node.getChild(i) } catch (e: Throwable) { null }
-            collectText(ch, out, media, depth + 1)
+            collectText(ch, out, media, depth + 1, wantMedia)
         }
     }
 

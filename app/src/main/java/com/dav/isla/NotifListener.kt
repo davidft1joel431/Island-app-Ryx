@@ -89,6 +89,7 @@ class NotifListener : NotificationListenerService() {
         val label: String? = null,       // eventos del sistema: nombre en lugar del de la app
         val userId: Int = -1,            // espacio de la app (clon / app dual); -1 = el principal
         val user: android.os.UserHandle? = null,
+        val mediaUri: String? = null,    // imagen del adjunto por URI: se carga en 2º plano (abrirla bloquea)
         val actions: List<CardAction> = emptyList()   // botones propios: contestar/colgar, cambiar de Wi-Fi, apagar el punto de acceso…
     )
 
@@ -326,9 +327,13 @@ class NotifListener : NotificationListenerService() {
             if (!attached || !::wm.isInitialized) return@post
             try {
                 p.width = if (expanded) expandedWidth() else idleWidth()
-                p.x = px(Prefs.xOffsetDp(this)) + px(Prefs.sideMarginDp(this))
+                // x es el desplazamiento desde el centro (la ventana usa CENTER_HORIZONTAL). Antes se le sumaba
+                // el margen lateral, así que al mover el deslizador la isla se iba hacia un lado y podía salirse.
+                p.x = px(Prefs.xOffsetDp(this))
                 p.y = px(Prefs.yOffsetDp(this))
+                clampParams(p)
                 wm.updateViewLayout(v, p)
+                syncHit(p)
             } catch (e: Exception) { applySettings() }
         }
     }
@@ -400,6 +405,9 @@ class NotifListener : NotificationListenerService() {
         if (readSigs.containsKey("${sbn.key}|$title|$text")) return
 
         val (mediaBmp, mediaKind) = extractMedia(n)
+        // Si la imagen viene por URI (WhatsApp/Telegram la mandan así), se carga en SEGUNDO PLANO: abrir el
+        // stream en el hilo principal congelaba la isla. El tipo ya se conoce ahora; la imagen llega al instante.
+        val attachUri = if (mediaBmp == null) mediaUri(n) else null
 
         // 1) La isla REGISTRA todo en el historial, por aplicación, con el texto COMPLETO.
         //    Se guardan también los avisos «en curso» (música, descargas, navegación…): así el historial ve
@@ -408,9 +416,12 @@ class NotifListener : NotificationListenerService() {
             val hp = sbn.packageName; val ht = title?.toString() ?: ""; val hx = (full ?: text)?.toString() ?: ""
             // Los avisos del sistema se de-duplican durante más tiempo: no queremos cuatro avisos de batería seguidos.
             val win = if (Sys.isSystemPkg(hp)) 120_000L else 3_000L
+            val hUri = attachUri
             histExec.execute {      // disco y copia de seguridad fuera del hilo principal: la isla sale antes
                 try {
-                    Prefs.addHist(this, hp, ht, hx, saveBitmap(mediaBmp, mediaKind), mediaKind, win)
+                    // Si la imagen venía por URI, se abre AQUÍ (hilo aparte). Nunca en el hilo principal.
+                    val bmp = mediaBmp ?: hUri?.let { loadUriMedia(it) }
+                    Prefs.addHist(this, hp, ht, hx, saveBitmap(bmp, mediaKind), mediaKind, win)
                     Backup.maybeUpload(this)     // copia a la carpeta elegida (Drive u otra), si hay
                     Backup.autoLocal(this)       // copia a la carpeta PROPIA de la app, sola y sin tocar nada
                 } catch (e: Exception) {}
@@ -462,6 +473,7 @@ class NotifListener : NotificationListenerService() {
             fallback = small, media = mediaBmp, detailText = full ?: text,
             sig = "${sbn.key}|$title|$text", user = sbn.user, userId = uid,
             label = tag?.first, accentOverride = tag?.second,
+            mediaUri = attachUri,
             systemKey = if (why == null) sbn.key else "")
     }
 
@@ -1100,6 +1112,7 @@ class NotifListener : NotificationListenerService() {
     /** Actualiza la ventana de la isla y mueve su zona táctil con ella. */
     private fun upd(v: View?, params: WindowManager.LayoutParams) {
         if (v == null) return
+        clampParams(params)
         try { wm.updateViewLayout(v, params) } catch (e: Exception) {}
         syncHit(params)
     }
@@ -1254,8 +1267,9 @@ class NotifListener : NotificationListenerService() {
             cornerRadius = px(16).toFloat()
             setColor(if (primary) Glass.ACCENT else if (s.textColor == 0xFFFFFFFF.toInt()) 0x30FFFFFF else 0x22000000)
         }
-        val d = getDrawable(res)!!.mutate()
-        d.setTint(if (primary) 0xFF10131A.toInt() else tint)
+        // getDrawable puede devolver null si el recurso no está en esta densidad/versión: nunca debe tumbar la isla.
+        val d = getDrawable(res)?.mutate()
+        d?.setTint(if (primary) 0xFF10131A.toInt() else tint)
         val iv = ImageView(this@NotifListener).apply { setImageDrawable(d); scaleType = ImageView.ScaleType.FIT_CENTER }
         addView(iv, FrameLayout.LayoutParams(px(18), px(18), Gravity.CENTER))
         setOnClickListener { onClick() }
@@ -1287,6 +1301,24 @@ class NotifListener : NotificationListenerService() {
     private fun expandedWidth(): Int =
         minOf(resources.displayMetrics.widthPixels - px(2 * Prefs.sideMarginDp(this)),
             px(Prefs.expandedWidthDp(this).let { if (it > 0) it else style.expandedWidthDp }))
+
+    /**
+     * Deja el ancho y el desplazamiento dentro de los márgenes de la pantalla. La ventana va centrada
+     * (`CENTER_HORIZONTAL`), así que un ancho grande + un `x` grande se salían por el borde (el mensaje largo
+     * «se expandía de más»). Aquí se recorta el ancho y se limita el desplazamiento para que nunca sobrepase.
+     */
+    private fun clampParams(p: WindowManager.LayoutParams) {
+        val dm = resources.displayMetrics
+        val margin = px(Prefs.sideMarginDp(this)).coerceAtLeast(px(4))
+        val maxW = (dm.widthPixels - 2 * margin).coerceAtLeast(px(80))
+        if (p.width > maxW) p.width = maxW
+        if (p.width < px(40)) p.width = px(40)
+        // Con CENTER_HORIZONTAL, x es el desplazamiento desde el centro: no debe sacar la tarjeta de los bordes.
+        val half = p.width / 2
+        val maxX = (dm.widthPixels / 2 - margin - half).coerceAtLeast(0)
+        if (p.x > maxX) p.x = maxX
+        if (p.x < -maxX) p.x = -maxX
+    }
 
     private fun setContentAlpha(a: Float) {
         iconView?.alpha = a
@@ -1344,6 +1376,7 @@ class NotifListener : NotificationListenerService() {
         fallback: Drawable? = null, media: Bitmap? = null, detailText: CharSequence? = null,
         sig: String = "", target: String? = null, label: String? = null, accentOverride: Int? = null,
         user: android.os.UserHandle? = null, userId: Int = -1, actions: List<CardAction> = emptyList(),
+        mediaUri: String? = null,  // imagen del adjunto por URI: se carga fuera del hilo principal
         systemKey: String = ""     // clave del aviso del sistema que hay que quitar al mostrarlo ("" = ninguno)
     ) {
         main.post {
@@ -1352,8 +1385,6 @@ class NotifListener : NotificationListenerService() {
             buildIsland()
             val v = island ?: return@post
             val params = lp ?: return@post
-            // La isla va a mostrarla: ahora sí se quita el aviso del sistema (solo si lo pedimos con [systemKey]).
-            if (systemKey.isNotEmpty()) { try { cancelNotification(systemKey) } catch (e: Exception) {} }
             val baseIcon: Drawable? = try { packageManager.getApplicationIcon(pkg) } catch (e: Exception) { null }
             // El clon lleva la insignia que le pone la ROM, para distinguirlo del original a simple vista
             val sysIcon: Drawable? = if (baseIcon != null && isClone(userId) && user != null)
@@ -1388,7 +1419,7 @@ class NotifListener : NotificationListenerService() {
             }
             val fullText: CharSequence? = if (lines.size > 1) lines.filter { it.isNotEmpty() }.joinToString("\n") else detailText
             cards.removeAll { it.key == key }
-            cards.add(0, Card(key, pkg, t, b, shown, accent, ephemeral, fullText, media, count, lines, sig, target = target, label = label, userId = userId, user = user, actions = actions))
+            cards.add(0, Card(key, pkg, t, b, shown, accent, ephemeral, fullText, media, count, lines, sig, target = target, label = label, userId = userId, user = user, mediaUri = mediaUri, actions = actions))
             val limit = System.currentTimeMillis() - 15 * 60_000L
             cards.removeAll { it.time < limit }
             while (cards.size > 8) cards.removeAt(cards.size - 1)
@@ -1414,6 +1445,9 @@ class NotifListener : NotificationListenerService() {
             } else {
                 updateBadge(); pulse()
             }
+            // Solo se retira el aviso del sistema cuando la isla ya está en pantalla: si el addView falla,
+            // la notificación original se queda y el usuario no pierde el aviso.
+            if (systemKey.isNotEmpty()) { try { cancelNotification(systemKey) } catch (e: Exception) {} }
             if (autoHide) main.postDelayed(hideTask, Prefs.durationMs(this))
             if (Prefs.vibrate(this)) buzz()
         }
@@ -1453,7 +1487,7 @@ class NotifListener : NotificationListenerService() {
         actionsRow?.visibility = if (detail || c.actions.isNotEmpty()) View.VISIBLE else View.GONE
         if (detail) {
             bodyView?.text = c.detail ?: c.body
-            detailImg?.let { if (c.media != null) { it.setImageBitmap(c.media); it.visibility = View.VISIBLE } else it.visibility = View.GONE }
+            applyMedia(c)
         }
     }
 
@@ -1655,6 +1689,29 @@ class NotifListener : NotificationListenerService() {
         island?.minimumHeight = px(maxOf(style.iconDp + 2 * style.padV, 64))
     }
 
+    /**
+     * Muestra la imagen de la tarjeta en la vista de detalle. Si viene por URI (WhatsApp/Telegram), la carga en
+     * un HILO APARTE y la pinta cuando está: abrirla en el hilo principal congelaba toda la isla.
+     */
+    private fun applyMedia(c: Card) {
+        val iv = detailImg ?: return
+        if (c.media != null) {
+            iv.setImageBitmap(c.media); iv.visibility = View.VISIBLE; return
+        }
+        val uri = c.mediaUri
+        if (uri == null) { iv.visibility = View.GONE; return }
+        iv.visibility = View.GONE
+        Thread {
+            val bm = loadUriMedia(uri)
+            if (bm != null) main.post {
+                val i = cards.indexOfFirst { it.key == c.key }
+                if (i >= 0 && i == cardIndex && detail && detailImg === iv) {
+                    iv.setImageBitmap(bm); iv.visibility = View.VISIBLE
+                }
+            }
+        }.start()
+    }
+
     private fun enterDetail() {
         val c = cards.getOrNull(cardIndex) ?: return
         if (detail) return
@@ -1664,7 +1721,7 @@ class NotifListener : NotificationListenerService() {
         bodyView?.text = c.detail ?: c.body
         appView?.visibility = View.VISIBLE
         appView?.text = nameOf(c) + if (c.count > 1) " · ${c.count} notificaciones" else ""
-        detailImg?.let { if (c.media != null) { it.setImageBitmap(c.media); it.visibility = View.VISIBLE } else it.visibility = View.GONE }
+        applyMedia(c)
         rebuildActions(c)
         actionsRow?.visibility = View.VISIBLE
         animateDetail(true)
@@ -1740,7 +1797,7 @@ class NotifListener : NotificationListenerService() {
 
     // ---------- Medios para el historial ----------
 
-    /** Imagen o sticker de la notificación (si hay) y su tipo. */
+    /** Imagen o sticker de la notificación (si hay) y su tipo. NUNCA hace E/S: eso va en loadUriMedia(). */
     @Suppress("DEPRECATION")
     private fun extractMedia(n: Notification): Pair<Bitmap?, String> {
         try {
@@ -1751,23 +1808,6 @@ class NotifListener : NotificationListenerService() {
                 bmp = ex.getParcelable<android.graphics.drawable.Icon>(Notification.EXTRA_PICTURE_ICON)
                     ?.loadDrawable(this)?.let { toBitmap(it) }
                 if (bmp != null) kind = "Imagen"
-            }
-            // Mensajes con adjunto (fotos, stickers, audio, video)
-            val msgs = ex.getParcelableArray(Notification.EXTRA_MESSAGES)
-            val last = msgs?.lastOrNull() as? android.os.Bundle
-            val mime = last?.getString("type") ?: ""
-            val uri = last?.getString("uri")
-            // La URI del adjunto es la fuente MÁS fiable: es el archivo real que mandó la app.
-            if (bmp == null && uri != null) {
-                try {
-                    contentResolver.openInputStream(android.net.Uri.parse(uri))?.use {
-                        bmp = BitmapFactory.decodeStream(it)
-                    }
-                    if (bmp != null) kind = when {
-                        mime.contains("webp") || mime.contains("png") -> "Sticker"
-                        else -> "Imagen"
-                    }
-                } catch (e: Exception) {}
             }
             // Varias apps ponen la imagen grande aparte de EXTRA_PICTURE (Telegram, Instagram, Gmail…).
             if (bmp == null) {
@@ -1781,7 +1821,13 @@ class NotifListener : NotificationListenerService() {
                 } catch (e: Throwable) { null }
                 if (bmp != null) kind = "Imagen"
             }
+            // Tipo del adjunto por su MIME (SIN abrir la URI: abrirla bloquea el hilo y congelaba la isla).
+            val msgs = ex.getParcelableArray(Notification.EXTRA_MESSAGES)
+            val last = msgs?.lastOrNull() as? android.os.Bundle
+            val mime = last?.getString("type") ?: ""
+            if (bmp != null && (mime.contains("webp") || mime.contains("png"))) kind = "Sticker"
             if (kind.isEmpty()) kind = when {
+                mime.startsWith("image/") -> if (mime.contains("webp") || mime.contains("png")) "Sticker" else "Imagen"
                 mime.startsWith("audio/") -> "Audio"
                 mime.startsWith("video/") -> "Video"
                 else -> ""
@@ -1799,6 +1845,27 @@ class NotifListener : NotificationListenerService() {
             return Pair(null, "")
         }
     }
+
+    /**
+     * URI del adjunto de una notificación (solo si es una IMAGEN). Se devuelve la URI sin abrirla: quien la use
+     * la leerá en un hilo aparte. Abrir el stream en el hilo principal congelaba la isla (vídeos/audios grandes).
+     */
+    @Suppress("DEPRECATION")
+    private fun mediaUri(n: Notification): String? = try {
+        val msgs = n.extras.getParcelableArray(Notification.EXTRA_MESSAGES)
+        val last = msgs?.lastOrNull() as? android.os.Bundle
+        val mime = last?.getString("type") ?: ""
+        val uri = last?.getString("uri")
+        if (uri != null && (mime.startsWith("image/") || mime.isEmpty())) uri else null
+    } catch (e: Throwable) { null }
+
+    /** Abre la URI de una imagen y la convierte en bitmap. SIEMPRE en un hilo aparte (hace E/S y decodifica). */
+    private fun loadUriMedia(uri: String): Bitmap? = try {
+        val b = contentResolver.openInputStream(android.net.Uri.parse(uri))?.use {
+            BitmapFactory.decodeStream(it)
+        }
+        b?.let { scaleDown(it, 640) }
+    } catch (e: Throwable) { null }
 
     private fun saveBitmap(bmp: Bitmap?, kind: String): String {
         if (bmp == null) return ""
@@ -1915,6 +1982,7 @@ class NotifListener : NotificationListenerService() {
             val t = va.animatedValue as Float
             val time = va.currentPlayTime.toFloat() / va.duration.toFloat()
             params.width = lerp(fromW.toFloat(), toW.toFloat(), t).toInt().coerceIn(px(40), maxW)
+            clampParams(params)
             row?.minimumHeight = lerp(fromH.toFloat(), toH.toFloat(), t).toInt().coerceAtLeast(idleH)
             setCorners(lerp(fromR, toR, t.coerceIn(0f, 1f)))
             setIdleCorners(lerp(fromRIdle, toRIdle, t.coerceIn(0f, 1f)))

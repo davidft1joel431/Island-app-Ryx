@@ -39,15 +39,23 @@ object Glass {
         private set
 
     // Texto
-    const val TEXT = 0xFFF3F5F9.toInt()
-    const val MUTED = 0xFF98A1B3.toInt()
+    const val TEXT = 0xFFF4F6FA.toInt()
+    const val MUTED = 0xFF9AA4B7.toInt()
     const val FAINT = 0xFF646D7F.toInt()
-    // Superficies: de la tarjeta a lo que sobresale dentro de ella
-    const val SURFACE = 0xFF13161C.toInt()
-    const val SURFACE_HI = 0xFF1B1F27.toInt()
-    const val SURFACE_TOP = 0xFF262B36.toInt()
+    // Superficies: del fondo a lo que sobresale dentro de una tarjeta
+    const val SURFACE = 0xFF111419.toInt()
+    const val SURFACE_HI = 0xFF1C212A.toInt()
+    const val SURFACE_TOP = 0xFF272D39.toInt()
     /** Borde fino (10 % de blanco) de tarjetas y controles. */
     const val HAIR = 0x1AFFFFFF
+    /** Borde algo más visible para elementos elevados. */
+    const val EDGE = 0x2EFFFFFF
+    /** Verde de estado (concedido / activo). */
+    const val GREEN = 0xFF3DDC84.toInt()
+    /** Rojo de estado (apagado / error). */
+    const val RED = 0xFFFF6B6B.toInt()
+    /** Ámbar de advertencia. */
+    const val AMBER = 0xFFFFB020.toInt()
 
     fun applyTheme(c: Context) {
         theme = THEMES.firstOrNull { it.id == Prefs.appTheme(c) } ?: THEMES[0]
@@ -75,61 +83,112 @@ object Glass {
     fun page(c: Context): Drawable {
         val d = c.resources.displayMetrics
         val base = GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM,
-            intArrayOf(0xFF0E1015.toInt(), 0xFF08090C.toInt()))
+            intArrayOf(0xFF11141A.toInt(), 0xFF0A0C10.toInt(), 0xFF07080B.toInt()))
         val glow = GradientDrawable().apply {
             gradientType = GradientDrawable.RADIAL_GRADIENT
-            setGradientCenter(0.92f, 0.0f)
-            gradientRadius = d.widthPixels * 1.0f
-            colors = intArrayOf(withA(theme.glow1, 0x26), withA(theme.glow1, 0x00))
+            setGradientCenter(0.9f, 0.0f)
+            gradientRadius = d.widthPixels * 1.05f
+            colors = intArrayOf(withA(theme.glow1, 0x2E), withA(theme.glow1, 0x00))
         }
         val glow2 = GradientDrawable().apply {
             gradientType = GradientDrawable.RADIAL_GRADIENT
-            setGradientCenter(0.0f, 1.0f)
-            gradientRadius = d.widthPixels * 0.9f
-            colors = intArrayOf(withA(theme.glow2, 0x16), withA(theme.glow2, 0x00))
+            setGradientCenter(0.0f, 0.92f)
+            gradientRadius = d.widthPixels * 0.95f
+            colors = intArrayOf(withA(theme.glow2, 0x1C), withA(theme.glow2, 0x00))
         }
         return LayerDrawable(arrayOf(base, glow, glow2))
     }
 
-    /** Tarjeta: superficie sólida con un degradado casi imperceptible y un borde fino. [strong] = un tono más claro. */
+    /**
+     * Tarjeta: superficie con un degradado vertical de tres pasos (luz arriba, sombra abajo) y borde fino.
+     * [strong] la eleva un tono para separarla del fondo (barras y hojas).
+     */
     fun card(c: Context, radiusDp: Float = 24f, strong: Boolean = false): Drawable =
         GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM,
-            if (strong) intArrayOf(0xFF1E222B.toInt(), 0xFF181B22.toInt()) else intArrayOf(0xFF161920.toInt(), 0xFF12151B.toInt())).apply {
+            if (strong) intArrayOf(0xFF222833.toInt(), 0xFF1A1F28.toInt(), 0xFF161A21.toInt())
+            else intArrayOf(0xFF1B2029.toInt(), 0xFF161A21.toInt(), 0xFF13171D.toInt())).apply {
+            cornerRadius = dp(c, radiusDp); setStroke(maxOf(1, dp(c, 1f).toInt()), HAIR)
+        }
+
+    /** Tarjeta anidada: un tono por encima de [card], para filas dentro de una tarjeta. */
+    fun innerCard(c: Context, radiusDp: Float = 18f): Drawable =
+        GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM,
+            intArrayOf(0xFF20252F.toInt(), 0xFF191E26.toInt())).apply {
             cornerRadius = dp(c, radiusDp); setStroke(maxOf(1, dp(c, 1f).toInt()), HAIR)
         }
 
     /** Cabecera destacada: la tarjeta con un velo del color [tint] que se apaga hacia el fondo. */
     fun hero(c: Context, tint: Int = ACCENT, radiusDp: Float = 28f): Drawable =
         GradientDrawable(GradientDrawable.Orientation.TL_BR,
-            intArrayOf(withA(tint, 0x3A), 0xFF14171D.toInt(), 0xFF12151B.toInt())).apply {
-            cornerRadius = dp(c, radiusDp); setStroke(maxOf(1, dp(c, 1f).toInt()), withA(tint, 0x40))
+            intArrayOf(withA(tint, 0x42), withA(tint, 0x14), 0xFF14181F.toInt(), 0xFF111419.toInt())).apply {
+            cornerRadius = dp(c, radiusDp)
+            setStroke(maxOf(1, dp(c, 1f).toInt()), withA(tint, 0x4D))
         }
 
     /** Fondo opaco para diálogos: el contenido de atrás no se mezcla con el texto. */
     fun solid(c: Context, radiusDp: Float = 24f): Drawable =
         GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM,
-            intArrayOf(0xFF1A1E26.toInt(), 0xFF14171D.toInt())).apply {
-            cornerRadius = dp(c, radiusDp); setStroke(maxOf(1, dp(c, 1f).toInt()), 0x24FFFFFF)
+            intArrayOf(0xFF202630.toInt(), 0xFF181C24.toInt(), 0xFF15181F.toInt())).apply {
+            cornerRadius = dp(c, radiusDp); setStroke(maxOf(1, dp(c, 1f).toInt()), EDGE)
         }
 
     /** Hoja inferior: solo las esquinas de arriba son redondas. */
     fun sheet(c: Context, radiusDp: Float = 28f): Drawable {
         val r = dp(c, radiusDp)
         return GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM,
-            intArrayOf(0xFF1B1F27.toInt(), 0xFF14171D.toInt())).apply {
+            intArrayOf(0xFF232934.toInt(), 0xFF1A1F27.toInt(), 0xFF161A21.toInt())).apply {
             cornerRadii = floatArrayOf(r, r, r, r, 0f, 0f, 0f, 0f)
-            setStroke(maxOf(1, dp(c, 1f).toInt()), 0x24FFFFFF)
+            setStroke(maxOf(1, dp(c, 1f).toInt()), EDGE)
         }
     }
 
     fun tile(c: Context, color: Int = SURFACE_TOP, radiusDp: Float = 13f): Drawable =
-        GradientDrawable().apply { cornerRadius = dp(c, radiusDp); setColor(color) }
+        GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM,
+            intArrayOf(lighten(color, 0.06f), color, darken(color, 0.04f))).apply {
+            cornerRadius = dp(c, radiusDp)
+        }
 
     fun pill(c: Context, fill: Int, stroke: Int = 0, radiusDp: Float = 16f): Drawable =
         GradientDrawable().apply {
             cornerRadius = dp(c, radiusDp); setColor(fill)
             if (stroke != 0) setStroke(maxOf(1, dp(c, 1f).toInt()), stroke)
         }
+
+    /** Botón lleno: degradado del acento (más claro arriba) y sin borde. Da volumen sin sombra. */
+    fun accentFill(c: Context, radiusDp: Float = 14f): Drawable =
+        GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM,
+            intArrayOf(lighten(ACCENT, 0.12f), ACCENT, darken(ACCENT, 0.10f))).apply {
+            cornerRadius = dp(c, radiusDp)
+        }
+
+    /** Aclara [color] mezclándolo con blanco ([amount] 0-1). Conserva el alfa. */
+    fun lighten(color: Int, amount: Float): Int = blendColor(color, 0xFFFFFFFF.toInt(), amount)
+
+    /** Oscurece [color] mezclándolo con negro ([amount] 0-1). Conserva el alfa. */
+    fun darken(color: Int, amount: Float): Int = blendColor(color, 0xFF000000.toInt(), amount)
+
+    private fun blendColor(a: Int, b: Int, f: Float): Int {
+        val t = f.coerceIn(0f, 1f)
+        fun ch(s: Int) = (((a shr s and 255) * (1f - t)) + ((b shr s and 255) * t)).toInt().coerceIn(0, 255)
+        return (a ushr 24 shl 24) or (ch(16) shl 16) or (ch(8) shl 8) or ch(0)
+    }
+
+    /**
+     * Animación de pulsación discreta para tarjetas y botones: se hunde un poco al tocar.
+     * Devuelve false para no consumir el evento; el clic normal sigue funcionando.
+     */
+    fun press(v: View, scale: Float = 0.975f) {
+        v.setOnTouchListener { view, e ->
+            when (e.actionMasked) {
+                android.view.MotionEvent.ACTION_DOWN -> view.animate().scaleX(scale).scaleY(scale)
+                    .setDuration(90).setInterpolator(DecelerateInterpolator(1.5f)).start()
+                android.view.MotionEvent.ACTION_UP, android.view.MotionEvent.ACTION_CANCEL ->
+                    view.animate().scaleX(1f).scaleY(1f).setDuration(140)
+                        .setInterpolator(DecelerateInterpolator(1.5f)).start()
+            }
+            false
+        }
+    }
 
     // ---- Caché de dibujos ----
     // Cada fila decorada creaba su propio «pill» y descodificaba su icono: en listas largas eso se nota al abrir.
@@ -185,7 +244,13 @@ class GlassSwitch(c: Context) : View(c) {
      * siguiente redibujado y el interruptor parecía quedarse quieto.
      */
     var checked = false
-        set(v) { if (field != v) { field = v; animateTo(v) } }
+        set(v) {
+            if (field != v) {
+                field = v
+                contentDescription = if (v) "Activado" else "Desactivado"
+                animateTo(v)
+            }
+        }
     var onChange: ((Boolean) -> Unit)? = null
     private var t = 0f
     private var anim: ValueAnimator? = null
@@ -196,13 +261,17 @@ class GlassSwitch(c: Context) : View(c) {
     init {
         isClickable = true
         isFocusable = true
+        contentDescription = "Desactivado"
         // Realce pulsable: deja claro que se puede tocar aunque esté apagado.
         foreground = null
-        setOnClickListener {
-            performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
-            checked = !checked
-            onChange?.invoke(checked)
-        }
+        setOnClickListener { toggle() }
+    }
+
+    /** Cambia el valor como si el usuario hubiera tocado el interruptor. */
+    fun toggle() {
+        performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
+        checked = !checked
+        onChange?.invoke(checked)
     }
 
     /** Pone el valor sin avisar ([onChange] no se dispara). Útil al abrir un panel para reflejar el ajuste guardado. */
@@ -216,7 +285,7 @@ class GlassSwitch(c: Context) : View(c) {
         // Cambio inmediato del color base; la animación solo suaviza el recorrido de la perilla.
         invalidate()
         anim = ValueAnimator.ofFloat(t, to).apply {
-            duration = 200; interpolator = DecelerateInterpolator(1.6f)
+            duration = 210; interpolator = DecelerateInterpolator(1.6f)
             addUpdateListener { t = it.animatedValue as Float; invalidate() }
             start()
         }
@@ -226,26 +295,42 @@ class GlassSwitch(c: Context) : View(c) {
 
     override fun onDraw(cv: Canvas) {
         val w = width.toFloat(); val h = height.toFloat()
+        val r = h / 2
+        // Halo suave del acento cuando está encendido: da profundidad sin sombras costosas.
+        if (t > 0.01f) {
+            rect.set(-2 * d, -2 * d, w + 2 * d, h + 2 * d)
+            p.style = Paint.Style.FILL
+            p.color = Glass.accentA((0x1C * t).toInt())
+            cv.drawRoundRect(rect, r + 2 * d, r + 2 * d, p)
+        }
         // Pista
         rect.set(0f, 0f, w, h)
         p.style = Paint.Style.FILL
-        p.color = blend(0xFF2A2F3A.toInt(), Glass.ACCENT, t)
-        cv.drawRoundRect(rect, h / 2, h / 2, p)
-        // Borde fino, solo apagado
-        if (t < 1f) {
-            val sw = maxOf(1f, d)
-            p.style = Paint.Style.STROKE; p.strokeWidth = sw
-            p.color = (((1f - t) * 0x3A).toInt() shl 24) or 0x00FFFFFF
-            rect.set(sw / 2, sw / 2, w - sw / 2, h - sw / 2)
-            cv.drawRoundRect(rect, h / 2, h / 2, p)
-            p.style = Paint.Style.FILL
+        p.color = blend(0xFF2C323E.toInt(), Glass.ACCENT, t)
+        cv.drawRoundRect(rect, r, r, p)
+        // Brillo interior en la mitad superior (efecto de cristal).
+        p.color = ((0x1E * (1f - 0.35f * t)).toInt() shl 24) or 0x00FFFFFF
+        cv.drawRoundRect(1.5f * d, 1.5f * d, w - 1.5f * d, h / 2, r, r, p)
+        // Borde fino, se desvanece al encender.
+        val sw = maxOf(1f, d)
+        p.style = Paint.Style.STROKE; p.strokeWidth = sw
+        p.color = ((((1f - t) * 0x3A).toInt()) shl 24) or 0x00FFFFFF
+        rect.set(sw / 2, sw / 2, w - sw / 2, h - sw / 2)
+        cv.drawRoundRect(rect, r, r, p)
+        p.style = Paint.Style.FILL
+        // Perilla: pequeña y gris apagada; grande y blanca encendida, con una sombra mínima debajo.
+        val rOff = 8 * d; val rOn = 12.5f * d
+        val kr = rOff + (rOn - rOff) * t
+        val cx = r + (w - h) * t
+        p.color = 0x48000000
+        cv.drawCircle(cx, h / 2 + 1.2f * d, kr, p)
+        p.color = blend(0xFFA7B0C0.toInt(), 0xFFFFFFFF.toInt(), t)
+        cv.drawCircle(cx, h / 2, kr, p)
+        // Punto de luz en la perilla encendida.
+        if (t > 0.5f) {
+            p.color = ((0x30 * (t - 0.5f) * 2f).toInt() shl 24) or 0x00FFFFFF
+            cv.drawCircle(cx - kr * 0.28f, h / 2 - kr * 0.3f, kr * 0.55f, p)
         }
-        // Perilla: pequeña y gris apagada; grande y blanca encendida
-        val rOff = 8 * d; val rOn = 12 * d
-        val r = rOff + (rOn - rOff) * t
-        val cx = h / 2 + (w - h) * t
-        p.color = blend(0xFF98A1B3.toInt(), 0xFFFFFFFF.toInt(), t)
-        cv.drawCircle(cx, h / 2, r, p)
     }
 
     private fun blend(a: Int, b: Int, f: Float): Int {

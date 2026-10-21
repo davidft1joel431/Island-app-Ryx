@@ -32,7 +32,10 @@ object Backup {
     /** Nombre de la carpeta propia del respaldo. */
     const val FOLDER = "ryx respaldo"
     private var last = 0L
-    @Volatile private var running = false
+    // Varias llamadas pueden coincidir (onCreate, onResume, el temporizador…): compareAndSet evita que dos
+    // copias se ejecuten a la vez y escriban el mismo archivo.
+    private val running = java.util.concurrent.atomic.AtomicBoolean(false)
+    private val lastLock = Any()
 
     /** Paquetes conocidos de nube que Ryx puede detectar en el teléfono. */
     const val PKG_DRIVE = "com.google.android.apps.docs"
@@ -179,16 +182,16 @@ object Backup {
      * y tampoco se llena la carpeta con copias idénticas.
      */
     fun autoLocal(c: Context, force: Boolean = false) {
-        if (!Prefs.backupAuto(c) || running) return
+        if (!Prefs.backupAuto(c)) return
         val now = System.currentTimeMillis()
         when {
             force -> {}
             stamp(c) == Prefs.backupStamp(c) -> return                                    // nada nuevo
             now - Prefs.backupLast(c) < Prefs.backupEverySec(c).coerceIn(5, 3600) * 1000L -> return
         }
-        running = true
+        if (!running.compareAndSet(false, true)) return
         val app = c.applicationContext
-        Thread { try { writeLocal(app) } finally { running = false } }.start()
+        Thread { try { writeLocal(app) } finally { running.set(false) } }.start()
     }
 
     fun write(c: Context, out: OutputStream) {
@@ -222,20 +225,27 @@ object Backup {
     }
 
     private fun mergeHistory(c: Context, incoming: String): Int {
-        val all = ArrayList<JSONObject>(); val seen = HashSet<String>()
-        fun add(a: JSONArray) {
-            for (i in 0 until a.length()) {
-                val o = a.optJSONObject(i) ?: continue
-                if (seen.add("${o.optString("p")}|${o.optLong("ts")}|${o.optString("t")}|${o.optString("x")}")) all.add(o)
+        var count = 0
+        // Leer y escribir en una sola operación: si no, un aviso que llegue mientras se restaura se perdería.
+        try {
+            Prefs.updateHistRaw(c) { current ->
+                val all = ArrayList<JSONObject>(); val seen = HashSet<String>()
+                fun add(a: JSONArray) {
+                    for (i in 0 until a.length()) {
+                        val o = a.optJSONObject(i) ?: continue
+                        if (seen.add("${o.optString("p")}|${o.optLong("ts")}|${o.optString("t")}|${o.optString("x")}")) all.add(o)
+                    }
+                }
+                try { add(JSONArray(current)) } catch (e: Exception) {}
+                try { add(JSONArray(incoming)) } catch (e: Exception) {}
+                all.sortByDescending { it.optLong("ts") }
+                val out = JSONArray()
+                all.take(600).forEach { out.put(it) }
+                count = out.length()
+                out.toString()
             }
-        }
-        try { add(JSONArray(Prefs.histRaw(c))) } catch (e: Exception) {}
-        try { add(JSONArray(incoming)) } catch (e: Exception) {}
-        all.sortByDescending { it.optLong("ts") }
-        val out = JSONArray()
-        all.take(600).forEach { out.put(it) }
-        Prefs.setHistRaw(c, out.toString())
-        return out.length()
+        } catch (e: Exception) {}
+        return count
     }
 
     /** Escribe la copia en la carpeta elegida. Devuelve "" si salió bien, o el motivo del fallo. Llamar fuera del hilo principal. */
@@ -273,12 +283,15 @@ object Backup {
 
     /** Copia automática: como mucho una cada 10 minutos, y solo si hay carpeta elegida. */
     fun maybeUpload(c: Context, minGapMs: Long = 10 * 60_000L) {
-        if (!configured(c) || running) return
+        if (!configured(c)) return
         val now = System.currentTimeMillis()
-        if (now - last < minGapMs) return
-        last = now; running = true
+        synchronized(lastLock) {
+            if (now - last < minGapMs) return
+            if (!running.compareAndSet(false, true)) return
+            last = now
+        }
         val app = c.applicationContext
-        Thread { try { upload(app) } finally { running = false } }.start()
+        Thread { try { upload(app) } finally { running.set(false) } }.start()
     }
 
     /**
