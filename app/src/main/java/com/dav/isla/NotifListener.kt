@@ -1492,9 +1492,13 @@ class NotifListener : NotificationListenerService() {
         minOf(resources.displayMetrics.widthPixels - 2 * cardMarginPx(),
             px(Prefs.expandedWidthDp(this).let { if (it > 0) it else style.expandedWidthDp }))
 
-    /** Alto de la caja de texto en el detalle: unas 4 líneas; lo demás se desplaza dentro, no estira la tarjeta. */
+    /**
+     * Alto de la caja de texto en el detalle. Antes eran ~4 líneas (92 dp) y un mensaje largo parecía
+     * cortado al 1 %. Ahora la caja es mucho más alta y el resto se sigue desplazando dentro; así se lee
+     * casi todo de un vistazo sin convertir la tarjeta en una pantalla completa.
+     */
     private fun detailBodyHeight(): Int =
-        minOf(px(92), (resources.displayMetrics.heightPixels * 0.14f).toInt()).coerceAtLeast(px(64))
+        minOf(px(190), (resources.displayMetrics.heightPixels * 0.30f).toInt()).coerceAtLeast(px(96))
 
     /** La foto grande del detalle también se limita según el alto real de la pantalla. */
     private fun detailImageHeight(): Int =
@@ -1696,7 +1700,7 @@ class NotifListener : NotificationListenerService() {
         rebuildActions(c)
         // Las tarjetas con botones propios (llamada, Wi-Fi, punto de acceso) los muestran ya al abrirse
         actionsRow?.visibility = if (detail || c.actions.isNotEmpty()) View.VISIBLE else View.GONE
-        if (detail) bodyView?.text = c.detail ?: c.body
+        if (detail) updateDetailText(c)
         syncMedia(c)
     }
 
@@ -1996,24 +2000,7 @@ class NotifListener : NotificationListenerService() {
                 upd(island, p)
             }
         }
-        bodyView?.let { b ->
-            b.maxLines = Int.MAX_VALUE
-            b.ellipsize = null
-            b.movementMethod = android.text.method.ScrollingMovementMethod()
-            b.isVerticalScrollBarEnabled = true
-            b.overScrollMode = View.OVER_SCROLL_IF_CONTENT_SCROLLS
-            b.scrollTo(0, 0)
-            val height = detailBodyHeight()
-            (b.layoutParams as? LinearLayout.LayoutParams)?.let { p ->
-                p.height = height
-                b.layoutParams = p
-            } ?: run {
-                b.layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, height)
-            }
-            b.text = c.detail ?: c.body
-        }
-        appView?.visibility = View.VISIBLE
-        appView?.text = nameOf(c) + if (c.count > 1) " · ${c.count} notificaciones" else ""
+        updateDetailText(c)
         syncMedia(c)
         rebuildActions(c)
         actionsRow?.visibility = View.VISIBLE
@@ -2023,6 +2010,38 @@ class NotifListener : NotificationListenerService() {
         iconView?.scaleX = 1f; iconView?.scaleY = 1f
         textCol?.translationX = 0f
         animateDetail(true)
+    }
+
+    /**
+     * Prepara el texto del detalle con el alto correcto para ESTA tarjeta. Se llama también al cambiar
+     * de aviso dentro del detalle: si antes había un mensaje corto y luego llega uno largo, la caja debe
+     * pasar a ser desplazable en vez de crecer sin límite.
+     */
+    private fun updateDetailText(c: Card) {
+        val fullText = c.detail ?: c.body
+        val longText = (fullText?.length ?: 0) > 280
+        bodyView?.let { b ->
+            b.maxLines = Int.MAX_VALUE
+            b.ellipsize = null
+            b.movementMethod = android.text.method.ScrollingMovementMethod()
+            b.isVerticalScrollBarEnabled = true
+            b.overScrollMode = View.OVER_SCROLL_IF_CONTENT_SCROLLS
+            b.scrollTo(0, 0)
+            b.text = fullText
+            // Los mensajes cortos se ajustan a su contenido; los largos usan la caja alta desplazable.
+            val height = if (longText)
+                detailBodyHeight() else LinearLayout.LayoutParams.WRAP_CONTENT
+            (b.layoutParams as? LinearLayout.LayoutParams)?.let { p ->
+                p.height = height
+                b.layoutParams = p
+            } ?: run {
+                b.layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, height)
+            }
+        }
+        appView?.visibility = View.VISIBLE
+        appView?.text = nameOf(c) +
+            (if (c.count > 1) " · ${c.count} notificaciones" else "") +
+            (if (longText) " · desliza" else "")
     }
 
     private fun exitDetail() {

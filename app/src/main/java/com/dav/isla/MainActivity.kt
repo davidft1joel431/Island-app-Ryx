@@ -59,10 +59,16 @@ class MainActivity : Activity() {
     private var appQuery = ""
     // Historial: búsqueda por texto y por app (se reconstruye solo la lista, sin perder el cursor del buscador)
     private var histQuery = ""
-    private var histFilter = ""
-    /** Apps marcadas en el filtro del historial: se puede elegir (marcar) y quitar (desmarcar) la que sea. */
-    private val histApps = HashSet<String>()
+    private var histFilter = "__apps__"
     private var histBox: LinearLayout? = null
+    /** Una sola lectura del historial por render: antes se volvía a parsear el JSON en cada consulta. */
+    private var histCache: List<Prefs.HistItem>? = null
+    /** Grupos del historial dibujados ahora mismo; «Ver todo» los abre sin rehacer la pantalla. */
+    private val histGroupHandles = ArrayList<CollapsibleHandle>()
+    /** Cancela aperturas diferidas anteriores al cambiar de sección o de búsqueda. */
+    private var histExpandToken = 0
+    /** Agrupa las pulsaciones del buscador para no reconstruir la lista en cada letra. */
+    private var histSearchToken = 0
     private var pendingHtml = ""
     private var rootStatus = "Sin comprobar"
     /** Hilos para descodificar miniaturas del historial fuera del hilo principal (2 bastan y no saturan). */
@@ -543,7 +549,11 @@ class MainActivity : Activity() {
             if (sp == "history") content.addView(PullRefreshScroll(this).apply {
                 refreshHint = "Buscando lo último…"
                 addView(page)
-                onRefresh = { Prefs.reloadHist(this@MainActivity); fillHist(); postDelayed({ done() }, 350) }
+                onRefresh = {
+                    histCache = Prefs.reloadHist(this@MainActivity)
+                    fillHist()
+                    postDelayed({ done() }, 350)
+                }
             })
             else content.addView(ScrollView(this).apply { addView(page); isVerticalScrollBarEnabled = false })
             return
@@ -561,7 +571,7 @@ class MainActivity : Activity() {
                 refreshHint = "Buscando lo último…"
                 addView(page)
                 onRefresh = {
-                    Prefs.reloadHist(this@MainActivity)
+                    histCache = Prefs.reloadHist(this@MainActivity)
                     fillHist()
                     postDelayed({ done() }, 350)
                 }
@@ -1415,12 +1425,15 @@ class MainActivity : Activity() {
         }
     }
 
-    /** Historial: búsqueda por texto y por aplicación, agrupado por días y separando Apps y Sistema. */
+    /** Historial: dos secciones (Aplicaciones y Sistema), cada app/grupo cerrado hasta que se toca. */
     private fun buildHistory(p: LinearLayout) {
-        pageHero(p, "history", 0xFF6A62E8.toInt(), "Historial", "Toca todo lo que pasa por la isla: avisos, mensajes, media y llamadas, buscable y exportable")
-        val all = Prefs.histAll(this)
+        pageHero(p, "history", 0xFF6A62E8.toInt(), "Historial", "Avisos, mensajes, media y llamadas, organizados por aplicación y por grupo del sistema")
+        // Una sola lectura del JSON para toda la pantalla. Antes se repetía al contar, filtrar y dibujar.
+        histCache = Prefs.histAll(this)
+        val all = histCache ?: emptyList()
         val nApps = all.count { !Sys.isSystemPkg(it.pkg) }
         val nSys = all.count { Sys.isSystemPkg(it.pkg) }
+        if (histFilter != "__sys__") histFilter = "__apps__"
 
         val top = card()
         top.addView(rowWithSwitch("Guardar historial", "Todo lo que pasa por la isla, con el texto completo", Prefs.keepHistory(this)) { Prefs.setKeepHistory(this, it) })
@@ -1430,76 +1443,39 @@ class MainActivity : Activity() {
         sum.addView(summaryChip("settings", 0xFF2DAA55.toInt(), "$nSys", "Sistema"),
             LinearLayout.LayoutParams(0, WRAP, 1f).apply { marginStart = px(4) })
         top.addView(sum)
-        top.addView(button("Borrar historial", false) { Prefs.clearHist(this); histQuery = ""; histFilter = ""; histApps.clear(); render() }, lp(10))
-        p.addView(top, lp(8))
-
-        // Menú del historial (igual que el de Demon): separa Aplicaciones y Sistema en un solo toque.
-        val view = when { histFilter == "__sys__" -> 2; histFilter != "" || histApps.isNotEmpty() -> 1; else -> 0 }
-        val menu = card()
-        menu.addView(label("Menú del historial", 16f, R.color.text, true))
-        menu.addView(segmented(listOf("Todo", "Aplicaciones", "Sistema"), view) { i ->
-            histFilter = when (i) { 1 -> "__apps__"; 2 -> "__sys__"; else -> "" }
-            if (i != 1) histApps.clear()   // la selección de apps solo tiene sentido en «Aplicaciones»
+        top.addView(button("Borrar historial", false) {
+            Prefs.clearHist(this)
+            histCache = null; histQuery = ""; histFilter = "__apps__"
+            histExpandToken++; histSearchToken++
+            clearHistExpansion()
             render()
         }, lp(10))
-        menu.addView(label("Elige qué quieres ver: los avisos de tus apps y los del sistema van separados, como en la isla.", 12f, R.color.muted), lp(8))
+        p.addView(top, lp(8))
+
+        // Solo dos secciones: los avisos de las apps y los grupos del sistema, sin «Todo» ni filtros múltiples.
+        val menu = card()
+        menu.addView(label("Menú del historial", 16f, R.color.text, true))
+        menu.addView(segmented(listOf("Aplicaciones", "Sistema"), if (histFilter == "__sys__") 1 else 0) { i ->
+            histFilter = if (i == 1) "__sys__" else "__apps__"
+            // Cambiar de sección solo vuelve a dibujar la lista; no reconstruye toda la pantalla.
+            fillHist()
+        }, lp(10))
+        menu.addView(label("En Aplicaciones cada app (y cada clon) tiene su propia tarjeta, cerrada hasta que la toques. En Sistema pasa lo mismo con Batería, Wi-Fi, Red, Bluetooth… «Ver todo» abre todas las tarjetas y «Ver más» carga el resto de avisos de cada una.", 12f, R.color.muted), lp(8))
         p.addView(menu, lp(8))
 
-        // Buscador: texto libre + filtro por aplicación (o Sistema), con VARIAS apps a la vez.
         val search = card()
         search.addView(label("Buscar", 16f, R.color.text, true))
-        search.addView(editText("Escribe para buscar en los mensajes…", histQuery) { q -> histQuery = q; fillHist() }, lp(8))
-        if (view != 2) {
-            val apps = all.filter { !Sys.isSystemPkg(it.pkg) }.groupBy { it.pkg }
-                .entries.sortedByDescending { e -> e.value.size }
-            if (apps.isNotEmpty()) {
-                val head = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
-                val lbl = label(if (histApps.isEmpty()) "Filtrar por aplicación" else "Filtrar por aplicación · ${histApps.size} elegida" +
-                    (if (histApps.size == 1) "" else "s"), 13f, R.color.muted, true)
-                head.addView(lbl, LinearLayout.LayoutParams(0, WRAP, 1f))
-                // Atajos: marcar todas o quitarlas todas de una vez.
-                head.addView(TextView(this).apply {
-                    text = "Todas"; textSize = 12.5f; gravity = Gravity.CENTER
-                    setTextColor(Glass.TEXT); typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
-                    setPadding(px(12), px(5), px(12), px(5))
-                    background = Glass.pill(this@MainActivity, Glass.SURFACE_HI, Glass.HAIR, 14f)
-                    setOnClickListener { histApps.clear(); apps.forEach { histApps.add(it.key) }; render() }
-                }, LinearLayout.LayoutParams(WRAP, WRAP).apply { marginEnd = px(6) })
-                head.addView(TextView(this).apply {
-                    text = "Ninguna"; textSize = 12.5f; gravity = Gravity.CENTER
-                    setTextColor(Glass.TEXT); typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
-                    setPadding(px(12), px(5), px(12), px(5))
-                    background = Glass.pill(this@MainActivity, Glass.SURFACE_HI, Glass.HAIR, 14f)
-                    setOnClickListener { histApps.clear(); render() }
-                }, LinearLayout.LayoutParams(WRAP, WRAP))
-                search.addView(head, lp(8))
-
-                val chips = android.widget.HorizontalScrollView(this).apply { isHorizontalScrollBarEnabled = false }
-                val crow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; setPadding(0, px(6), 0, px(2)) }
-                apps.forEach { (pkg, _) ->
-                    val on = pkg in histApps
-                    crow.addView(TextView(this).apply {
-                        text = (if (on) "✓ " else "") + appNameOf(pkg); textSize = 12.5f; gravity = Gravity.CENTER
-                        setTextColor(if (on) 0xFF10131A.toInt() else Glass.TEXT)
-                        typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
-                        setPadding(px(14), px(7), px(14), px(7))
-                        background = Glass.pill(this@MainActivity,
-                            if (on) 0xFF6A62E8.toInt() else Glass.SURFACE_HI,
-                            if (on) 0xFF6A62E8.toInt() else Glass.HAIR, 14f)
-                        // Tocar marca o desmarca ESTA app; se pueden marcar varias.
-                        setOnClickListener {
-                            if (on) histApps.remove(pkg) else histApps.add(pkg)
-                            render()
-                        }
-                    }, LinearLayout.LayoutParams(WRAP, WRAP).apply { marginEnd = px(8) })
-                }
-                chips.addView(crow)
-                search.addView(chips, lp(4))
-                search.addView(label("Toca una app para marcarla o desmarcarla · puedes elegir varias a la vez.", 12f, R.color.muted), lp(8))
-            }
-        }
+        search.addView(editText("Escribe para buscar en los mensajes…", histQuery) { q ->
+            histQuery = q
+            // Se espera a que dejes de teclear: reconstruir el historial en cada letra era parte del tirón.
+            val token = ++histSearchToken
+            histBox?.postDelayed({
+                if (token == histSearchToken && histBox?.isAttachedToWindow == true) fillHist()
+            }, 220)
+        }, lp(8))
+        search.addView(label("La búsqueda mira dentro de la sección elegida. Los mensajes largos se ven completos al abrir su aplicación.", 12f, R.color.muted), lp(8))
         search.addView(button("Descargar como .html", true) { exportHtml() }, lp(12))
-        search.addView(label("Se descarga TODO el texto (aunque aquí se recorte) y las imágenes, en un archivo que abre cualquier navegador.",
+        search.addView(label("Se descarga el texto completo y las imágenes en un archivo que abre cualquier navegador.",
             12f, R.color.muted), lp(6))
         p.addView(search, lp(8))
 
@@ -1515,58 +1491,106 @@ class MainActivity : Activity() {
     /** Reconstruye solo la lista del historial (sin perder el cursor del buscador). */
     private fun fillHist() {
         val box = histBox ?: return
+        histExpandToken++
+        histSearchToken++
+        // Cada búsqueda, cambio de sección o refresco vuelve a mostrar los grupos cerrados: así nunca
+        // se reconstruyen de golpe todos los cuerpos que quedaron abiertos en la vista anterior.
+        clearHistExpansion()
         box.removeAllViews()
+        histGroupHandles.clear()
         val items = filteredHist()
         if (items.isEmpty()) {
             box.addView(label("No hay nada que coincida.", 14f, R.color.muted)
                 .apply { setPadding(px(4), px(16), px(4), px(4)) })
             return
         }
-        val appList = items.filter { !Sys.isSystemPkg(it.pkg) }
-        val sysList = items.filter { Sys.isSystemPkg(it.pkg) }
-        if (appList.isNotEmpty()) {
-            historyHeader(box, "grid", 0xFF6A62E8.toInt(), "Aplicaciones", appList.size)
-            appList.groupBy { dayLabel(it.ts) }.forEach { (day, dl) ->
-                dayHeader(box, day, dl.size, 0xFF6A62E8.toInt())
-                dl.groupBy { it.pkg }.entries.sortedByDescending { e -> e.value.maxOf { it.ts } }
-                    .forEach { (pkg, its) -> appHistoryGroup(box, pkg, its) }
-            }
-        }
-        if (sysList.isNotEmpty()) {
-            historyHeader(box, "settings", 0xFF2DAA55.toInt(), "Sistema", sysList.size)
-            sysList.groupBy { dayLabel(it.ts) }.forEach { (day, dl) ->
-                dayHeader(box, day, dl.size, 0xFF2DAA55.toInt())
-                dl.groupBy { Sys.kind(it.pkg, it.title, it.text) }
-                    .entries.sortedByDescending { e -> e.value.maxOf { it.ts } }
-                    .forEach { (k, its) -> sysHistoryGroup(box, k, its) }
-            }
+        // Solo se dibuja la sección elegida. Cada grupo nace cerrado y sus filas se crean al abrirlo.
+        if (histFilter == "__sys__") {
+            val color = 0xFF2DAA55.toInt()
+            historyHeader(box, "settings", color, "Sistema", items.size)
+            val toggle = historyTools(box, color, "Toca un grupo para ver sus avisos")
+            items.groupBy { Sys.kind(it.pkg, it.title, it.text) }
+                .entries.sortedByDescending { e -> e.value.maxOf { it.ts } }
+                .forEach { (k, its) -> sysHistoryGroup(box, k, its) }
+            bindHistoryToggle(toggle)
+        } else {
+            val color = 0xFF6A62E8.toInt()
+            historyHeader(box, "grid", color, "Aplicaciones", items.size)
+            val toggle = historyTools(box, color, "Toca una aplicación para abrir su historial")
+            items.groupBy { it.pkg }
+                .entries.sortedByDescending { e -> e.value.maxOf { it.ts } }
+                .forEach { (pkg, its) -> appHistoryGroup(box, pkg, its) }
+            bindHistoryToggle(toggle)
         }
     }
 
-    /** Aplica la búsqueda y el filtro actuales sobre todo el historial. */
-    private fun filteredHist(): List<Prefs.HistItem> {
-        val q = histQuery.trim().lowercase()
-        var items = Prefs.histAll(this)
-        if (histFilter == "__sys__") items = items.filter { Sys.isSystemPkg(it.pkg) }
-        else if (histFilter == "__apps__") items = items.filter { !Sys.isSystemPkg(it.pkg) }
-        // Varias apps marcadas: se muestra lo de CUALQUIERA de ellas.
-        if (histApps.isNotEmpty()) items = items.filter { it.pkg in histApps }
-        if (q.isNotEmpty()) items = items.filter { it.title.lowercase().contains(q) || it.text.lowercase().contains(q) }
-        return items
+    /** Olvida qué grupos del historial estaban abiertos (al cambiar de sección, buscar o refrescar). */
+    private fun clearHistExpansion() {
+        expandedGroups.removeAll {
+            it.startsWith("h_") || it.startsWith("hs_") ||
+                it.startsWith("\u0000close_h_") || it.startsWith("\u0000close_hs_")
+        }
     }
 
-    /** Separador de día (Hoy · Ayer · fecha). */
-    private fun dayHeader(p: LinearLayout, day: String, count: Int, color: Int) {
-        val r = LinearLayout(this).apply {
+    /** Mantiene el texto del botón en «Ver todo» o «Contraer todo» según lo que esté abierto. */
+    private fun bindHistoryToggle(toggle: TextView) {
+        val sync = {
+            toggle.text = if (histGroupHandles.isNotEmpty() && histGroupHandles.all { it.isOpen() })
+                "Contraer todo" else "Ver todo"
+        }
+        histGroupHandles.forEach { it.onToggle = { sync() } }
+        sync()
+    }
+
+    /** Botón «Ver todo / Contraer todo» de la sección: abre los grupos ya dibujados, sin rehacer la pantalla. */
+    private fun historyTools(p: LinearLayout, color: Int, hint: String): TextView {
+        val row = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
-            setPadding(px(6), px(16), px(6), px(4))
+            setPadding(px(4), px(4), px(4), px(2))
         }
-        r.addView(View(this).apply { background = Glass.pill(this@MainActivity, color, 0, 6f) },
-            LinearLayout.LayoutParams(px(7), px(7)).apply { marginEnd = px(10) })
-        r.addView(label(day.replaceFirstChar { it.uppercase() }, 14.5f, R.color.text, true),
-            LinearLayout.LayoutParams(0, WRAP, 1f))
-        r.addView(label("$count", 12f, R.color.muted, true))
-        p.addView(r)
+        row.addView(label(hint, 12f, R.color.muted), LinearLayout.LayoutParams(0, WRAP, 1f).apply { marginEnd = px(8) })
+        val toggle = TextView(this).apply {
+            text = "Ver todo"; textSize = 12.5f; gravity = Gravity.CENTER
+            setTextColor(color); typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+            setPadding(px(14), px(8), px(14), px(8))
+            background = Glass.ripple(this@MainActivity,
+                Glass.pill(this@MainActivity, Glass.withA(color, 0x26), Glass.withA(color, 0x55), 15f), 15f)
+        }
+        toggle.setOnClickListener {
+            // El propio texto dice qué hará: si ya está todo abierto, cierra; si no, abre lo que falte.
+            val expand = toggle.text != "Contraer todo"
+            histExpandToken++
+            val token = histExpandToken
+            if (!expand) {
+                histGroupHandles.forEach { it.setOpen(false, false) }
+                return@setOnClickListener
+            }
+            // Se abren en pequeños pasos para que la interfaz siga respondiendo aunque haya muchas apps.
+            histGroupHandles.forEachIndexed { i, handle ->
+                p.postDelayed({
+                    if (token == histExpandToken && p.isAttachedToWindow) handle.setOpen(true, false)
+                }, i * 20L)
+            }
+        }
+        row.addView(toggle)
+        p.addView(row, lp(6))
+        return toggle
+    }
+
+    /** Lista completa del historial, cacheada durante este render. */
+    private fun histItems(): List<Prefs.HistItem> =
+        histCache ?: Prefs.histAll(this).also { histCache = it }
+
+    /** Aplica la búsqueda y la sección actuales sobre el historial cacheado. */
+    private fun filteredHist(): List<Prefs.HistItem> {
+        val q = histQuery.trim()
+        var items = histItems()
+        items = if (histFilter == "__sys__") items.filter { Sys.isSystemPkg(it.pkg) }
+        else items.filter { !Sys.isSystemPkg(it.pkg) }
+        if (q.isNotEmpty()) items = items.filter {
+            it.title.contains(q, ignoreCase = true) || it.text.contains(q, ignoreCase = true)
+        }
+        return items
     }
 
     /** «Hoy», «Ayer» o la fecha. */
@@ -1785,46 +1809,88 @@ class MainActivity : Activity() {
         p.addView(c, lp(10))
     }
 
-    /** Grupo de historial de una aplicación (con su icono), desplegable en el sitio. */
+    /** Grupo de historial de una aplicación (con su icono), cerrado hasta que se toca. */
     private fun appHistoryGroup(p: LinearLayout, pkg: String, items: List<Prefs.HistItem>) {
         // pkg puede ser una clave de clon («com.whatsapp@999»): appIcon ya la entiende y el nombre
         // sale con la insignia de la ROM («WhatsApp · clon»).
         val appName = appNameOf(pkg)
-        collapsibleCard(p, "h_$pkg", true, head = { h ->
+        val sorted = items.sortedByDescending { it.ts }
+        val handle = collapsibleCard(p, "h_$pkg", false, head = { h ->
             h.addView(ShapedImageView(this).apply {
                 shape = Prefs.iconShape(this@MainActivity); setImageDrawable(appIcon(pkg)); scaleType = ImageView.ScaleType.CENTER_CROP
             }, LinearLayout.LayoutParams(px(42), px(42)).apply { marginEnd = px(12) })
             val t = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
-            t.addView(label(appName, 17f, R.color.text, true))
-            t.addView(label("${items.size} notificaciones", 12f, R.color.muted))
+            t.addView(label(appName, 17f, R.color.text, true).apply {
+                maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END
+            })
+            t.addView(label(if (sorted.size == 1) "1 notificación" else "${sorted.size} notificaciones", 12f, R.color.muted))
             h.addView(t, LinearLayout.LayoutParams(0, WRAP, 1f))
         }, body = { b ->
-            b.setPadding(0, px(2), 0, 0)
-            items.take(25).forEach { h2 -> b.addView(historyItemRow(h2, px(54))) }
-        })
+            historyGroupBody(b, sorted, px(54), 0xFF6A62E8.toInt())
+        }, lazyBody = true)
+        histGroupHandles.add(handle)
     }
 
-    /** Grupo de historial del sistema (Batería, Wi-Fi, Red…), desplegable en el sitio. */
+    /** Grupo de historial del sistema (Batería, Wi-Fi, Red…), cerrado hasta que se toca. */
     private fun sysHistoryGroup(p: LinearLayout, kind: String, items: List<Prefs.HistItem>) {
         val color = Sys.color(kind)
-        collapsibleCard(p, "hs_$kind", true, head = { h ->
+        val sorted = items.sortedByDescending { it.ts }
+        val handle = collapsibleCard(p, "hs_$kind", false, head = { h ->
             h.addView(tileIcon(Sys.symbol(kind), (color and 0x00FFFFFF) or 0x33000000, color),
                 LinearLayout.LayoutParams(px(42), px(42)).apply { marginEnd = px(12) })
             val t = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
-            t.addView(label(Sys.label(kind), 17f, R.color.text, true))
-            t.addView(label("${items.size} avisos del sistema", 12f, R.color.muted))
+            t.addView(label(Sys.label(kind), 17f, R.color.text, true).apply {
+                maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END
+            })
+            t.addView(label("${sorted.size} avisos del sistema", 12f, R.color.muted))
             h.addView(t, LinearLayout.LayoutParams(0, WRAP, 1f))
         }, body = { b ->
-            b.setPadding(0, px(2), 0, 0)
-            items.take(25).forEach { h2 -> b.addView(historyItemRow(h2, px(54))) }
-        })
+            historyGroupBody(b, sorted, px(54), color)
+        }, lazyBody = true)
+        histGroupHandles.add(handle)
     }
 
-    /** Una entrada del historial: título, texto, imagen (si hay), tipo y hora. */
+    /**
+     * Filas de un grupo. Se añaden de 12 en 12: abrir una app con cientos de avisos no crea cientos
+     * de vistas de golpe, y aun así se puede llegar a todas con «Ver más».
+     */
+    private fun historyGroupBody(b: LinearLayout, items: List<Prefs.HistItem>, indent: Int, color: Int) {
+        b.setPadding(0, px(2), 0, 0)
+        val rows = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        b.addView(rows)
+        val more = TextView(this).apply {
+            textSize = 12.5f; gravity = Gravity.CENTER
+            setTextColor(color); typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+            setPadding(px(12), px(9), px(12), px(9))
+            background = Glass.ripple(this@MainActivity,
+                Glass.pill(this@MainActivity, Glass.withA(color, 0x1C), Glass.withA(color, 0x3A), 15f), 15f)
+            visibility = View.GONE
+        }
+        var shown = 0
+        fun addPage() {
+            val end = minOf(shown + 12, items.size)
+            for (i in shown until end) rows.addView(historyItemRow(items[i], indent))
+            shown = end
+            val left = items.size - shown
+            if (left > 0) {
+                more.text = if (left == 1) "Ver más · 1 restante" else "Ver más · $left restantes"
+                more.visibility = View.VISIBLE
+            } else more.visibility = View.GONE
+        }
+        more.setOnClickListener { addPage() }
+        b.addView(more, LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = px(4) })
+        addPage()
+    }
+
+    /** Una entrada del historial: título, texto COMPLETO, imagen (si hay), tipo y hora. */
     private fun historyItemRow(h2: Prefs.HistItem, indent: Int): View {
         val r = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(indent, px(10), 0, 0) }
         if (h2.title.isNotEmpty()) r.addView(label(h2.title, 14f, R.color.text, true).apply { maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END })
-        if (h2.text.isNotEmpty()) r.addView(label(h2.text, 13f, R.color.muted).apply { maxLines = 2; ellipsize = android.text.TextUtils.TruncateAt.END })
+        if (h2.text.isNotEmpty()) r.addView(label(h2.text, 13f, R.color.muted).apply {
+            // El historial guardaba el texto completo pero la vista lo cortaba a 2 líneas. Ahora se ve
+            // entero; el grupo se puede cerrar y las filas se crean solo al abrirlo.
+            setLineSpacing(0f, 1.08f)
+        })
         if (h2.img.isNotEmpty()) {
             val f = java.io.File(Prefs.histDir(this), h2.img)
             if (f.exists()) {
@@ -2507,14 +2573,26 @@ class MainActivity : Activity() {
         })
     }
 
+    /** Control de una tarjeta desplegable: permite abrirla o cerrarla desde otro botón («Ver todo»). */
+    private class CollapsibleHandle(
+        val isOpen: () -> Boolean,
+        val setOpen: (Boolean, Boolean) -> Unit
+    ) {
+        /** Avisa del nuevo estado para refrescar el texto de «Ver todo / Contraer todo». */
+        var onToggle: ((Boolean) -> Unit)? = null
+    }
+
     /**
      * Cabecera desplegable genérica: la barra de arriba (contenido [head] + flecha) abre y cierra su cuerpo
      * EN EL SITIO, sin rehacer la pantalla. [defaultOpen] fija el estado cuando la clave todavía no existe.
+     * Con [lazyBody] el cuerpo no se construye hasta la primera apertura: el historial puede tener cientos
+     * de avisos y no tiene sentido crear todas las filas (e imágenes) para grupos que siguen cerrados.
      */
     private fun collapsibleCard(
         parent: LinearLayout, key: String, defaultOpen: Boolean,
-        head: (LinearLayout) -> Unit, body: (LinearLayout) -> Unit, topMargin: Int = 10
-    ) {
+        head: (LinearLayout) -> Unit, body: (LinearLayout) -> Unit, topMargin: Int = 10,
+        lazyBody: Boolean = false
+    ): CollapsibleHandle {
         val open0 = if (expandedGroups.contains(key)) true else if (expandedGroups.contains("\u0000close_$key")) false else defaultOpen
         val c = card()
         val chev = icon(if (open0) "chev_up" else "chev_down", 22, Glass.MUTED)
@@ -2526,17 +2604,31 @@ class MainActivity : Activity() {
         h.addView(chev)
         c.addView(h)
         val b = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; visibility = if (open0) View.VISIBLE else View.GONE }
-        body(b)
+        var bodyBuilt = false
+        var opened = open0
+        var handle: CollapsibleHandle? = null
+        fun ensureBody() {
+            if (bodyBuilt) return
+            bodyBuilt = true
+            b.setPadding(0, px(2), 0, 0)
+            body(b)
+        }
+        // Un grupo cerrado y perezoso solo cuesta su cabecera. Las filas (y sus imágenes) nacen al abrirlo.
+        if (!lazyBody || open0) ensureBody()
         c.addView(b)
-        if (open0) b.setPadding(0, px(2), 0, 0)
 
         fun remember(open: Boolean) {
+            opened = open
             // Se guardan ambos estados: reabrir conserva la elección del usuario entre refrescos.
             if (open) { expandedGroups.add(key); expandedGroups.remove("\u0000close_$key") }
             else { expandedGroups.remove(key); expandedGroups.add("\u0000close_$key") }
         }
         fun apply(open: Boolean, animate: Boolean) {
+            if (open == opened) return
+            // Construir ANTES de animar: si no, la altura medida sería cero y la tarjeta no se abriría.
+            if (open) ensureBody()
             remember(open)
+            handle?.onToggle?.invoke(open)
             chev.setImageDrawable(Glass.icon(this@MainActivity, if (open) "chev_up" else "chev_down", Glass.MUTED))
             if (!animate) { b.visibility = if (open) View.VISIBLE else View.GONE; return }
             if (open) {
@@ -2597,6 +2689,9 @@ class MainActivity : Activity() {
             }
         })
         parent.addView(c, lp(topMargin))
+        val cardHandle = CollapsibleHandle(isOpen = { opened }, setOpen = { open, animate -> apply(open, animate) })
+        handle = cardHandle
+        return cardHandle
     }
 
     private fun permRow(p: LinearLayout, title: String, sub: String, ok: Boolean, click: () -> Unit) {
