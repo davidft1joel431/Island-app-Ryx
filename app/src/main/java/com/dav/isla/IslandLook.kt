@@ -48,15 +48,17 @@ object IslandLook {
 
     /** Tarjeta expandida. */
     fun card(ctx: Context, s: IslandStyle): Spec {
-        val op = Prefs.opacity(ctx) / 100f
+        // La tarjeta abierta nunca queda demasiado transparente: si no, el aviso del sistema que hay
+        // detrás se cuela y el texto de la isla se mezcla con el suyo (se veía sucio).
+        val op = maxOf(Prefs.opacity(ctx) / 100f, 0.94f)
         val custom = Prefs.cardColor(ctx)
         var top = if (custom != 0) custom else s.bgTop
         var bottom = if (custom != 0) darker(custom, 0.78f) else s.bgBottom
         var rim = s.strokeColor
         var rimDp = s.strokeDp
         var shine = s.highlight
-        if (Prefs.cardGlass(ctx)) {                  // cristal: más transparente, con brillo y borde de luz
-            top = mulAlpha(top, 0.55f); bottom = mulAlpha(bottom, 0.40f)
+        if (Prefs.cardGlass(ctx)) {                  // cristal: mantiene el brillo, pero sin dejar pasar el fondo
+            top = mulAlpha(top, 0.96f); bottom = mulAlpha(bottom, 0.92f)
             rim = 0x99FFFFFF.toInt(); rimDp = maxOf(rimDp, 1.2f); shine = 0x55FFFFFF
         }
         return Spec(mulAlpha(top, op), mulAlpha(bottom, op), rim, rimDp, shine)

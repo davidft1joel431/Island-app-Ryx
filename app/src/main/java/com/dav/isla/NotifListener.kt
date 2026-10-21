@@ -428,6 +428,9 @@ class NotifListener : NotificationListenerService() {
             attachUri != null -> "Imagen"
             else -> ""
         }
+        // Diagnóstico para Puente → Solo la isla: si el aviso habla de foto/sticker pero no se encontró
+        // ninguna imagen, se anotan los extras que trae para poder afinar la detección.
+        if (mediaBmp == null && attachUri == null && looksLikeMedia(n)) noteMediaMiss(sbn, n)
 
         // 1) La isla REGISTRA todo en el historial, por aplicación, con el texto COMPLETO.
         //    Se guardan también los avisos «en curso» (música, descargas, navegación…): así el historial ve
@@ -440,7 +443,7 @@ class NotifListener : NotificationListenerService() {
             histExec.execute {      // disco y copia de seguridad fuera del hilo principal: la isla sale antes
                 try {
                     // Si la imagen venía por URI, se abre AQUÍ (hilo aparte). Nunca en el hilo principal.
-                    val bmp = mediaBmp ?: hUri?.let { loadUriMedia(it) }
+                    val bmp = mediaBmp ?: hUri?.let { loadUriMedia(it, sbn.user) }
                     Prefs.addHist(this, hp, ht, hx, saveBitmap(bmp, attachKind), attachKind, win)
                     Backup.maybeUpload(this)     // copia a la carpeta elegida (Drive u otra), si hay
                     Backup.autoLocal(this)       // copia a la carpeta PROPIA de la app, sola y sin tocar nada
@@ -596,6 +599,24 @@ class NotifListener : NotificationListenerService() {
             while (diagLines.size > 6) diagLines.removeAt(0)
             Prefs.setNotifDiag(this, diagLines.joinToString("\n"))
         }
+    }
+
+    /** Anota en el diagnóstico qué extras trae un aviso con foto/sticker del que no se pudo sacar la imagen. */
+    private fun noteMediaMiss(sbn: StatusBarNotification, n: Notification) {
+        try {
+            val keys = n.extras.keySet().filter { k ->
+                val l = k.lowercase()
+                l.contains("picture") || l.contains("icon") || l.contains("image") ||
+                    l.contains("uri") || l.contains("media")
+            }.sorted().joinToString(", ")
+            val t = java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.getDefault()).format(java.util.Date())
+            val line = "$t ${sbn.packageName} → sin imagen; extras: ${if (keys.isEmpty()) "(ninguno)" else keys}"
+            synchronized(diagLines) {
+                diagLines.add(line)
+                while (diagLines.size > 6) diagLines.removeAt(0)
+                Prefs.setNotifDiag(this, diagLines.joinToString("\n"))
+            }
+        } catch (t: Throwable) {}
     }
 
     /** Multimedia, navegación, alarmas y progresos se quedan en el sistema para no romper sus controles.
@@ -1085,7 +1106,8 @@ class NotifListener : NotificationListenerService() {
     private fun lookDrawable(sp: IslandLook.Spec, r: Float, accent: Int?, into: ArrayList<GradientDrawable> = cornerTargets): Drawable {
         val base = GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, intArrayOf(sp.top, sp.bottom)).apply {
             cornerRadius = r
-            if (accent != null) setStroke(maxOf(1, px(1.6f)), (accent and 0x00FFFFFF) or 0xB0000000.toInt())
+            // El color de la app tiñe el borde, pero muy suave: antes un WhatsApp verde dejaba un aro enorme.
+            if (accent != null) setStroke(maxOf(1, px(1f)), (accent and 0x00FFFFFF) or 0x4D000000)
             else if (sp.rimDp > 0f) setStroke(maxOf(1, px(sp.rimDp)), sp.rim)
         }
         into.add(base)
@@ -1347,10 +1369,13 @@ class NotifListener : NotificationListenerService() {
                 }, chipLp(if (i == 0) 0 else 3, if (i == c.actions.size - 1) 0 else 3))
             }
         } else {
-            // Iconos: »  abrir  ·  ⇣  formato libre  ·  ✕  descartar (rojo). «Burbuja» se eliminó del diseño.
-            acts.addView(actionIcon(R.drawable.ic_arrow_right, s.textColor, true, s) { openCurrent(false) }, chipLp(0, 3))
-            acts.addView(actionIcon(R.drawable.ic_arrow_down, s.textColor, false, s) { openCurrent(true, 0) }, chipLp(3, 3))
-            acts.addView(actionIcon(R.drawable.ic_close, 0xFFFF5A5F.toInt(), false, s) { dismissCurrent() }, chipLp(3, 0))
+            // Iconos pequeños alineados a la derecha: » abrir · ⇣ formato libre · ✕ descartar.
+            // Antes cada icono ocupaba un tercio del ancho y el botón amarillo salía como una barra enorme.
+            val lpIcon = { l: Int -> LinearLayout.LayoutParams(px(38), px(38)).apply { marginStart = px(l) } }
+            acts.addView(View(this), LinearLayout.LayoutParams(0, 1, 1f))
+            acts.addView(actionIcon(R.drawable.ic_arrow_right, s.textColor, true, s) { openCurrent(false) }, lpIcon(0))
+            acts.addView(actionIcon(R.drawable.ic_arrow_down, s.textColor, false, s) { openCurrent(true, 0) }, lpIcon(6))
+            acts.addView(actionIcon(R.drawable.ic_close, 0xFFFF5A5F.toInt(), false, s) { dismissCurrent() }, lpIcon(6))
         }
     }
 
@@ -1788,7 +1813,7 @@ class NotifListener : NotificationListenerService() {
                 p.setPadding(pad, pad, pad, pad)
                 p.background = if (sticker || bmp == null) mediaTile(12f) else null
                 if (bmp != null) paintMedia(p, bmp, uri ?: c.key)
-                else { p.setImageDrawable(null); uri?.let { loadMedia(it) } }
+                else { p.setImageDrawable(null); uri?.let { loadMedia(c, it) } }
             }
         }
 
@@ -1801,17 +1826,17 @@ class NotifListener : NotificationListenerService() {
                 iv.setPadding(pad, pad, pad, pad)
                 iv.background = if (sticker || bmp == null) mediaTile(14f) else null
                 if (bmp != null) paintMedia(iv, bmp, uri ?: c.key)
-                else { iv.setImageDrawable(null); uri?.let { loadMedia(it) } }
+                else { iv.setImageDrawable(null); uri?.let { loadMedia(c, it) } }
             }
         }
     }
 
     /** Descarga una imagen por URI una sola vez y refresca la tarjeta que la esté mostrando. */
-    private fun loadMedia(uri: String) {
+    private fun loadMedia(c: Card, uri: String) {
         if (mediaCache.get(uri) != null || mediaFailed.contains(uri)) return
         if (!mediaTried.add(uri)) return
         Thread {
-            val bm = loadUriMedia(uri)
+            val bm = loadUriMedia(uri, c.user)
             if (bm != null) mediaCache.put(uri, bm) else mediaFailed.add(uri)
             main.post {
                 val cur = cards.getOrNull(cardIndex)
@@ -1932,54 +1957,88 @@ class NotifListener : NotificationListenerService() {
         return Pair(null, lastMime)
     }
 
+    /**
+     * Lee un extra que puede ser un Bitmap o un Icon (Android 12+). Cada extra va por separado y con su propio
+     * try: antes un solo extra raro (o un Icon donde se esperaba Bitmap) tumbaba TODA la extracción y la isla
+     * se quedaba sin imagen aunque el aviso sí la trajera.
+     */
+    @Suppress("DEPRECATION")
+    private fun bitmapExtra(b: android.os.Bundle, key: String): Bitmap? {
+        val v = try { b.get(key) } catch (t: Throwable) { null } ?: return null
+        return try {
+            when (v) {
+                is Bitmap -> v
+                is android.graphics.drawable.Icon -> v.loadDrawable(this)?.let { toBitmap(it) }
+                is Drawable -> toBitmap(v)
+                else -> null
+            }
+        } catch (t: Throwable) { null }
+    }
+
+    /** ¿El texto del aviso habla de una foto, sticker o vídeo? Sirve para aceptar el icono grande como imagen. */
+    @Suppress("DEPRECATION")
+    private fun looksLikeMedia(n: Notification): Boolean {
+        val sb = StringBuilder()
+        fun add(cs: CharSequence?) { if (cs != null) sb.append(' ').append(cs) }
+        val ex = n.extras
+        add(ex.getCharSequence(Notification.EXTRA_TITLE))
+        add(ex.getCharSequence(Notification.EXTRA_TEXT))
+        add(ex.getCharSequence(Notification.EXTRA_BIG_TEXT))
+        add(ex.getCharSequence(Notification.EXTRA_SUB_TEXT))
+        try {
+            ex.getParcelableArray(Notification.EXTRA_MESSAGES)?.forEach { m ->
+                val b = m as? android.os.Bundle ?: return@forEach
+                add(b.getCharSequence("text")); add(b.getCharSequence("sender"))
+            }
+        } catch (t: Throwable) {}
+        val s = sb.toString().lowercase()
+        return listOf("sticker", "foto", "photo", "imagen", "image", "gif", "video", "vídeo",
+            "📷", "🖼", "🎥", "cámara", "camara").any { s.contains(it) }
+    }
+
     /** Imagen o sticker de la notificación (si hay) y su tipo. NUNCA hace E/S: eso va en loadUriMedia(). */
     @Suppress("DEPRECATION")
     private fun extractMedia(n: Notification): Pair<Bitmap?, String> {
-        try {
-            val ex = n.extras
-            val (_, mime) = latestImage(n)
-            val stickerMime = mime.contains("webp") || mime.contains("png")
-            var bmp: Bitmap? = ex.getParcelable<Bitmap>(Notification.EXTRA_PICTURE)
-            var kind = if (bmp != null) (if (stickerMime) "Sticker" else "Imagen") else ""
-            if (bmp != null) {
-                // EXTRA_PICTURE suele ser la vista previa de la imagen o del sticker que se envió.
-            } else if (Build.VERSION.SDK_INT >= 31) {
-                bmp = ex.getParcelable<android.graphics.drawable.Icon>(Notification.EXTRA_PICTURE_ICON)
-                    ?.loadDrawable(this)?.let { toBitmap(it) }
-                if (bmp != null) kind = if (stickerMime) "Sticker" else "Imagen"
-            }
-            // Varias apps ponen la imagen grande aparte de EXTRA_PICTURE (Telegram, Instagram, Gmail…).
-            // El icono grande también puede ser el avatar de la app: se usa solo como último recurso.
-            if (bmp == null) {
-                bmp = try { ex.getParcelable<Bitmap>(Notification.EXTRA_LARGE_ICON_BIG) } catch (e: Throwable) { null }
-                if (bmp != null) kind = if (stickerMime) "Sticker" else "Imagen"
-            }
-            if (bmp == null && Build.VERSION.SDK_INT >= 31) {
-                bmp = try {
-                    ex.getParcelable<android.graphics.drawable.Icon>(Notification.EXTRA_LARGE_ICON_BIG)
-                        ?.loadDrawable(this)?.let { toBitmap(it) }
-                } catch (e: Throwable) { null }
-                if (bmp != null) kind = if (stickerMime) "Sticker" else "Imagen"
-            }
-            // Tipo del adjunto por su MIME (SIN abrir la URI: abrirla bloquea el hilo y congelaba la isla).
-            if (kind.isEmpty()) kind = when {
-                mime.startsWith("image/") -> if (stickerMime) "Sticker" else "Imagen"
-                mime.startsWith("audio/") -> "Audio"
-                mime.startsWith("video/") -> "Video"
-                else -> ""
-            }
-            // «Ver una vez»: WhatsApp/Signal/Telegram marcan estos mensajes en el texto o el canal.
-            val lowAll = (n.extras.getCharSequence(Notification.EXTRA_TITLE)?.toString() ?: "") + " " +
-                (n.extras.getCharSequence(Notification.EXTRA_TEXT)?.toString() ?: "") + " " +
-                (n.extras.getCharSequence(Notification.EXTRA_SUB_TEXT)?.toString() ?: "")
-            val l = lowAll.lowercase()
-            if (l.contains("ver una vez") || l.contains("view once") || l.contains("solo una vez") ||
-                l.contains("una sola vez") || l.contains("one-time") || l.contains("temporal"))
-                kind = if (kind.isEmpty()) "Ver una vez" else "$kind · Ver una vez"
-            return Pair(bmp?.let { scaleDown(it, 1024) }, kind)
-        } catch (e: Throwable) {
-            return Pair(null, "")
+        val ex = n.extras
+        val (imgUri, mime) = try { latestImage(n) } catch (t: Throwable) { Pair(null, "") }
+        val stickerMime = mime.contains("webp") || mime.contains("png")
+        val hint = try { looksLikeMedia(n) } catch (t: Throwable) { false }
+
+        // 1) La imagen grande de verdad (BigPictureStyle / MessagingStyle con foto).
+        var bmp = bitmapExtra(ex, Notification.EXTRA_PICTURE)
+        if (bmp == null) bmp = bitmapExtra(ex, Notification.EXTRA_PICTURE_ICON)
+        // 2) Respaldo: icono grande. Muchas apps (WhatsApp incluido) dejan ahí la foto o el sticker;
+        //    también puede ser el avatar del contacto, así que solo se acepta si el aviso habla de multimedia.
+        //    Si hay una URI de imagen, se prefiere esa (es el adjunto real, no el avatar).
+        if (bmp == null && imgUri == null) {
+            val large = bitmapExtra(ex, Notification.EXTRA_LARGE_ICON)
+                ?: bitmapExtra(ex, Notification.EXTRA_LARGE_ICON_BIG)
+            // Si el aviso habla de foto/sticker se acepta el icono grande aunque sea cuadrado
+            // (WhatsApp deja ahí el sticker o la miniatura de la foto).
+            if (large != null && (stickerMime || hint)) bmp = large
         }
+
+        var kind = when {
+            bmp == null -> ""
+            stickerMime -> "Sticker"
+            else -> "Imagen"
+        }
+        // Tipo del adjunto por su MIME (SIN abrir la URI: abrirla bloquea el hilo y congelaba la isla).
+        if (kind.isEmpty()) kind = when {
+            mime.startsWith("image/") -> if (stickerMime) "Sticker" else "Imagen"
+            mime.startsWith("audio/") -> "Audio"
+            mime.startsWith("video/") -> "Video"
+            else -> ""
+        }
+        // «Ver una vez»: WhatsApp/Signal/Telegram marcan estos mensajes en el texto o el canal.
+        val lowAll = (ex.getCharSequence(Notification.EXTRA_TITLE)?.toString() ?: "") + " " +
+            (ex.getCharSequence(Notification.EXTRA_TEXT)?.toString() ?: "") + " " +
+            (ex.getCharSequence(Notification.EXTRA_SUB_TEXT)?.toString() ?: "")
+        val l = lowAll.lowercase()
+        if (l.contains("ver una vez") || l.contains("view once") || l.contains("solo una vez") ||
+            l.contains("una sola vez") || l.contains("one-time") || l.contains("temporal"))
+            kind = if (kind.isEmpty()) "Ver una vez" else "$kind · Ver una vez"
+        return Pair(bmp?.let { scaleDown(it, 1024) }, kind)
     }
 
     /**
@@ -1992,18 +2051,23 @@ class NotifListener : NotificationListenerService() {
      * Abre la URI de una imagen y la convierte en bitmap. SIEMPRE en un hilo aparte (hace E/S y decodifica).
      * Primero se leen las dimensiones y se reduce al decodificar: una foto de cámara ya no puede agotar la memoria.
      */
-    private fun loadUriMedia(uri: String): Bitmap? {
-        return try {
-            val u = android.net.Uri.parse(uri)
+    private fun loadUriMedia(uri: String, user: android.os.UserHandle? = null): Bitmap? {
+        val u = android.net.Uri.parse(uri)
+        fun decodeFrom(cr: android.content.ContentResolver): Bitmap? {
             val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-            contentResolver.openInputStream(u)?.use { BitmapFactory.decodeStream(it, null, bounds) }
-            if (bounds.outWidth > 0 && bounds.outHeight > 0) {
-                var sample = 1
-                while (bounds.outWidth / (sample * 2) >= 960 && bounds.outHeight / (sample * 2) >= 960) sample *= 2
-                val opts = BitmapFactory.Options().apply { inSampleSize = sample }
-                val b = contentResolver.openInputStream(u)?.use { BitmapFactory.decodeStream(it, null, opts) }
-                b?.let { scaleDown(it, 960) }
-            } else null
+            cr.openInputStream(u)?.use { BitmapFactory.decodeStream(it, null, bounds) } ?: return null
+            if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return null
+            var sample = 1
+            while (bounds.outWidth / (sample * 2) >= 960 && bounds.outHeight / (sample * 2) >= 960) sample *= 2
+            val opts = BitmapFactory.Options().apply { inSampleSize = sample }
+            val b = cr.openInputStream(u)?.use { BitmapFactory.decodeStream(it, null, opts) } ?: return null
+            return scaleDown(b, 960)
+        }
+        return try {
+            decodeFrom(contentResolver) ?: if (user == null) null else try {
+                // Apps clonadas: su URI pertenece al otro espacio de usuario de la ROM.
+                decodeFrom(createContextAsUser(user, 0).contentResolver)
+            } catch (t: Throwable) { null }
         } catch (e: Throwable) { null }
     }
 
