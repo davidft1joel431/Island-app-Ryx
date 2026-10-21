@@ -2302,9 +2302,11 @@ class MainActivity : Activity() {
         for (w in intArrayOf(AlertDialog.BUTTON_POSITIVE, AlertDialog.BUTTON_NEGATIVE, AlertDialog.BUTTON_NEUTRAL))
             d.getButton(w)?.setTextColor(Glass.ACCENT)
         // Título con el mismo peso tipográfico que el resto de la interfaz.
+        // `alertTitle` es un id interno del sistema: se resuelve en tiempo de ejecución (android.R.id.alertTitle no es público).
+        val titleId = resources.getIdentifier("alertTitle", "id", "android")
         d.setOnShowListener {
             try {
-                d.findViewById<TextView>(android.R.id.alertTitle)?.apply {
+                if (titleId != 0) d.findViewById<TextView>(titleId)?.apply {
                     setTextColor(Glass.TEXT)
                     typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
                     textSize = 19f
