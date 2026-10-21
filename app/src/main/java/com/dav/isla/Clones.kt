@@ -124,7 +124,12 @@ object Clones {
     fun label(c: Context, pkg: String, userId: Int): String {
         val base = try {
             val pm = c.packageManager
-            pm.getApplicationLabel(pm.getApplicationInfo(pkg, 0)).toString()
+            // En un clon se pregunta primero por SU espacio: así sale el nombre real aunque la app
+            // solo esté instalada en la copia y no en el usuario principal.
+            val ai = if (isClone(userId)) {
+                try { la(c).getApplicationInfo(pkg, 0, handle(userId)) } catch (e: Exception) { pm.getApplicationInfo(pkg, 0) }
+            } else pm.getApplicationInfo(pkg, 0)
+            ai.loadLabel(pm).toString()
         } catch (e: Exception) { pkg.substringAfterLast('.').replaceFirstChar { it.uppercase() } }
         if (!isClone(userId)) return base
         var badged: String? = null

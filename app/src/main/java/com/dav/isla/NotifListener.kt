@@ -61,6 +61,9 @@ class NotifListener : NotificationListenerService() {
     private val readSigs = java.util.concurrent.ConcurrentHashMap<String, Long>()
     /** Claves que quitó la propia isla del panel (blockSystem), para no confundirlas con «ya leído». */
     private val selfCanceled = java.util.concurrent.ConcurrentHashMap<String, Long>()
+    /** Hijos de un grupo mostrados hace poco. La isla quita el aviso del sistema, así que «activeNotifications»
+     *  ya no los ve cuando llega el resumen; esto evita que el resumen se muestre como una tarjeta duplicada. */
+    private val recentChildren = java.util.concurrent.ConcurrentHashMap<String, Long>()
     private val hideTask = Runnable { collapse() }
     private lateinit var wm: WindowManager
     private var lp: WindowManager.LayoutParams? = null
@@ -176,12 +179,8 @@ class NotifListener : NotificationListenerService() {
         else RyxAccessibility.instance?.currentPackage() ?: Foreground.pkg(this)
     } catch (e: Exception) { null }
 
-    /** ¿Estás dentro de esa app ahora? Entonces lo que llegue de ella ya lo estás leyendo ahí. */
-    private fun readingNow(pkg: String, userId: Int): Boolean {
-        if (!Prefs.autoRead(this) || pkg == packageName || usingNow() != pkg) return false
-        val u = frontUserOf(pkg) ?: return false     // con clon y sin poder distinguir: se muestra como siempre
-        return u == ANY_USER || u == norm(userId)
-    }
+    /** Última app que se vio al frente, para limpiar solo al ENTRAR en ella, no cada 2,5 s. */
+    private var lastFrontPkg: String? = null
 
     /** Cada pocos segundos: quita la isla si entró a un juego y la devuelve (modo permanente) al salir. */
     private val watch = object : Runnable {
@@ -191,12 +190,15 @@ class NotifListener : NotificationListenerService() {
                     val hide = hiddenNow()
                     if (hide && attached) removeNow()
                     else if (!hide && !attached && Prefs.permanent(this@NotifListener)) showIdle()
-                    // Respaldo: mientras estás dentro de una app, sus avisos que esperaban en la isla ya se leyeron.
-                    // Nunca con la isla desplegada: así una tarjeta recién llegada no se cierra sola al expandirse.
+                    // Al ENTRAR en una app se quitan sus avisos viejos («quitar lo que ya leí»). Antes se hacía
+                    // cada 2,5 s, así que un mensaje nuevo que llegaba mientras estabas dentro se borraba solo
+                    // antes de que lo vieras: por eso TikTok no mostraba nada o solo aparecía tras muchos avisos.
+                    // Ahora solo se limpia cuando cambia la app al frente; lo recién llegado se queda en la isla.
+                    val fg = usingNow()
                     if (!expanded && cards.any { !it.ephemeral }) {
-                        val fg = usingNow()
-                        if (fg != null) readFront(fg, 2500)
+                        if (fg != null && fg != lastFrontPkg) readFront(fg, 4_000)
                     }
+                    lastFrontPkg = fg
                 }
             } catch (e: Exception) {}
             main.postDelayed(this, 2500)
@@ -353,14 +355,19 @@ class NotifListener : NotificationListenerService() {
     override fun onNotificationPosted(sbn: StatusBarNotification) {
         if (sbn.packageName == packageName) return
         val n = sbn.notification
-        if ((n.flags and Notification.FLAG_GROUP_SUMMARY) != 0) {
-            // El resumen de un grupo («3 mensajes nuevos» de WhatsApp…) no entra a la isla, pero tampoco debe quedarse en el panel:
-            // era la notificación de la ROM que seguía apareciendo aunque el mensaje ya lo mostrara la isla.
+        val isSummary = (n.flags and Notification.FLAG_GROUP_SUMMARY) != 0
+        if (isSummary) {
+            // Resumen de un grupo («3 mensajes nuevos» de WhatsApp…). Si sus mensajes individuales están
+            // activos, se quita para no duplicar. Pero algunas apps (TikTok Lite, por ejemplo) publican
+            // SOLO el resumen: antes se descartaba siempre y por eso no aparecía nada en la isla. Si no hay
+            // ningún hijo activo, el resumen sigue el camino normal y se muestra como una tarjeta más.
             val su = if (sbn.userId >= 0) sbn.userId else myUser
-            val why = keepReason(sbn, n, readingNow(sbn.packageName, su))
-            if (why == null) cancelOwn(sbn.key)
-            noteDecision(sbn, su, true, why)
-            return
+            if (hasActiveChild(sbn) || hadRecentChild(sbn)) {
+                val why = keepReason(sbn, n)
+                if (why == null) cancelOwn(sbn.key)
+                noteDecision(sbn, su, true, why)
+                return
+            }
         }
         var title: CharSequence? = n.extras.getCharSequence(Notification.EXTRA_TITLE)
         var text: CharSequence? = n.extras.getCharSequence(Notification.EXTRA_TEXT)
@@ -375,18 +382,20 @@ class NotifListener : NotificationListenerService() {
             text = ch ?: ""
         }
 
-        // Ya estás dentro de esa app (pantalla encendida y desbloqueada): lo estás leyendo ahí, la isla no lo toma
+        // Aunque estés dentro de una app, un aviso NUEVO debe poder entrar a la isla. Antes se descartaba
+        // aquí mismo («ya lo estás leyendo dentro»), y por eso TikTok —y cualquier app abierta— no mostraba
+        // sus mensajes hasta que salías o llegaban muchos de golpe. Lo que ya leíste se sigue quitando al
+        // abrir la app (onAppOpened / watch), pero un aviso recién llegado ya no se pierde.
         val uid = if (sbn.userId >= 0) sbn.userId else myUser
         if (isClone(uid)) { cloneSeen[sbn.packageName] = uid; Clones.note(this, sbn.packageName, uid) }
-        val reading = readingNow(sbn.packageName, uid)
 
         // 0) SOLO LA ISLA: si la isla va a MOSTRARLA, se quita el aviso del sistema en el mismo momento de mostrarlo
         //    (no antes). Así ninguna notificación se pierde: si la isla no la enseña, la del sistema se queda.
         //    Llamadas, multimedia, navegación, alarmas y progresos se quedan siempre en el sistema.
         //    LLAMADA DE CONTACTO PRIORITARIO (favorito): se salta el bloqueo de juego/app oculta y aparece siempre.
         val callPrio = isCall(n) && Prefs.callPriorityBypass(this) && callIsPriority(title, text)
-        val why = keepReason(sbn, n, reading, callPrio)
-        noteDecision(sbn, uid, false, why)
+        val why = keepReason(sbn, n, callPrio)
+        noteDecision(sbn, uid, isSummary, why)
 
         // Palabras ocultas (privacidad): se reemplaza el contenido
         val words = Prefs.hiddenWords(this)
@@ -436,7 +445,9 @@ class NotifListener : NotificationListenerService() {
         //    Se guardan también los avisos «en curso» (música, descargas, navegación…): así el historial ve
         //    TODAS las apps y TODOS los avisos del sistema, aunque la isla no los muestre como tarjeta.
         if (Prefs.keepHistory(this)) {
-            val hp = sbn.packageName; val ht = title?.toString() ?: ""; val hx = (full ?: text)?.toString() ?: ""
+            // La clave incluye el espacio (pkg@usuario) para que el clon tenga su propio grupo en el historial
+            // y no se mezcle con la app original, que comparte el mismo paquete.
+            val hp = appKey(sbn.packageName, uid); val ht = title?.toString() ?: ""; val hx = (full ?: text)?.toString() ?: ""
             // Los avisos del sistema se de-duplican durante más tiempo: no queremos cuatro avisos de batería seguidos.
             val win = if (Sys.isSystemPkg(hp)) 120_000L else 3_000L
             val hUri = attachUri
@@ -456,11 +467,6 @@ class NotifListener : NotificationListenerService() {
         if (!Prefs.islandOn(this)) return
         if (!callPrio && appKey(sbn.packageName, uid) in Prefs.blocked(this)) return
         if (!callPrio && hiddenNow()) return          // la notificación del sistema se queda intacta
-        if (reading && !callPrio) {                   // ya la estás leyendo dentro de la app: no entra a la isla ni deja esperando lo anterior de esa app
-            val rp = sbn.packageName
-            main.post { markRead(rp, user = uid) }
-            return
-        }
         if (sbn.isOngoing && !isCall(n)) return
 
         // Batería: todos los avisos del sistema se unen en UNA sola tarjeta con el nivel en tiempo real
@@ -485,7 +491,7 @@ class NotifListener : NotificationListenerService() {
         // Texto completo para la vista de detalle ya calculado arriba (se guarda entero en el historial)
         val ci = n.contentIntent
         val ik = appKey(sbn.packageName, uid)      // original y clon tienen su propia tarjeta y su propio destino
-        if (ci != null && (n.flags and Notification.FLAG_GROUP_SUMMARY) == 0) intents[ik] = ci
+        if (ci != null && !isSummary) intents[ik] = ci
         else if (ci != null && !intents.containsKey(ik)) intents[ik] = ci
         // Apps de pedidos y de viajes: se reconocen por su paquete y la tarjeta sale con su color y su etiqueta
         val tag = when {
@@ -493,6 +499,10 @@ class NotifListener : NotificationListenerService() {
             Sys.isRideApp(sbn.packageName) -> "Viaje" to 0xFF40C8E0.toInt()
             else -> null
         }
+        // Marca el grupo como «ya tiene un hijo mostrado»: así su resumen posterior no se duplica.
+        // Un resumen que se muestra por su cuenta NO cuenta como hijo; si no, el siguiente resumen de la
+        // misma app (TikTok Lite) quedaría bloqueado durante 20 s.
+        if (!isSummary) recentChildren[childGroupKey(sbn)] = System.currentTimeMillis()
         show(sbn.packageName, title, text, large, true, true, "app:$ik", false,
             fallback = small, media = mediaBmp, detailText = full ?: text,
             sig = "${sbn.key}|$title|$text", user = sbn.user, userId = uid,
@@ -537,9 +547,12 @@ class NotifListener : NotificationListenerService() {
     /** Lo llama accesibilidad cuando una app abre una ventana: si tenía avisos esperando en la isla, ya los estás viendo. */
     fun onAppOpened(pkg: String) {
         main.post {
-            // Solo si de verdad estás dentro de esa app y la isla no está mostrando algo: algunas ROM avisan
-            // también de las ventanas emergentes de la notificación, y eso marcaba la tarjeta como leída al instante.
-            if (!expanded && usingNow() == pkg) readFront(pkg, 2000)
+            // Solo al ENTRAR de verdad en esa app. Algunas ROM avisan también de las ventanas emergentes de
+            // la notificación; si no se filtra, la tarjeta recién llegada se marcaba como leída al instante.
+            if (!expanded && usingNow() == pkg && lastFrontPkg != pkg) {
+                readFront(pkg, 2_000)
+                lastFrontPkg = pkg
+            }
         }
     }
 
@@ -571,8 +584,30 @@ class NotifListener : NotificationListenerService() {
         updateBadge(); updateCount()
     }
 
+    /**
+     * ¿El resumen tiene mensajes individuales activos? En ese caso el resumen sobra (los hijos ya se muestran).
+     * Se compara la clave completa para no contar el propio resumen.
+     */
+    private fun hasActiveChild(sbn: StatusBarNotification): Boolean = try {
+        activeNotifications?.any { a ->
+            a.packageName == sbn.packageName && a.userId == sbn.userId && a.key != sbn.key &&
+                (a.notification.flags and Notification.FLAG_GROUP_SUMMARY) == 0
+        } == true
+    } catch (t: Throwable) { false }
+
+    /** Clave por app y espacio para recordar hijos ya mostrados (la isla quitó su aviso del sistema). */
+    private fun childGroupKey(sbn: StatusBarNotification): String =
+        "${sbn.packageName}|${sbn.userId}"
+
+    private fun hadRecentChild(sbn: StatusBarNotification): Boolean {
+        val now = System.currentTimeMillis()
+        recentChildren.entries.removeAll { now - it.value > 20_000L }
+        val t = recentChildren[childGroupKey(sbn)] ?: return false
+        return now - t < 20_000L
+    }
+
     /** null = la isla toma el aviso y lo quita del sistema. Si no, el motivo por el que se queda en el sistema (también para el diagnóstico). */
-    private fun keepReason(sbn: StatusBarNotification, n: Notification, reading: Boolean, prio: Boolean = false): String? = when {
+    private fun keepReason(sbn: StatusBarNotification, n: Notification, prio: Boolean = false): String? = when {
         !Prefs.islandOn(this) -> "la isla está apagada"
         !Prefs.blockSystem(this) -> "«Bloquear notificaciones del sistema» está apagado"
         !Settings.canDrawOverlays(this) -> "falta el permiso de superposición"
@@ -583,7 +618,6 @@ class NotifListener : NotificationListenerService() {
         keepInSystem(n) -> "categoría ${n.category} (se queda en el sistema)"
         // Llamada de un contacto prioritario: se salta el bloqueo de juego/app oculta.
         hiddenNow(prio) -> "isla oculta (bloqueo, juego o app elegida)"
-        reading -> "estás dentro de esa app"
         else -> null
     }
 
@@ -1969,7 +2003,8 @@ class NotifListener : NotificationListenerService() {
         (m.getParcelable<android.os.Parcelable>("uri") as? android.net.Uri)?.let { return it.toString() }
         for (k in m.keySet()) {
             val kl = k.lowercase()
-            if (kl.contains("sender") || kl.contains("person") || kl == "icon") continue
+            if (kl.contains("sender") || kl.contains("person") || kl.contains("avatar") ||
+                kl.contains("profile") || kl == "icon") continue
             if (!(kl.contains("uri") || kl.contains("image") || kl.contains("picture") ||
                     kl.contains("photo") || kl.contains("sticker") || kl.contains("media") ||
                     kl.contains("thumbnail"))) continue
@@ -2060,7 +2095,8 @@ class NotifListener : NotificationListenerService() {
             val b = msgs[i] as? android.os.Bundle ?: continue
             for (k in b.keySet()) {
                 val kl = k.lowercase()
-                if (kl.contains("sender") || kl.contains("person") || kl == "icon") continue
+                if (kl.contains("sender") || kl.contains("person") || kl.contains("avatar") ||
+                    kl.contains("profile") || kl == "icon") continue
                 if (!(kl.contains("image") || kl.contains("picture") || kl.contains("photo") ||
                         kl.contains("sticker") || kl.contains("media") || kl.contains("thumbnail"))) continue
                 bitmapExtra(b, k)?.let { return it }
@@ -2074,7 +2110,8 @@ class NotifListener : NotificationListenerService() {
     private fun mediaBitmapFromExtras(ex: android.os.Bundle): Bitmap? {
         for (k in ex.keySet()) {
             val kl = k.lowercase()
-            if (kl.contains("largeicon") || kl.contains("smallicon") || kl.contains("pictureicon")) continue
+            if (kl.contains("largeicon") || kl.contains("smallicon") || kl.contains("pictureicon") ||
+                kl.contains("avatar") || kl.contains("profile")) continue
             if (!(kl.contains("picture") || kl.contains("image") || kl.contains("photo") ||
                     kl.contains("sticker") || kl.contains("media") || kl.contains("thumbnail"))) continue
             bitmapExtra(ex, k)?.let { return it }
@@ -2087,14 +2124,35 @@ class NotifListener : NotificationListenerService() {
     private fun mediaUriFromExtras(ex: android.os.Bundle): String? {
         for (k in ex.keySet()) {
             val kl = k.lowercase()
-            if (kl.contains("largeicon") || kl.contains("smallicon") || kl.contains("pictureicon")) continue
+            if (kl.contains("largeicon") || kl.contains("smallicon") || kl.contains("pictureicon") ||
+                kl.contains("avatar") || kl.contains("profile")) continue
             if (!(kl.contains("picture") || kl.contains("image") || kl.contains("photo") ||
-                    kl.contains("sticker") || kl.contains("media") || kl.contains("thumbnail") ||
-                    kl.contains("uri"))) continue
+                    kl.contains("sticker") || kl.contains("media") || kl.contains("thumbnail"))) continue
             uriValue(try { ex.get(k) } catch (t: Throwable) { null })?.let { return it }
         }
         return null
     }
+
+    /**
+     * ¿Este bitmap parece un avatar recortado en círculo? Los avisos de chat dejan ahí la foto del contacto
+     * con las esquinas negras/transparentes. Así se puede usar el icono grande cuando de verdad trae una foto
+     * (rectangular) sin volver a guardar avatares como si fueran el mensaje.
+     */
+    private fun looksLikeAvatar(b: Bitmap): Boolean = try {
+        // Los avatares son cuadrados; una foto rectangular se acepta aunque tenga las esquinas oscuras.
+        if (b.width < 16 || b.height < 16 || b.width != b.height) false
+        else {
+            val dx = (b.width * 0.04f).toInt().coerceAtLeast(1)
+            val dy = (b.height * 0.04f).toInt().coerceAtLeast(1)
+            val corners = intArrayOf(
+                b.getPixel(dx, dy), b.getPixel(b.width - 1 - dx, dy),
+                b.getPixel(dx, b.height - 1 - dy), b.getPixel(b.width - 1 - dx, b.height - 1 - dy)
+            )
+            fun dark(c: Int) = Color.alpha(c) < 24 ||
+                (Color.red(c) < 26 && Color.green(c) < 26 && Color.blue(c) < 26)
+            corners.all { dark(it) } && !dark(b.getPixel(b.width / 2, b.height / 2))
+        }
+    } catch (t: Throwable) { false }
 
     /** Imagen o sticker de la notificación (si hay) y su tipo. NUNCA hace E/S: eso va en loadUriMedia(). */
     @Suppress("DEPRECATION")
@@ -2105,9 +2163,6 @@ class NotifListener : NotificationListenerService() {
         val stickerMime = mime.contains("webp") || mime.contains("png")
         val hint = try { looksLikeMedia(n) } catch (t: Throwable) { false }
         val hintKind = try { mediaHintKind(n) } catch (t: Throwable) { "" }
-        val messaging = try {
-            ex.getParcelableArray(Notification.EXTRA_MESSAGES) != null || n.category == Notification.CATEGORY_MESSAGE
-        } catch (t: Throwable) { true }
 
         // 1) La imagen grande de verdad (BigPictureStyle / MessagingStyle con foto).
         var bmp = bitmapExtra(ex, Notification.EXTRA_PICTURE)
@@ -2115,13 +2170,14 @@ class NotifListener : NotificationListenerService() {
         // 2) Extras con nombre de imagen/media que algunas apps o la propia ROM añaden.
         if (bmp == null) bmp = mediaBitmapFromMessages(n)
         if (bmp == null) bmp = mediaBitmapFromExtras(ex)
-        // 3) El icono grande SOLO se usa en avisos que no son de mensajería. En WhatsApp y demás chats
-        //    ese icono es el avatar del contacto, no la foto/sticker enviado: usarlo llenaba el historial
-        //    de fotos de perfil que no eran el mensaje.
-        if (bmp == null && imgUri == null && !messaging) {
+        // 3) Respaldo del icono grande. Solo si el aviso habla de multimedia y la imagen NO parece un avatar
+        //    circular. Antes se aceptaba siempre y el historial se llenaba de fotos de perfil; después se
+        //    rechazaba siempre y las apps que sí mandan la foto ahí se quedaban sin imagen. Esto busca el punto
+        //    medio: foto real sí, avatar circular no.
+        if (bmp == null && imgUri == null) {
             val large = bitmapExtra(ex, Notification.EXTRA_LARGE_ICON)
                 ?: bitmapExtra(ex, Notification.EXTRA_LARGE_ICON_BIG)
-            if (large != null && (stickerMime || hint)) bmp = large
+            if (large != null && (stickerMime || hint) && !looksLikeAvatar(large)) bmp = large
         }
 
         var kind = when {
