@@ -26,7 +26,7 @@ object Styles {
     // Imitacion de "Liquid Glass": fondo translucido, borde claro y brillo superior.
     val HYPEROS = IslandStyle(
         id = "hyperos", label = "HyperOS · Liquid Glass",
-        bgTop = 0xB8343A46.toInt(), bgBottom = 0xA624282F.toInt(),
+        bgTop = 0xEE343A46.toInt(), bgBottom = 0xE424282F.toInt(),
         strokeColor = 0x66FFFFFF, strokeDp = 1.2f, highlight = 0x40FFFFFF,
         cornerDp = 30f, iconCircle = false, iconCornerDp = 12f, iconDp = 40,
         showAppName = false, expandedWidthDp = 350, titleSp = 14f, bodySp = 12f,
