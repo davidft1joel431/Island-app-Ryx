@@ -2119,6 +2119,19 @@ class NotifListener : NotificationListenerService() {
         return null
     }
 
+    /** Algunas apps mandan la imagen solo en las páginas de Wear OS (android.wearable.EXTENSIONS). */
+    @Suppress("DEPRECATION")
+    private fun mediaBitmapFromWearable(n: Notification): Bitmap? {
+        val ext = try { n.extras.getBundle("android.wearable.EXTENSIONS") } catch (t: Throwable) { null } ?: return null
+        val pages = try { ext.getParcelableArrayList<Notification>("pages") } catch (t: Throwable) { null } ?: return null
+        for (page in pages) {
+            bitmapExtra(page.extras, Notification.EXTRA_PICTURE)?.let { return it }
+            bitmapExtra(page.extras, Notification.EXTRA_PICTURE_ICON)?.let { return it }
+            mediaBitmapFromExtras(page.extras)?.let { return it }
+        }
+        return null
+    }
+
     /** URI de imagen en extras propios de la app/ROM (miui.extra, image_uri, thumbnail…). */
     @Suppress("DEPRECATION")
     private fun mediaUriFromExtras(ex: android.os.Bundle): String? {
@@ -2134,23 +2147,53 @@ class NotifListener : NotificationListenerService() {
     }
 
     /**
-     * ¿Este bitmap parece un avatar recortado en círculo? Los avisos de chat dejan ahí la foto del contacto
-     * con las esquinas negras/transparentes. Así se puede usar el icono grande cuando de verdad trae una foto
-     * (rectangular) sin volver a guardar avatares como si fueran el mensaje.
+     * Avatar del remitente que trae el propio aviso (MessagingStyle → sender_person, o EXTRA_PEOPLE).
+     * En WhatsApp/HyperOS la imagen real (foto o sticker) viene en largeIcon y el avatar en la Person; así
+     * se pueden distinguir sin adivinar por la forma de la imagen. Si no hay Person, se devuelve null.
      */
-    private fun looksLikeAvatar(b: Bitmap): Boolean = try {
-        // Los avatares son cuadrados; una foto rectangular se acepta aunque tenga las esquinas oscuras.
-        if (b.width < 16 || b.height < 16 || b.width != b.height) false
+    @Suppress("DEPRECATION")
+    private fun senderAvatar(n: Notification): Bitmap? {
+        fun fromIcon(icon: android.graphics.drawable.Icon?): Bitmap? = try {
+            icon?.loadDrawable(this)?.let { toBitmap(it) }
+        } catch (t: Throwable) { null }
+        try {
+            val msgs = n.extras.getParcelableArray(Notification.EXTRA_MESSAGES)
+            if (msgs != null) for (i in msgs.indices.reversed()) {
+                val b = msgs[i] as? android.os.Bundle ?: continue
+                val p = b.getParcelable<android.app.Person>("sender_person") ?: continue
+                fromIcon(p.icon)?.let { return it }
+            }
+            val people = n.extras.getParcelableArray(Notification.EXTRA_PEOPLE)
+            if (people != null) for (v in people) {
+                val p = v as? android.app.Person ?: continue
+                fromIcon(p.icon)?.let { return it }
+            }
+        } catch (t: Throwable) {}
+        return null
+    }
+
+    /** ¿Dos bitmaps son la misma imagen? Se muestrea en una rejilla para tolerar reescalados y compresión. */
+    private fun sameImage(a: Bitmap, b: Bitmap): Boolean = try {
+        if (a.width < 8 || b.width < 8) false
         else {
-            val dx = (b.width * 0.04f).toInt().coerceAtLeast(1)
-            val dy = (b.height * 0.04f).toInt().coerceAtLeast(1)
-            val corners = intArrayOf(
-                b.getPixel(dx, dy), b.getPixel(b.width - 1 - dx, dy),
-                b.getPixel(dx, b.height - 1 - dy), b.getPixel(b.width - 1 - dx, b.height - 1 - dy)
-            )
-            fun dark(c: Int) = Color.alpha(c) < 24 ||
-                (Color.red(c) < 26 && Color.green(c) < 26 && Color.blue(c) < 26)
-            corners.all { dark(it) } && !dark(b.getPixel(b.width / 2, b.height / 2))
+            var bad = 0
+            val n = 7
+            for (iy in 0 until n) {
+                val ya = iy * (a.height - 1) / (n - 1)
+                val yb = iy * (b.height - 1) / (n - 1)
+                for (ix in 0 until n) {
+                    val xa = ix * (a.width - 1) / (n - 1)
+                    val xb = ix * (b.width - 1) / (n - 1)
+                    val ca = a.getPixel(xa, ya)
+                    val cb = b.getPixel(xb, yb)
+                    val d = abs(Color.red(ca) - Color.red(cb)) +
+                        abs(Color.green(ca) - Color.green(cb)) +
+                        abs(Color.blue(ca) - Color.blue(cb)) +
+                        abs(Color.alpha(ca) - Color.alpha(cb))
+                    if (d > 48) bad++
+                }
+            }
+            bad <= 4
         }
     } catch (t: Throwable) { false }
 
@@ -2170,14 +2213,21 @@ class NotifListener : NotificationListenerService() {
         // 2) Extras con nombre de imagen/media que algunas apps o la propia ROM añaden.
         if (bmp == null) bmp = mediaBitmapFromMessages(n)
         if (bmp == null) bmp = mediaBitmapFromExtras(ex)
-        // 3) Respaldo del icono grande. Solo si el aviso habla de multimedia y la imagen NO parece un avatar
-        //    circular. Antes se aceptaba siempre y el historial se llenaba de fotos de perfil; después se
-        //    rechazaba siempre y las apps que sí mandan la foto ahí se quedaban sin imagen. Esto busca el punto
-        //    medio: foto real sí, avatar circular no.
+        if (bmp == null) bmp = mediaBitmapFromWearable(n)
+        // 3) Respaldo del icono grande. WhatsApp/HyperOS ponen ahí la foto o el sticker real y el avatar
+        //    del contacto en sender_person. Si el largeIcon coincide con el avatar, se descarta; si es
+        //    distinto (o no hay avatar), se usa. Antes se rechazaba por forma y se perdían fotos reales.
+        var fromLarge = false
         if (bmp == null && imgUri == null) {
             val large = bitmapExtra(ex, Notification.EXTRA_LARGE_ICON)
                 ?: bitmapExtra(ex, Notification.EXTRA_LARGE_ICON_BIG)
-            if (large != null && (stickerMime || hint) && !looksLikeAvatar(large)) bmp = large
+            if (large != null && (stickerMime || hint)) {
+                val avatar = try { senderAvatar(n) } catch (t: Throwable) { null }
+                if (avatar == null || !sameImage(large, avatar)) {
+                    bmp = large
+                    fromLarge = true
+                }
+            }
         }
 
         var kind = when {
@@ -2185,6 +2235,8 @@ class NotifListener : NotificationListenerService() {
             stickerMime -> "Sticker"
             else -> "Imagen"
         }
+        // El texto ya decía «Foto»/«Sticker»: conservar ese tipo para que el historial y el recorte sean correctos.
+        if (fromLarge && hintKind.isNotEmpty()) kind = hintKind
         // Tipo del adjunto por su MIME (SIN abrir la URI: abrirla bloquea el hilo y congelaba la isla).
         if (kind.isEmpty()) kind = when {
             mime.startsWith("image/") -> if (stickerMime) "Sticker" else "Imagen"
