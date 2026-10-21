@@ -88,6 +88,8 @@ class NotifListener : NotificationListenerService() {
     }
     private val mediaTried = java.util.Collections.newSetFromMap(java.util.concurrent.ConcurrentHashMap<String, Boolean>())
     private val mediaFailed = java.util.Collections.newSetFromMap(java.util.concurrent.ConcurrentHashMap<String, Boolean>())
+    /** Avisos a los que se les está dando unos segundos para que la app adjunte la foto/sticker. */
+    private val mediaRetry = java.util.Collections.newSetFromMap(java.util.concurrent.ConcurrentHashMap<String, Boolean>())
     private var actionsRow: LinearLayout? = null
     private var detail = false
 
@@ -437,9 +439,16 @@ class NotifListener : NotificationListenerService() {
             attachUri != null -> "Imagen"
             else -> ""
         }
+        // Si el aviso habla de una foto/sticker pero todavía no trae la imagen, se le da un margen antes de
+        // quitarlo del sistema. WhatsApp y otras apps publican el texto primero y actualizan la imagen después;
+        // si se cancela el aviso en ese instante, la actualización (y el permiso de la URI) se pierde.
+        val wantsBitmap = attachKind.startsWith("Foto") || attachKind.startsWith("Sticker") ||
+            attachKind.startsWith("Imagen") || attachKind.startsWith("GIF")
+        val mediaHold = if (mediaBmp == null && wantsBitmap) 2_500L else 0L
         // Diagnóstico para Puente → Solo la isla: si el aviso habla de foto/sticker pero no se encontró
         // ninguna imagen, se anotan los extras que trae para poder afinar la detección.
         if (mediaBmp == null && attachUri == null && looksLikeMedia(n)) noteMediaMiss(sbn, n)
+        else if (mediaBmp != null && looksLikeMedia(n)) noteMediaFound(sbn, mediaBmp, mediaKind)
 
         // 1) La isla REGISTRA todo en el historial, por aplicación, con el texto COMPLETO.
         //    Se guardan también los avisos «en curso» (música, descargas, navegación…): así el historial ve
@@ -508,7 +517,7 @@ class NotifListener : NotificationListenerService() {
             sig = "${sbn.key}|$title|$text", user = sbn.user, userId = uid,
             label = tag?.first, accentOverride = tag?.second,
             mediaUri = attachUri, mediaKind = attachKind,
-            systemKey = if (why == null) sbn.key else "")
+            systemKey = if (why == null) sbn.key else "", holdSystemMs = mediaHold)
     }
 
     /** La notificación se canceló (la leíste, la deslizaste o la app la retiró). Lo que cancela la propia isla no cuenta. */
@@ -528,9 +537,31 @@ class NotifListener : NotificationListenerService() {
         main.post { markRead(pk, key, minAge = 1_500, user = ru) }
     }
 
+    /**
+     * Revisa el aviso que sigue activo en el sistema por si ya trae la foto/sticker. Algunas apps no mandan
+     * el adjunto en el primer aviso, sino en una actualización; si la isla lo quitaba antes, la imagen se
+     * perdía. Solo se vuelve a procesar cuando de verdad hay imagen, para no duplicar tarjetas ni historial.
+     */
+    private fun retryMedia(key: String, attempt: Int) {
+        try {
+            val active = activeNotifications?.firstOrNull { it.key == key }
+            if (active != null) {
+                val (bmp, _) = try { extractMedia(active.notification) } catch (t: Throwable) { Pair(null, "") }
+                val uri = if (bmp == null) try { mediaUri(active.notification) } catch (t: Throwable) { null } else null
+                if (bmp != null || uri != null) {
+                    onNotificationPosted(active)
+                    return
+                }
+            }
+        } catch (t: Throwable) {}
+        if (attempt < 3) main.postDelayed({ retryMedia(key, attempt + 1) }, 600L)
+        else mediaRetry.remove(key)
+    }
+
     /** Quita un aviso del sistema recordando su clave: así su callback de borrado no se confunde con «ya leído». */
     private fun cancelOwn(key: String) {
         if (key.isEmpty()) return
+        mediaRetry.remove(key)
         val now = System.currentTimeMillis()
         selfCanceled[key] = now
         if (selfCanceled.size > 40) selfCanceled.entries.removeAll { now - it.value > 30_000L }
@@ -658,6 +689,19 @@ class NotifListener : NotificationListenerService() {
                 "$k=$d"
             } catch (t: Throwable) { "$k=?" }
         }
+
+    /** Deja constancia en Puente de que la imagen sí se extrajo (tipo y tamaño), para comparar con el fallo. */
+    private fun noteMediaFound(sbn: StatusBarNotification, bmp: Bitmap, kind: String) {
+        try {
+            val t = java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.getDefault()).format(java.util.Date())
+            val line = "$t ${sbn.packageName} → imagen $kind (${bmp.width}x${bmp.height})"
+            synchronized(diagLines) {
+                diagLines.add(line)
+                while (diagLines.size > 6) diagLines.removeAt(0)
+                Prefs.setNotifDiag(this, diagLines.joinToString("\n"))
+            }
+        } catch (t: Throwable) {}
+    }
 
     /** Anota en el diagnóstico qué extras trae un aviso con foto/sticker del que no se pudo sacar la imagen. */
     private fun noteMediaMiss(sbn: StatusBarNotification, n: Notification) {
@@ -1297,10 +1341,12 @@ class NotifListener : NotificationListenerService() {
         actionsRow = acts
         val col = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            addView(app)
-            addView(title)
-            addView(body)
-            addView(dImg, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, px(130)).apply { topMargin = px(8) })
+            addView(app, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
+            addView(title, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
+            addView(body, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
+            // La imagen grande del detalle no crece con el mensaje: un alto fijo evita que la tarjeta se
+            // convierta en un cuadrado. El texto largo se lee desplazándolo dentro de su propia caja.
+            addView(dImg, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, detailImageHeight()).apply { topMargin = px(8) })
             addView(acts, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { topMargin = px(10) })
         }
         val cnt = TextView(this).apply {
@@ -1375,6 +1421,7 @@ class NotifListener : NotificationListenerService() {
     /** Píldora de acción con color propio (verde contestar, rojo colgar, azul Wi-Fi…). */
     private fun chip(text: String, color: Int, filled: Boolean, s: IslandStyle, onClick: () -> Unit) = TextView(this).apply {
         this.text = text; gravity = Gravity.CENTER; textSize = 12.5f
+        maxLines = 1; ellipsize = TextUtils.TruncateAt.END
         setTypeface(typeface, Typeface.BOLD)
         val base = if (color != 0) color else Glass.ACCENT
         setTextColor(if (filled) 0xFF10131A.toInt() else if (color != 0) base else s.textColor)
@@ -1435,9 +1482,23 @@ class NotifListener : NotificationListenerService() {
 
     private fun idleWidth(): Int = px(Prefs.idleWidthDp(this))
 
+    /**
+     * Margen lateral de la tarjeta. Aunque el ajuste esté en 0, se respeta un mínimo de 12 dp: una tarjeta
+     * expandida que toca los bordes deja de parecer una notificación y se convierte en un cuadrado enorme.
+     */
+    private fun cardMarginPx(): Int = maxOf(px(Prefs.sideMarginDp(this)), px(12))
+
     private fun expandedWidth(): Int =
-        minOf(resources.displayMetrics.widthPixels - px(2 * Prefs.sideMarginDp(this)),
+        minOf(resources.displayMetrics.widthPixels - 2 * cardMarginPx(),
             px(Prefs.expandedWidthDp(this).let { if (it > 0) it else style.expandedWidthDp }))
+
+    /** Alto de la caja de texto en el detalle: unas 4 líneas; lo demás se desplaza dentro, no estira la tarjeta. */
+    private fun detailBodyHeight(): Int =
+        minOf(px(92), (resources.displayMetrics.heightPixels * 0.14f).toInt()).coerceAtLeast(px(64))
+
+    /** La foto grande del detalle también se limita según el alto real de la pantalla. */
+    private fun detailImageHeight(): Int =
+        minOf(px(80), (resources.displayMetrics.heightPixels * 0.10f).toInt()).coerceAtLeast(px(56))
 
     /**
      * Deja el ancho y el desplazamiento dentro de los márgenes de la pantalla. La ventana va centrada
@@ -1446,7 +1507,7 @@ class NotifListener : NotificationListenerService() {
      */
     private fun clampParams(p: WindowManager.LayoutParams) {
         val dm = resources.displayMetrics
-        val margin = px(Prefs.sideMarginDp(this)).coerceAtLeast(px(4))
+        val margin = cardMarginPx()
         val maxW = (dm.widthPixels - 2 * margin).coerceAtLeast(px(80))
         if (p.width > maxW) p.width = maxW
         if (p.width < px(40)) p.width = px(40)
@@ -1516,7 +1577,8 @@ class NotifListener : NotificationListenerService() {
         user: android.os.UserHandle? = null, userId: Int = -1, actions: List<CardAction> = emptyList(),
         mediaUri: String? = null,  // imagen del adjunto por URI: se carga fuera del hilo principal
         mediaKind: String = "",    // tipo del adjunto (Imagen, Sticker…) para la vista previa
-        systemKey: String = ""     // clave del aviso del sistema que hay que quitar al mostrarlo ("" = ninguno)
+        systemKey: String = "",    // clave del aviso del sistema que hay que quitar al mostrarlo ("" = ninguno)
+        holdSystemMs: Long = 0L    // espera antes de quitar el aviso del sistema (para que llegue la imagen)
     ) {
         main.post {
             if (!::wm.isInitialized || !Settings.canDrawOverlays(this)) return@post
@@ -1586,7 +1648,16 @@ class NotifListener : NotificationListenerService() {
             }
             // Solo se retira el aviso del sistema cuando la isla ya está en pantalla: si el addView falla,
             // la notificación original se queda y el usuario no pierde el aviso.
-            if (systemKey.isNotEmpty()) cancelOwn(systemKey)
+            if (systemKey.isNotEmpty()) {
+                if (holdSystemMs > 0) {
+                    // Se le da tiempo a la app a publicar la imagen y a que el historial abra su URI.
+                    val k = systemKey
+                    main.postDelayed({ cancelOwn(k) }, holdSystemMs)
+                    if (mediaRetry.add(k)) main.postDelayed({ retryMedia(k, 0) }, 550L)
+                } else {
+                    cancelOwn(systemKey)
+                }
+            }
             if (autoHide) main.postDelayed(hideTask, Prefs.durationMs(this))
             if (Prefs.vibrate(this)) buzz()
         }
@@ -1820,7 +1891,17 @@ class NotifListener : NotificationListenerService() {
             syncMedia(cur)      // vuelve la miniatura; la imagen grande se oculta
         } else detailImg?.visibility = View.GONE
         actionsRow?.visibility = if (cur != null && cur.actions.isNotEmpty()) View.VISIBLE else View.GONE
-        bodyView?.maxLines = 1
+        bodyView?.let { b ->
+            b.maxLines = 1
+            b.ellipsize = TextUtils.TruncateAt.END
+            b.movementMethod = null
+            b.isVerticalScrollBarEnabled = false
+            b.scrollTo(0, 0)
+            (b.layoutParams as? LinearLayout.LayoutParams)?.let { p ->
+                p.height = LinearLayout.LayoutParams.WRAP_CONTENT
+                b.layoutParams = p
+            }
+        }
         appView?.visibility = if (style.showAppName) View.VISIBLE else View.GONE
         cards.getOrNull(cardIndex)?.let {
             bodyView?.text = it.body
@@ -1901,16 +1982,46 @@ class NotifListener : NotificationListenerService() {
 
     private fun enterDetail() {
         val c = cards.getOrNull(cardIndex) ?: return
-        if (detail) return
+        if (detail || !expanded) return
         detail = true
         main.removeCallbacks(hideTask)
-        bodyView?.maxLines = 8
-        bodyView?.text = c.detail ?: c.body
+        // El detalle se mide siempre con el ancho final de la tarjeta. Si se entra mientras la isla aún se
+        // está abriendo, medir con el ancho de la píldora hacía que el texto se partiera en muchísimas líneas
+        // y la tarjeta creciera como un cuadrado enorme.
+        lp?.let { p ->
+            val w = expandedWidth()
+            if (p.width != w) {
+                p.width = w
+                clampParams(p)
+                upd(island, p)
+            }
+        }
+        bodyView?.let { b ->
+            b.maxLines = Int.MAX_VALUE
+            b.ellipsize = null
+            b.movementMethod = android.text.method.ScrollingMovementMethod()
+            b.isVerticalScrollBarEnabled = true
+            b.overScrollMode = View.OVER_SCROLL_IF_CONTENT_SCROLLS
+            b.scrollTo(0, 0)
+            val height = detailBodyHeight()
+            (b.layoutParams as? LinearLayout.LayoutParams)?.let { p ->
+                p.height = height
+                b.layoutParams = p
+            } ?: run {
+                b.layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, height)
+            }
+            b.text = c.detail ?: c.body
+        }
         appView?.visibility = View.VISIBLE
         appView?.text = nameOf(c) + if (c.count > 1) " · ${c.count} notificaciones" else ""
         syncMedia(c)
         rebuildActions(c)
         actionsRow?.visibility = View.VISIBLE
+        // Si se entra en el detalle mientras la isla aún se está abriendo, se cancela esa animación:
+        // el contenido debe quedar visible al 100 %, no a medio fundir.
+        setContentAlpha(1f)
+        iconView?.scaleX = 1f; iconView?.scaleY = 1f
+        textCol?.translationX = 0f
         animateDetail(true)
     }
 
@@ -1924,10 +2035,20 @@ class NotifListener : NotificationListenerService() {
     private fun animateDetail(open: Boolean) {
         val row = island ?: return
         val params = lp ?: return
-        row.measure(View.MeasureSpec.makeMeasureSpec(params.width, View.MeasureSpec.EXACTLY),
+        // Medir con el ancho definitivo (no con el de la píldora) y limitar el alto evita el «cuadrado»
+        // que aparecía al abrir el detalle o al mostrar un mensaje largo.
+        val w = expandedWidth()
+        if (params.width != w) {
+            params.width = w
+            clampParams(params)
+            if (attached) upd(row, params)
+        }
+        row.measure(View.MeasureSpec.makeMeasureSpec(w, View.MeasureSpec.EXACTLY),
             View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED))
         val compact = px(maxOf(style.iconDp + 2 * style.padV, 64))
-        val target = if (open) maxOf(row.measuredHeight, compact) else compact
+        val maxH = minOf((resources.displayMetrics.heightPixels * 0.55f).toInt(), px(420))
+            .coerceAtLeast(compact)
+        val target = if (open) minOf(maxOf(row.measuredHeight, compact), maxH) else compact
         val from = if (row.height > 0) row.height else compact
         anim?.cancel()
         val a = ValueAnimator.ofFloat(0f, 1f)
@@ -2218,7 +2339,7 @@ class NotifListener : NotificationListenerService() {
         //    del contacto en sender_person. Si el largeIcon coincide con el avatar, se descarta; si es
         //    distinto (o no hay avatar), se usa. Antes se rechazaba por forma y se perdían fotos reales.
         var fromLarge = false
-        if (bmp == null && imgUri == null) {
+        if (bmp == null) {
             val large = bitmapExtra(ex, Notification.EXTRA_LARGE_ICON)
                 ?: bitmapExtra(ex, Notification.EXTRA_LARGE_ICON_BIG)
             if (large != null && (stickerMime || hint)) {
