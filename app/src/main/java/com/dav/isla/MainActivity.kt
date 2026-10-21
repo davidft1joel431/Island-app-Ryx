@@ -1216,7 +1216,13 @@ class MainActivity : Activity() {
     private fun appIcon(key: String): Drawable? = iconCache.getOrPut(key) {
         try {
             val (pkg, uid) = Clones.splitKey(key)
-            val base = packageManager.getApplicationIcon(pkg)
+            // En un clon se pide el icono a SU espacio (LauncherApps); si no, se usa el del principal.
+            val base = if (Clones.isClone(uid)) {
+                try {
+                    val la = getSystemService(LAUNCHER_APPS_SERVICE) as android.content.pm.LauncherApps
+                    la.getApplicationInfo(pkg, 0, Clones.handle(uid)).loadIcon(packageManager)
+                } catch (e: Exception) { packageManager.getApplicationIcon(pkg) }
+            } else packageManager.getApplicationIcon(pkg)
             // La copia clonada lleva la insignia que le pone la ROM (nombre/icono), para distinguirla del original
             if (Clones.isClone(uid)) packageManager.getUserBadgedIcon(base, Clones.handle(uid)) else base
         } catch (e: Exception) { null }
@@ -1681,9 +1687,11 @@ class MainActivity : Activity() {
         return sb.toString()
     }
 
-    private fun appNameOf(pkg: String): String = try {
-        packageManager.getApplicationLabel(packageManager.getApplicationInfo(pkg, 0)).toString()
-    } catch (e: Exception) { pkg }
+    /** Nombre de una app del historial. La clave puede ser «pkg@usuario» para un clon. */
+    private fun appNameOf(key: String): String {
+        val (pkg, uid) = Clones.splitKey(key)
+        return Clones.label(this, pkg, uid)
+    }
 
     private fun esc(s: String): String =
         s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
@@ -1779,8 +1787,9 @@ class MainActivity : Activity() {
 
     /** Grupo de historial de una aplicación (con su icono), desplegable en el sitio. */
     private fun appHistoryGroup(p: LinearLayout, pkg: String, items: List<Prefs.HistItem>) {
-        val pm = packageManager
-        val appName = try { pm.getApplicationLabel(pm.getApplicationInfo(pkg, 0)).toString() } catch (e: Exception) { pkg }
+        // pkg puede ser una clave de clon («com.whatsapp@999»): appIcon ya la entiende y el nombre
+        // sale con la insignia de la ROM («WhatsApp · clon»).
+        val appName = appNameOf(pkg)
         collapsibleCard(p, "h_$pkg", true, head = { h ->
             h.addView(ShapedImageView(this).apply {
                 shape = Prefs.iconShape(this@MainActivity); setImageDrawable(appIcon(pkg)); scaleType = ImageView.ScaleType.CENTER_CROP
