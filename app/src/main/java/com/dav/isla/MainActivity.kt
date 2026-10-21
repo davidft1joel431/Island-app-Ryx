@@ -1713,7 +1713,7 @@ class MainActivity : Activity() {
             // imágenes de 2000 px en filas del historial (con 25 filas se agotaba la memoria).
             if (bmp.width > maxW || bmp.height > maxH) {
                 val f = minOf(maxW.toFloat() / bmp.width, maxH.toFloat() / bmp.height)
-                Bitmap.createScaledBitmap(bmp, (bmp.width * f).toInt().coerceAtLeast(1),
+                android.graphics.Bitmap.createScaledBitmap(bmp, (bmp.width * f).toInt().coerceAtLeast(1),
                     (bmp.height * f).toInt().coerceAtLeast(1), true)
             } else bmp
         } catch (e: Throwable) { null }
