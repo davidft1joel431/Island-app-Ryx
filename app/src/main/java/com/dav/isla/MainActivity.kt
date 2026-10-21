@@ -1701,14 +1701,23 @@ class MainActivity : Activity() {
      * dimensiones y se calcula `inSampleSize`, en vez de cargar el JPEG completo (varias veces la pantalla).
      * Llamar fuera del hilo principal.
      */
-    private fun decodeSampled(path: String, maxW: Int, maxH: Int): android.graphics.Bitmap? = try {
-        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-        BitmapFactory.decodeFile(path, bounds)
-        var sample = 1
-        while (bounds.outWidth / (sample * 2) >= maxW && bounds.outHeight / (sample * 2) >= maxH) sample *= 2
-        val opts = BitmapFactory.Options().apply { inSampleSize = sample }
-        BitmapFactory.decodeFile(path, opts)
-    } catch (e: Throwable) { null }
+    private fun decodeSampled(path: String, maxW: Int, maxH: Int): android.graphics.Bitmap? {
+        return try {
+            val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+            BitmapFactory.decodeFile(path, bounds)
+            var sample = 1
+            while (bounds.outWidth / (sample * 2) >= maxW && bounds.outHeight / (sample * 2) >= maxH) sample *= 2
+            val opts = BitmapFactory.Options().apply { inSampleSize = sample }
+            val bmp = BitmapFactory.decodeFile(path, opts) ?: return null
+            // inSampleSize solo divide entre potencias de 2: se ajusta al tamaño EXACTO para no retener
+            // imágenes de 2000 px en filas del historial (con 25 filas se agotaba la memoria).
+            if (bmp.width > maxW || bmp.height > maxH) {
+                val f = minOf(maxW.toFloat() / bmp.width, maxH.toFloat() / bmp.height)
+                Bitmap.createScaledBitmap(bmp, (bmp.width * f).toInt().coerceAtLeast(1),
+                    (bmp.height * f).toInt().coerceAtLeast(1), true)
+            } else bmp
+        } catch (e: Throwable) { null }
+    }
 
     /** Encabezado de sección del historial, con icono, título y número de avisos. */
     private fun historyHeader(p: LinearLayout, iconName: String, color: Int, title: String, count: Int) {
@@ -1810,24 +1819,39 @@ class MainActivity : Activity() {
         if (h2.img.isNotEmpty()) {
             val f = java.io.File(Prefs.histDir(this), h2.img)
             if (f.exists()) {
-                val wPx = px(if (h2.kind == "Sticker") 110 else 190)
-                val hPx = px(if (h2.kind == "Sticker") 110 else 130)
+                val sticker = h2.kind.contains("Sticker", ignoreCase = true)
+                // En el historial la imagen se ve GRANDE (todo el ancho de la fila), no como miniatura:
+                // así se puede mirar el sticker o la foto sin abrirla. Se descodifica al tamaño real de la vista.
+                val maxW = (resources.displayMetrics.widthPixels - indent - px(16)).coerceAtLeast(px(160))
+                val maxH = px(300)
                 val iv = ImageView(this).apply {
-                    scaleType = ImageView.ScaleType.CENTER_CROP
+                    scaleType = ImageView.ScaleType.FIT_CENTER
+                    adjustViewBounds = true
+                    minimumHeight = px(140)
+                    maxHeight = maxH
+                    setPadding(if (sticker) px(12) else 0, if (sticker) px(12) else 0,
+                        if (sticker) px(12) else 0, if (sticker) px(12) else 0)
                     // Marcador mientras se descodifica: la fila aparece al instante y la imagen llega después.
-                    background = Glass.tile(this@MainActivity, Glass.SURFACE_TOP, 14f)
+                    background = Glass.tile(this@MainActivity, Glass.SURFACE_TOP, 16f)
                     outlineProvider = object : ViewOutlineProvider() {
-                        override fun getOutline(view: View, o: Outline) { o.setRoundRect(0, 0, view.width, view.height, px(14).toFloat()) }
+                        override fun getOutline(view: View, o: Outline) { o.setRoundRect(0, 0, view.width, view.height, px(16).toFloat()) }
                     }
                     clipToOutline = true
+                    contentDescription = if (sticker) "Sticker" else "Imagen"
                     setOnClickListener { showImage(f.absolutePath) }
                 }
-                r.addView(iv, LinearLayout.LayoutParams(wPx, hPx).apply { topMargin = px(6) })
+                r.addView(iv, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT).apply { topMargin = px(8) })
                 try {
                     imgWork.execute {
-                        val bmp = decodeSampled(f.absolutePath, wPx, hPx)
+                        val bmp = decodeSampled(f.absolutePath, maxW, maxH)
                         if (bmp != null) runOnUiThread {
-                            if (!isFinishing && !isDestroyed) { iv.setImageBitmap(bmp); iv.background = null }
+                            if (!isFinishing && !isDestroyed) {
+                                iv.setImageBitmap(bmp)
+                                if (!sticker) iv.background = null
+                                iv.alpha = 0f
+                                iv.animate().alpha(1f).setDuration(180).start()
+                            }
                         }
                     }
                 } catch (e: Throwable) {}
@@ -1864,14 +1888,20 @@ class MainActivity : Activity() {
                 val bmp = decodeSampled(path, maxW, maxH)
                 runOnUiThread {
                     if (bmp == null || isFinishing || isDestroyed) return@runOnUiThread
-                    val dlg = Dialog(this)
-                    dlg.requestWindowFeature(Window.FEATURE_NO_TITLE)
+                    // Visor a pantalla completa: la imagen ocupa todo el alto/ancho disponible y se cierra tocando.
+                    val dlg = Dialog(this, android.R.style.Theme_Black_NoTitleBar_Fullscreen)
                     dlg.setContentView(ImageView(this).apply {
-                        setImageBitmap(bmp); adjustViewBounds = true; setPadding(px(8), px(8), px(8), px(8))
-                        background = Glass.card(this@MainActivity, 24f, true)
+                        setImageBitmap(bmp)
+                        scaleType = ImageView.ScaleType.FIT_CENTER
+                        setBackgroundColor(0xFF000000.toInt())
+                        contentDescription = "Imagen ampliada"
                         setOnClickListener { dlg.dismiss() }
                     })
-                    dlg.window?.apply { setBackgroundDrawable(ColorDrawable(0)); setDimAmount(0.7f) }
+                    dlg.window?.apply {
+                        setBackgroundDrawable(ColorDrawable(0xFF000000.toInt()))
+                        setLayout(android.view.WindowManager.LayoutParams.MATCH_PARENT,
+                            android.view.WindowManager.LayoutParams.MATCH_PARENT)
+                    }
                     dlg.show()
                 }
             }
