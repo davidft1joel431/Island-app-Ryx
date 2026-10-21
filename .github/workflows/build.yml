@@ -37,7 +37,7 @@ jobs:
           tag_name: v${{ steps.ver.outputs.v }}
           name: Ryx Island v${{ steps.ver.outputs.v }}
           body: |
-            - Corrección de las notificaciones mejoradas: ahora sí se detectan las fotos y stickers de WhatsApp (incluido el clon). Se leen también el icono grande del aviso y los extras como Icon (Android 12+), y cada extra se procesa por separado: antes un extra raro dejaba la tarjeta sin imagen aunque el aviso sí la trajera. Las imágenes de apps clonadas se abren además con el espacio de usuario de la ROM.
+            - Corrección de las notificaciones mejoradas: ahora sí se detectan las fotos y stickers de WhatsApp (incluido el clon). Se leen también el icono grande del aviso y los extras como Icon (Android 12+), y cada extra se procesa por separado: antes un extra raro dejaba la tarjeta sin imagen aunque el aviso sí la trajera.
             - Isla más limpia y tipo HyperOS: los botones de acción ya no se estiran como barras enormes (ahora son iconos compactos a la derecha), el borde con el color de la app es mucho más fino y suave, y la tarjeta abierta tiene un mínimo de opacidad para que no se cuele el texto del aviso del sistema que queda detrás.
             - NOTIFICACIONES MEJORADAS: la isla ahora entiende las fotos y los stickers que las apps envían en el aviso (WhatsApp, Telegram, Instagram, Gmail…), no solo el texto. La imagen se ve como miniatura dentro de la isla desplegada y en grande al abrir el detalle.
             - La isla lee el adjunto por todas las vías estándar de Android: imagen grande del aviso, icono grande de respaldo y los mensajes con foto de las conversaciones. Si el último mensaje es texto pero el anterior traía una foto o un sticker, ahora sí se encuentra la imagen (antes se perdía).

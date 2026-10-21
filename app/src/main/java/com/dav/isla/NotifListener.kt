@@ -443,7 +443,7 @@ class NotifListener : NotificationListenerService() {
             histExec.execute {      // disco y copia de seguridad fuera del hilo principal: la isla sale antes
                 try {
                     // Si la imagen venía por URI, se abre AQUÍ (hilo aparte). Nunca en el hilo principal.
-                    val bmp = mediaBmp ?: hUri?.let { loadUriMedia(it, sbn.user) }
+                    val bmp = mediaBmp ?: hUri?.let { loadUriMedia(it) }
                     Prefs.addHist(this, hp, ht, hx, saveBitmap(bmp, attachKind), attachKind, win)
                     Backup.maybeUpload(this)     // copia a la carpeta elegida (Drive u otra), si hay
                     Backup.autoLocal(this)       // copia a la carpeta PROPIA de la app, sola y sin tocar nada
@@ -1813,7 +1813,7 @@ class NotifListener : NotificationListenerService() {
                 p.setPadding(pad, pad, pad, pad)
                 p.background = if (sticker || bmp == null) mediaTile(12f) else null
                 if (bmp != null) paintMedia(p, bmp, uri ?: c.key)
-                else { p.setImageDrawable(null); uri?.let { loadMedia(c, it) } }
+                else { p.setImageDrawable(null); uri?.let { loadMedia(it) } }
             }
         }
 
@@ -1826,17 +1826,17 @@ class NotifListener : NotificationListenerService() {
                 iv.setPadding(pad, pad, pad, pad)
                 iv.background = if (sticker || bmp == null) mediaTile(14f) else null
                 if (bmp != null) paintMedia(iv, bmp, uri ?: c.key)
-                else { iv.setImageDrawable(null); uri?.let { loadMedia(c, it) } }
+                else { iv.setImageDrawable(null); uri?.let { loadMedia(it) } }
             }
         }
     }
 
     /** Descarga una imagen por URI una sola vez y refresca la tarjeta que la esté mostrando. */
-    private fun loadMedia(c: Card, uri: String) {
+    private fun loadMedia(uri: String) {
         if (mediaCache.get(uri) != null || mediaFailed.contains(uri)) return
         if (!mediaTried.add(uri)) return
         Thread {
-            val bm = loadUriMedia(uri, c.user)
+            val bm = loadUriMedia(uri)
             if (bm != null) mediaCache.put(uri, bm) else mediaFailed.add(uri)
             main.post {
                 val cur = cards.getOrNull(cardIndex)
@@ -2051,23 +2051,18 @@ class NotifListener : NotificationListenerService() {
      * Abre la URI de una imagen y la convierte en bitmap. SIEMPRE en un hilo aparte (hace E/S y decodifica).
      * Primero se leen las dimensiones y se reduce al decodificar: una foto de cámara ya no puede agotar la memoria.
      */
-    private fun loadUriMedia(uri: String, user: android.os.UserHandle? = null): Bitmap? {
-        val u = android.net.Uri.parse(uri)
-        fun decodeFrom(cr: android.content.ContentResolver): Bitmap? {
-            val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-            cr.openInputStream(u)?.use { BitmapFactory.decodeStream(it, null, bounds) } ?: return null
-            if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return null
-            var sample = 1
-            while (bounds.outWidth / (sample * 2) >= 960 && bounds.outHeight / (sample * 2) >= 960) sample *= 2
-            val opts = BitmapFactory.Options().apply { inSampleSize = sample }
-            val b = cr.openInputStream(u)?.use { BitmapFactory.decodeStream(it, null, opts) } ?: return null
-            return scaleDown(b, 960)
-        }
+    private fun loadUriMedia(uri: String): Bitmap? {
         return try {
-            decodeFrom(contentResolver) ?: if (user == null) null else try {
-                // Apps clonadas: su URI pertenece al otro espacio de usuario de la ROM.
-                decodeFrom(createContextAsUser(user, 0).contentResolver)
-            } catch (t: Throwable) { null }
+            val u = android.net.Uri.parse(uri)
+            val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+            contentResolver.openInputStream(u)?.use { BitmapFactory.decodeStream(it, null, bounds) }
+            if (bounds.outWidth > 0 && bounds.outHeight > 0) {
+                var sample = 1
+                while (bounds.outWidth / (sample * 2) >= 960 && bounds.outHeight / (sample * 2) >= 960) sample *= 2
+                val opts = BitmapFactory.Options().apply { inSampleSize = sample }
+                val b = contentResolver.openInputStream(u)?.use { BitmapFactory.decodeStream(it, null, opts) }
+                b?.let { scaleDown(it, 960) }
+            } else null
         } catch (e: Throwable) { null }
     }
 
