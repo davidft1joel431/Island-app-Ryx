@@ -58,7 +58,9 @@ class NotifListener : NotificationListenerService() {
     private val main = Handler(Looper.getMainLooper())
     private val histExec = java.util.concurrent.Executors.newSingleThreadExecutor()
     /** Notificaciones que ya leíste (firma → hora): si la app las reenvía iguales, no vuelven a la isla. */
-    private val readSigs = HashMap<String, Long>()
+    private val readSigs = java.util.concurrent.ConcurrentHashMap<String, Long>()
+    /** Claves que quitó la propia isla del panel (blockSystem), para no confundirlas con «ya leído». */
+    private val selfCanceled = java.util.concurrent.ConcurrentHashMap<String, Long>()
     private val hideTask = Runnable { collapse() }
     private lateinit var wm: WindowManager
     private var lp: WindowManager.LayoutParams? = null
@@ -180,10 +182,11 @@ class NotifListener : NotificationListenerService() {
                     val hide = hiddenNow()
                     if (hide && attached) removeNow()
                     else if (!hide && !attached && Prefs.permanent(this@NotifListener)) showIdle()
-                    // Respaldo: mientras estás dentro de una app, sus avisos que esperaban en la isla ya se leyeron
-                    if (cards.any { !it.ephemeral }) {
+                    // Respaldo: mientras estás dentro de una app, sus avisos que esperaban en la isla ya se leyeron.
+                    // Nunca con la isla desplegada: así una tarjeta recién llegada no se cierra sola al expandirse.
+                    if (!expanded && cards.any { !it.ephemeral }) {
                         val fg = usingNow()
-                        if (fg != null) readFront(fg, 1200)
+                        if (fg != null) readFront(fg, 2500)
                     }
                 }
             } catch (e: Exception) {}
@@ -346,7 +349,7 @@ class NotifListener : NotificationListenerService() {
             // era la notificación de la ROM que seguía apareciendo aunque el mensaje ya lo mostrara la isla.
             val su = if (sbn.userId >= 0) sbn.userId else myUser
             val why = keepReason(sbn, n, readingNow(sbn.packageName, su))
-            if (why == null) { try { cancelNotification(sbn.key) } catch (e: Exception) {} }
+            if (why == null) cancelOwn(sbn.key)
             noteDecision(sbn, su, true, why)
             return
         }
@@ -399,10 +402,12 @@ class NotifListener : NotificationListenerService() {
         if (words.isNotEmpty() && text == "Contenido oculto") full = text
         if (full == null) full = text
 
-        // Si ya lo leíste y la app lo reenvía igual (pasa al abrir el chat), no vuelve a la isla ni al historial
+        // Si ya lo leíste y la app lo reenvía igual (pasa al abrir el chat), no vuelve a la isla. Pero el
+        // HISTORIAL sí debe registrarlo: antes se descartaba aquí y los mensajes repetidos (p. ej. «3 mensajes
+        // nuevos» en un grupo) no se guardaban. Por eso el descarte se hace después de registrar.
         val nowMs = System.currentTimeMillis()
         readSigs.entries.removeAll { nowMs - it.value > 120_000L }
-        if (readSigs.containsKey("${sbn.key}|$title|$text")) return
+        val alreadyRead = readSigs.containsKey("${sbn.key}|$title|$text")
 
         val (mediaBmp, mediaKind) = extractMedia(n)
         // Si la imagen viene por URI (WhatsApp/Telegram la mandan así), se carga en SEGUNDO PLANO: abrir el
@@ -429,6 +434,7 @@ class NotifListener : NotificationListenerService() {
         }
 
         // 2) Filtros de la isla
+        if (alreadyRead) return                       // ya la leíste: queda en el historial, no vuelve a la isla
         if (!Prefs.islandOn(this)) return
         if (!callPrio && appKey(sbn.packageName, uid) in Prefs.blocked(this)) return
         if (!callPrio && hiddenNow()) return          // la notificación del sistema se queda intacta
@@ -479,17 +485,45 @@ class NotifListener : NotificationListenerService() {
 
     /** La notificación se canceló (la leíste, la deslizaste o la app la retiró). Lo que cancela la propia isla no cuenta. */
     override fun onNotificationRemoved(sbn: StatusBarNotification, rankingMap: NotificationListenerService.RankingMap?, reason: Int) {
+        // Si el aviso lo quitó la PROPIA isla (blockSystem), su callback de borrado no significa que ya lo hayas
+        // leído: en varias ROM (MIUI/HyperOS) llega con un motivo distinto de REASON_LISTENER_CANCEL y antes hacía
+        // que la tarjeta se marcara como leída y desapareciera justo al expandirse. Se ignora por clave.
+        if (wasSelfCanceled(sbn.key)) return
         if (reason == NotificationListenerService.REASON_LISTENER_CANCEL || reason == NotificationListenerService.REASON_LISTENER_CANCEL_ALL) return
         if (sbn.packageName == packageName) return
         // Se colgó o se rechazó la llamada: la tarjeta unificada se retira
         val cn = sbn.notification
         if (cn != null && (cn.category == "call" || cn.category == "missed_call")) main.post { dropKey("sys:call") }
         val pk = sbn.packageName; val key = sbn.key; val ru = norm(sbn.userId)
-        main.post { markRead(pk, key, user = ru) }
+        // Margen de 1,5 s: algunas apps quitan y vuelven a publicar la misma clave al actualizar. Sin este
+        // margen, ese borrado llegaba después del alta y la tarjeta recién mostrada se marcaba como leída.
+        main.post { markRead(pk, key, minAge = 1_500, user = ru) }
+    }
+
+    /** Quita un aviso del sistema recordando su clave: así su callback de borrado no se confunde con «ya leído». */
+    private fun cancelOwn(key: String) {
+        if (key.isEmpty()) return
+        val now = System.currentTimeMillis()
+        selfCanceled[key] = now
+        if (selfCanceled.size > 40) selfCanceled.entries.removeAll { now - it.value > 30_000L }
+        try { cancelNotification(key) } catch (e: Exception) {}
+    }
+
+    /** ¿Esa clave la quitó la isla? Se consume para que el mapa no crezca si la ROM no devuelve el callback. */
+    private fun wasSelfCanceled(key: String): Boolean {
+        val t = selfCanceled.remove(key) ?: return false
+        // El callback de nuestro propio cancel llega en milisegundos; pasado ese margen, un borrado es real.
+        return System.currentTimeMillis() - t < 5_000L
     }
 
     /** Lo llama accesibilidad cuando una app abre una ventana: si tenía avisos esperando en la isla, ya los estás viendo. */
-    fun onAppOpened(pkg: String) { main.post { readFront(pkg, 1200) } }
+    fun onAppOpened(pkg: String) {
+        main.post {
+            // Solo si de verdad estás dentro de esa app y la isla no está mostrando algo: algunas ROM avisan
+            // también de las ventanas emergentes de la notificación, y eso marcaba la tarjeta como leída al instante.
+            if (!expanded && usingNow() == pkg) readFront(pkg, 2000)
+        }
+    }
 
     /**
      * Ya lo leíste: la tarjeta sale de la isla y, si la app reenvía la misma, no vuelve.
@@ -1447,7 +1481,7 @@ class NotifListener : NotificationListenerService() {
             }
             // Solo se retira el aviso del sistema cuando la isla ya está en pantalla: si el addView falla,
             // la notificación original se queda y el usuario no pierde el aviso.
-            if (systemKey.isNotEmpty()) { try { cancelNotification(systemKey) } catch (e: Exception) {} }
+            if (systemKey.isNotEmpty()) cancelOwn(systemKey)
             if (autoHide) main.postDelayed(hideTask, Prefs.durationMs(this))
             if (Prefs.vibrate(this)) buzz()
         }
