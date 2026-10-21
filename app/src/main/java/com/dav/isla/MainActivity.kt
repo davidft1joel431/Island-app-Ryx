@@ -65,6 +65,9 @@ class MainActivity : Activity() {
     private var histBox: LinearLayout? = null
     private var pendingHtml = ""
     private var rootStatus = "Sin comprobar"
+    /** Hilos para descodificar miniaturas del historial fuera del hilo principal (2 bastan y no saturan). */
+    private val imgWork = java.util.concurrent.Executors.newFixedThreadPool(2)
+    private var htmlBuilding = false
     // Gestos: el índice se guarda en los ajustes, así que la lista NO cambia de tamaño (así los gestos ya elegidos
     // siguen funcionando). La opción «Burbuja» se retiró: su hueco queda como «Nada (sin acción)».
     private val actionNames = listOf("Nada", "Abrir app", "Ventana en formato libre", "Descartar tarjeta",
@@ -153,8 +156,9 @@ class MainActivity : Activity() {
         // Barra de navegación flotante (propia, separada de los bordes)
         tabBar = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
-            background = Glass.card(this@MainActivity, 28f, true)
-            setPadding(px(6), px(6), px(6), px(6))
+            background = Glass.card(this@MainActivity, 30f, true)
+            setPadding(px(7), px(7), px(7), px(7))
+            elevation = px(10).toFloat()
         }
         rootView.addView(tabBar, LinearLayout.LayoutParams(MATCH, WRAP).apply {
             setMargins(px(16), px(6), px(16), px(10))
@@ -466,6 +470,7 @@ class MainActivity : Activity() {
             Shizuku.removeBinderReceivedListener(binderListener)
             Shizuku.removeBinderDeadListener(deadListener)
         } catch (e: Throwable) {}
+        try { imgWork.shutdownNow() } catch (e: Throwable) {}
         super.onDestroy()
     }
 
@@ -477,7 +482,8 @@ class MainActivity : Activity() {
         val on = Prefs.islandOn(this) && Settings.canDrawOverlays(this)
         activePill.text = if (on) "● Activa" else "● Inactiva"
         activePill.setTextColor(col(if (on) R.color.green else R.color.red))
-        activePill.background = Glass.pill(this, if (on) 0x1F3DDC84 else 0x1FFF6B6B, 0, 14f)
+        activePill.background = Glass.pill(this, if (on) 0x243DDC84 else 0x24FF6B6B,
+            if (on) 0x663DDC84 else 0x66FF6B6B, 14f)
     }
 
     // ---------------- Navegación ----------------
@@ -580,8 +586,8 @@ class MainActivity : Activity() {
             val colr = if (sel) Glass.ACCENT else Glass.MUTED
             val b = LinearLayout(this).apply {
                 orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER
-                setPadding(0, px(7), 0, px(7))
-                background = Glass.ripple(this@MainActivity, Glass.pillCached(this@MainActivity, 0, 0, 22f), 22f)
+                setPadding(0, px(8), 0, px(7))
+                background = Glass.ripple(this@MainActivity, Glass.pillCached(this@MainActivity, 0, 0, 24f), 24f)
                 setOnClickListener {
                     performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
                     if (tab != i || subPage != null) { tab = i; subPage = null; render() }
@@ -589,13 +595,13 @@ class MainActivity : Activity() {
             }
             // Indicador tras el icono (como los menús modernos): solo el icono lleva la pastilla, la etiqueta queda debajo
             val ind = FrameLayout(this).apply {
-                if (sel) background = Glass.pillCached(this@MainActivity, Glass.accentA(0x2E), 0, 16f)
+                if (sel) background = Glass.pillCached(this@MainActivity, Glass.accentA(0x2E), Glass.accentA(0x4D), 16f)
             }
             ind.addView(icon(ic, 22, colr), FrameLayout.LayoutParams(px(22), px(22), Gravity.CENTER))
-            if (sel) { ind.scaleX = 0.9f; ind.alpha = 0.7f; ind.animate().scaleX(1f).alpha(1f).setDuration(200).start() }
-            b.addView(ind, LinearLayout.LayoutParams(px(56), px(30)))
-            b.addView(label(name, 11f, R.color.text, true).apply {
-                setTextColor(if (sel) Glass.TEXT else Glass.MUTED); gravity = Gravity.CENTER
+            if (sel) { ind.scaleX = 0.88f; ind.alpha = 0.6f; ind.animate().scaleX(1f).alpha(1f).setDuration(220).start() }
+            b.addView(ind, LinearLayout.LayoutParams(px(58), px(32)))
+            b.addView(label(name, 10.5f, R.color.text, true).apply {
+                setTextColor(if (sel) Glass.ACCENT else Glass.MUTED); gravity = Gravity.CENTER
             }, lp(3))
             tabBar.addView(b, LinearLayout.LayoutParams(0, WRAP, 1f).apply { marginStart = px(2); marginEnd = px(2) })
         }
@@ -634,27 +640,28 @@ class MainActivity : Activity() {
 
     private fun titled(p: LinearLayout, title: String, sub: String = ""): LinearLayout {
         val c = card()
-        val t = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(0, 0, 0, px(6)) }
-        t.addView(label(title, 17f, R.color.text, true).apply { letterSpacing = -0.01f })
-        if (sub.isNotEmpty()) t.addView(label(sub, 13f, R.color.muted).apply { setPadding(0, px(2), 0, 0) })
+        val t = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(0, 0, 0, px(8)) }
+        t.addView(label(title, 17.5f, R.color.text, true).apply { letterSpacing = -0.01f })
+        if (sub.isNotEmpty()) t.addView(label(sub, 13f, R.color.muted).apply { setPadding(0, px(3), 0, 0) })
         c.addView(t)
         p.addView(c, lp(12))
         return c
     }
 
-    /** Cabecera de pestaña: título grande con icono tonal del color de la sección, sin caja. */
+    /** Cabecera de pestaña: tarjeta con el tinte de la sección, icono elevado y título grande. */
     private fun pageHero(p: LinearLayout, iconName: String, color: Int, title: String, sub: String) {
         val row = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
-            setPadding(px(4), px(14), px(4), px(8))
+            background = Glass.hero(this@MainActivity, color, 26f)
+            setPadding(px(16), px(18), px(16), px(18))
         }
-        row.addView(tileIcon(iconName, Glass.withA(color, 0x2E), color),
-            LinearLayout.LayoutParams(px(48), px(48)).apply { marginEnd = px(14) })
+        row.addView(tileIcon(iconName, Glass.withA(color, 0x3A), color),
+            LinearLayout.LayoutParams(px(50), px(50)).apply { marginEnd = px(14) })
         val t = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         t.addView(label(title, 26f, R.color.text, true).apply { letterSpacing = -0.025f })
-        t.addView(label(sub, 13f, R.color.muted))
+        t.addView(label(sub, 13f, R.color.muted).apply { setPadding(0, px(2), 0, 0) })
         row.addView(t, LinearLayout.LayoutParams(0, WRAP, 1f))
-        p.addView(row, lp(4))
+        p.addView(row, lp(6))
     }
 
     /** Texto de registro en un recuadro oscuro y seleccionable. Solo se usa dentro de las hojas de detalle. */
@@ -830,19 +837,21 @@ class MainActivity : Activity() {
         val th = Glass.THEMES.firstOrNull { it.id == Prefs.appTheme(this) } ?: Glass.THEMES[0]
         val box = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            background = Glass.hero(this@MainActivity, if (on) Glass.ACCENT else 0xFFFF6B6B.toInt(), 28f)
+            background = Glass.hero(this@MainActivity, if (on) Glass.ACCENT else Glass.RED, 28f)
             setPadding(px(20), px(20), px(20), px(18))
+            elevation = px(6).toFloat()
         }
         val top = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
-        top.addView(tileIcon("bolt", Glass.accentA(0x2E), Glass.ACCENT),
-            LinearLayout.LayoutParams(px(52), px(52)).apply { marginEnd = px(14) })
+        top.addView(tileIcon("bolt", Glass.accentA(0x36), Glass.ACCENT),
+            LinearLayout.LayoutParams(px(54), px(54)).apply { marginEnd = px(14) })
         val t = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         t.addView(label(if (on) "Isla activa" else "Isla inactiva", 22f, R.color.text, true).apply { letterSpacing = -0.02f })
         t.addView(label("Estilo ${st.label}  ·  Tema ${th.label}", 13f, R.color.muted).apply { setPadding(0, px(2), 0, 0) })
         top.addView(t, LinearLayout.LayoutParams(0, WRAP, 1f))
         top.addView(label(if (on) "● En línea" else "● Detenida", 11.5f, if (on) R.color.green else R.color.red, true).apply {
             setPadding(px(10), px(5), px(10), px(5))
-            background = Glass.pill(this@MainActivity, if (on) 0x1F3DDC84 else 0x1FFF6B6B, 0, 12f)
+            background = Glass.pill(this@MainActivity, if (on) 0x243DDC84 else 0x24FF6B6B,
+                if (on) 0x663DDC84 else 0x66FF6B6B, 12f)
         })
         box.addView(top)
         val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
@@ -1137,8 +1146,9 @@ class MainActivity : Activity() {
         val cell = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER
             setPadding(px(8), px(12), px(8), px(10))
-            background = Glass.ripple(this@MainActivity, Glass.chip(this@MainActivity, on, 16f), 16f)
+            background = Glass.ripple(this@MainActivity, Glass.chip(this@MainActivity, on, 18f), 18f)
             setOnClickListener { Prefs.setStyle(this@MainActivity, sty.id); applyAll(); svc()?.showTest(); render() }
+            Glass.press(this, 0.97f)
         }
         val sw = View(this).apply {
             background = android.graphics.drawable.GradientDrawable(
@@ -1148,7 +1158,15 @@ class MainActivity : Activity() {
             }
         }
         cell.addView(sw, LinearLayout.LayoutParams(px(110), px(30)))
-        cell.addView(label(sty.label, 12f, R.color.text, true).apply { gravity = Gravity.CENTER }, lp(8))
+        val nameRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER }
+        if (on) {
+            nameRow.addView(View(this).apply { background = Glass.pill(this@MainActivity, Glass.ACCENT, 0, 4f) },
+                LinearLayout.LayoutParams(px(7), px(7)).apply { marginEnd = px(5) })
+        }
+        nameRow.addView(label(sty.label, 12f, R.color.text, true).apply {
+            gravity = Gravity.CENTER; setTextColor(if (on) Glass.ACCENT else Glass.TEXT)
+        })
+        cell.addView(nameRow, lp(8))
         return cell
     }
 
@@ -1565,17 +1583,31 @@ class MainActivity : Activity() {
 
     /** Descarga el historial (con el filtro puesto) como un .html autónomo y presentable. */
     private fun exportHtml() {
+        if (htmlBuilding) return
         val items = filteredHist()
         if (items.isEmpty()) { toast("No hay nada que descargar"); return }
-        pendingHtml = buildHtml(items)
-        val name = "ryx_historial_" +
-            java.text.SimpleDateFormat("yyyy-MM-dd_HHmm", java.util.Locale.getDefault()).format(java.util.Date()) + ".html"
-        val i = Intent(Intent.ACTION_CREATE_DOCUMENT).apply {
-            addCategory(Intent.CATEGORY_OPENABLE)
-            type = "text/html"
-            putExtra(Intent.EXTRA_TITLE, name)
-        }
-        try { startActivityForResult(i, REQ_HTML) } catch (e: Exception) { toast("No pude abrir el guardado de archivos") }
+        htmlBuilding = true
+        toast("Preparando el archivo…")
+        // El HTML incrusta imágenes en base64: leerlas y codificarlas en el hilo principal congelaba la app.
+        Thread {
+            val html = try { buildHtml(items) } catch (e: Throwable) { "" }
+            runOnUiThread {
+                htmlBuilding = false
+                if (isFinishing || isDestroyed) return@runOnUiThread
+                if (html.isEmpty()) { toast("No se pudo preparar el historial"); return@runOnUiThread }
+                pendingHtml = html
+                val name = "ryx_historial_" +
+                    java.text.SimpleDateFormat("yyyy-MM-dd_HHmm", java.util.Locale.getDefault())
+                        .format(java.util.Date()) + ".html"
+                val i = Intent(Intent.ACTION_CREATE_DOCUMENT).apply {
+                    addCategory(Intent.CATEGORY_OPENABLE)
+                    type = "text/html"
+                    putExtra(Intent.EXTRA_TITLE, name)
+                }
+                try { startActivityForResult(i, REQ_HTML) }
+                catch (e: Exception) { toast("No pude abrir el guardado de archivos") }
+            }
+        }.start()
     }
 
     /** Arma el HTML completo: todo el texto, agrupado por día y por app/sistema. */
@@ -1663,6 +1695,20 @@ class MainActivity : Activity() {
         head.size == 8 && head[0] == 0x89.toByte() && head[1] == 0x50.toByte() &&
             head[2] == 0x4E.toByte() && head[3] == 0x47.toByte()
     } catch (e: Exception) { false }
+
+    /**
+     * Descodifica una imagen reduciéndola al tamaño en el que se va a mostrar. Se leen primero las
+     * dimensiones y se calcula `inSampleSize`, en vez de cargar el JPEG completo (varias veces la pantalla).
+     * Llamar fuera del hilo principal.
+     */
+    private fun decodeSampled(path: String, maxW: Int, maxH: Int): android.graphics.Bitmap? = try {
+        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        BitmapFactory.decodeFile(path, bounds)
+        var sample = 1
+        while (bounds.outWidth / (sample * 2) >= maxW && bounds.outHeight / (sample * 2) >= maxH) sample *= 2
+        val opts = BitmapFactory.Options().apply { inSampleSize = sample }
+        BitmapFactory.decodeFile(path, opts)
+    } catch (e: Throwable) { null }
 
     /** Encabezado de sección del historial, con icono, título y número de avisos. */
     private fun historyHeader(p: LinearLayout, iconName: String, color: Int, title: String, count: Int) {
@@ -1763,17 +1809,28 @@ class MainActivity : Activity() {
         if (h2.text.isNotEmpty()) r.addView(label(h2.text, 13f, R.color.muted).apply { maxLines = 2; ellipsize = android.text.TextUtils.TruncateAt.END })
         if (h2.img.isNotEmpty()) {
             val f = java.io.File(Prefs.histDir(this), h2.img)
-            val bmp = if (f.exists()) BitmapFactory.decodeFile(f.absolutePath, BitmapFactory.Options().apply { inSampleSize = 2 }) else null
-            if (bmp != null) {
+            if (f.exists()) {
+                val wPx = px(if (h2.kind == "Sticker") 110 else 190)
+                val hPx = px(if (h2.kind == "Sticker") 110 else 130)
                 val iv = ImageView(this).apply {
-                    setImageBitmap(bmp); scaleType = ImageView.ScaleType.CENTER_CROP
+                    scaleType = ImageView.ScaleType.CENTER_CROP
+                    // Marcador mientras se descodifica: la fila aparece al instante y la imagen llega después.
+                    background = Glass.tile(this@MainActivity, Glass.SURFACE_TOP, 14f)
                     outlineProvider = object : ViewOutlineProvider() {
                         override fun getOutline(view: View, o: Outline) { o.setRoundRect(0, 0, view.width, view.height, px(14).toFloat()) }
                     }
                     clipToOutline = true
                     setOnClickListener { showImage(f.absolutePath) }
                 }
-                r.addView(iv, LinearLayout.LayoutParams(px(if (h2.kind == "Sticker") 110 else 190), px(if (h2.kind == "Sticker") 110 else 130)).apply { topMargin = px(6) })
+                r.addView(iv, LinearLayout.LayoutParams(wPx, hPx).apply { topMargin = px(6) })
+                try {
+                    imgWork.execute {
+                        val bmp = decodeSampled(f.absolutePath, wPx, hPx)
+                        if (bmp != null) runOnUiThread {
+                            if (!isFinishing && !isDestroyed) { iv.setImageBitmap(bmp); iv.background = null }
+                        }
+                    }
+                } catch (e: Throwable) {}
             }
         } else if (h2.kind.startsWith("Foto") || h2.kind.startsWith("Vídeo") || h2.kind.startsWith("Video") ||
                    h2.kind.startsWith("Sticker") || h2.kind.startsWith("GIF") || h2.kind.startsWith("Audio") ||
@@ -1797,16 +1854,28 @@ class MainActivity : Activity() {
         ts, System.currentTimeMillis(), android.text.format.DateUtils.MINUTE_IN_MILLIS).toString()
 
     private fun showImage(path: String) {
-        val bmp = BitmapFactory.decodeFile(path) ?: return
-        val dlg = Dialog(this)
-        dlg.requestWindowFeature(Window.FEATURE_NO_TITLE)
-        dlg.setContentView(ImageView(this).apply {
-            setImageBitmap(bmp); adjustViewBounds = true; setPadding(px(8), px(8), px(8), px(8))
-            background = Glass.card(this@MainActivity, 24f, true)
-            setOnClickListener { dlg.dismiss() }
-        })
-        dlg.window?.apply { setBackgroundDrawable(ColorDrawable(0)); setDimAmount(0.7f) }
-        dlg.show()
+        // Se descodifica a la resolución de la pantalla, en segundo plano: una foto grande ya no bloquea la app
+        // ni puede agotar la memoria al abrirla a tamaño completo.
+        val m = resources.displayMetrics
+        val maxW = m.widthPixels.coerceAtMost(1600)
+        val maxH = m.heightPixels.coerceAtMost(2000)
+        try {
+            imgWork.execute {
+                val bmp = decodeSampled(path, maxW, maxH)
+                runOnUiThread {
+                    if (bmp == null || isFinishing || isDestroyed) return@runOnUiThread
+                    val dlg = Dialog(this)
+                    dlg.requestWindowFeature(Window.FEATURE_NO_TITLE)
+                    dlg.setContentView(ImageView(this).apply {
+                        setImageBitmap(bmp); adjustViewBounds = true; setPadding(px(8), px(8), px(8), px(8))
+                        background = Glass.card(this@MainActivity, 24f, true)
+                        setOnClickListener { dlg.dismiss() }
+                    })
+                    dlg.window?.apply { setBackgroundDrawable(ColorDrawable(0)); setDimAmount(0.7f) }
+                    dlg.show()
+                }
+            }
+        } catch (e: Throwable) {}
     }
 
     private fun buildPerms(p: LinearLayout) {
@@ -2226,9 +2295,22 @@ class MainActivity : Activity() {
     private fun toast(t: String) = Toast.makeText(this, t, Toast.LENGTH_SHORT).show()
 
     private fun glass(d: AlertDialog): AlertDialog {
-        d.window?.setBackgroundDrawable(Glass.solid(this, 24f))
+        d.window?.apply {
+            setBackgroundDrawable(Glass.solid(this@MainActivity, 26f))
+            setDimAmount(0.62f)
+        }
         for (w in intArrayOf(AlertDialog.BUTTON_POSITIVE, AlertDialog.BUTTON_NEGATIVE, AlertDialog.BUTTON_NEUTRAL))
             d.getButton(w)?.setTextColor(Glass.ACCENT)
+        // Título con el mismo peso tipográfico que el resto de la interfaz.
+        d.setOnShowListener {
+            try {
+                d.findViewById<TextView>(android.R.id.alertTitle)?.apply {
+                    setTextColor(Glass.TEXT)
+                    typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+                    textSize = 19f
+                }
+            } catch (e: Throwable) {}
+        }
         return d
     }
 
@@ -2240,16 +2322,16 @@ class MainActivity : Activity() {
         val dlg = Dialog(this)
         dlg.requestWindowFeature(Window.FEATURE_NO_TITLE)
         val box = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL; background = Glass.sheet(this@MainActivity, 28f)
-            setPadding(px(22), px(10), px(22), px(18))
+            orientation = LinearLayout.VERTICAL; background = Glass.sheet(this@MainActivity, 30f)
+            setPadding(px(22), px(10), px(22), px(20))
         }
         // Asa: zona táctil ancha (invisible) con la barrita visible dentro, para poder deslizar cómodamente.
         val handle = android.widget.FrameLayout(this)
-        handle.addView(View(this).apply { background = Glass.pill(this@MainActivity, 0x33FFFFFF, 0, 2f) },
-            android.widget.FrameLayout.LayoutParams(px(38), px(4), Gravity.CENTER))
+        handle.addView(View(this).apply { background = Glass.pill(this@MainActivity, 0x40FFFFFF, 0, 2f) },
+            android.widget.FrameLayout.LayoutParams(px(40), px(4), Gravity.CENTER))
         box.addView(handle,
-            LinearLayout.LayoutParams(px(96), px(26)).apply { gravity = Gravity.CENTER_HORIZONTAL; bottomMargin = px(6) })
-        box.addView(label(title, 20f, R.color.text, true).apply { letterSpacing = -0.01f })
+            LinearLayout.LayoutParams(px(96), px(26)).apply { gravity = Gravity.CENTER_HORIZONTAL; bottomMargin = px(8) })
+        box.addView(label(title, 21f, R.color.text, true).apply { letterSpacing = -0.015f })
         val inner = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         build(inner)
         val maxH = (resources.displayMetrics.heightPixels * 0.72f).toInt()
@@ -2324,25 +2406,38 @@ class MainActivity : Activity() {
             addView(icon(name, 22, tint).apply { layoutParams = FrameLayout.LayoutParams(px(22), px(22), Gravity.CENTER) })
         }
 
-    /** Rótulo de grupo: pequeño, en mayúsculas y espaciado. */
-    private fun heading(p: LinearLayout, t: String) =
-        p.addView(label(t, 12f, R.color.muted, true).apply { letterSpacing = 0.1f; setPadding(px(6), 0, 0, 0) }, lp(22))
+    /** Rótulo de grupo: pequeño, en mayúsculas y espaciado, con una marca del acento. */
+    private fun heading(p: LinearLayout, t: String) {
+        val r = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
+            setPadding(px(6), 0, 0, 0)
+        }
+        r.addView(View(this).apply { background = Glass.pill(this@MainActivity, Glass.accentA(0xCC), 0, 2f) },
+            LinearLayout.LayoutParams(px(3), px(12)).apply { marginEnd = px(8) })
+        r.addView(label(t, 11.5f, R.color.muted, true).apply { letterSpacing = 0.12f })
+        p.addView(r, lp(22))
+    }
 
     /** Fila de lista con icono tonal, título, detalle y flecha; toda la tarjeta responde al toque. */
     private fun item(p: LinearLayout, iconName: String, color: Int, title: String, sub: String, trailing: String, click: () -> Unit) {
         val c = card().apply {
             background = Glass.ripple(this@MainActivity, Glass.card(this@MainActivity, 24f), 24f)
-            setPadding(px(14), px(14), px(14), px(14))
+            setPadding(px(15), px(15), px(13), px(15))
             setOnClickListener { click() }
+            Glass.press(this)
         }
         val r = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
         r.addView(tileIcon(iconName, Glass.withA(color, 0x2E), color), LinearLayout.LayoutParams(px(44), px(44)).apply { marginEnd = px(14) })
         val t = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         t.addView(label(title, 16f, R.color.text, true))
-        t.addView(label(sub, 13f, R.color.muted).apply { maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END })
+        t.addView(label(sub, 12.5f, R.color.muted).apply { maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END })
         r.addView(t, LinearLayout.LayoutParams(0, WRAP, 1f))
-        if (trailing.isNotEmpty()) r.addView(label(trailing, 13f, R.color.muted).apply { setPadding(px(6), 0, px(2), 0) })
-        r.addView(icon("chev_right", 20, Glass.FAINT))
+        if (trailing.isNotEmpty()) r.addView(label(trailing, 12.5f, R.color.muted).apply { setPadding(px(6), 0, px(4), 0) })
+        val chevBox = FrameLayout(this).apply {
+            background = Glass.tile(this@MainActivity, Glass.SURFACE_HI, 12f)
+            addView(icon("chev_right", 18, Glass.FAINT), FrameLayout.LayoutParams(px(18), px(18), Gravity.CENTER))
+        }
+        r.addView(chevBox, LinearLayout.LayoutParams(px(32), px(32)))
         c.addView(r); p.addView(c, lp(10))
     }
 
@@ -2485,24 +2580,27 @@ class MainActivity : Activity() {
     private fun segmented(opts: List<String>, selected: Int, green: Boolean = false, onPick: (Int) -> Unit): LinearLayout =
         LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
-            background = Glass.pill(this@MainActivity, 0xFF0E1014.toInt(), Glass.HAIR, 16f)
-            setPadding(px(4), px(4), px(4), px(4))
+            background = Glass.pill(this@MainActivity, Glass.SURFACE, Glass.HAIR, 18f)
+            setPadding(px(5), px(5), px(5), px(5))
             val views = ArrayList<TextView>(opts.size)
             fun paint(sel: Int) {
                 views.forEachIndexed { i, tv ->
                     val on = i == sel
                     tv.typeface = Typeface.create("sans-serif-medium", if (on) Typeface.BOLD else Typeface.NORMAL)
                     tv.setTextColor(if (on) (if (green) Glass.onAccent() else Glass.TEXT) else Glass.MUTED)
-                    tv.background = Glass.ripple(this@MainActivity, Glass.pill(this@MainActivity,
-                        if (on) (if (green) Glass.ACCENT else Glass.SURFACE_TOP) else 0, 0, 12f), 12f)
+                    tv.background = if (on) Glass.ripple(this@MainActivity,
+                        if (green) Glass.accentFill(this@MainActivity, 13f)
+                        else Glass.pill(this@MainActivity, Glass.SURFACE_TOP, Glass.EDGE, 13f), 13f)
+                    else Glass.ripple(this@MainActivity, Glass.pill(this@MainActivity, 0, 0, 13f), 13f)
                 }
             }
             opts.forEachIndexed { i, o ->
                 val tv = TextView(this@MainActivity).apply {
-                    text = o; gravity = Gravity.CENTER; textSize = 14f
+                    text = o; gravity = Gravity.CENTER; textSize = 13.5f
                     setPadding(px(6), px(11), px(6), px(11))
                     setOnClickListener {
                         // Se ilumina al instante (funciona igual dentro de una hoja) y luego avisa al ajuste.
+                        performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
                         paint(i); onPick(i)
                     }
                 }
@@ -2662,13 +2760,15 @@ class MainActivity : Activity() {
     /** Botón: lleno con el acento (texto de máximo contraste) o tonal con un velo del acento; con destello al tocar. */
     private fun button(text: String, filled: Boolean, onClick: () -> Unit) = Button(this).apply {
         this.text = text; isAllCaps = false; stateListAnimator = null; elevation = 0f
-        textSize = 14f
+        textSize = 14f; letterSpacing = 0.01f
         typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
-        minHeight = px(44); minimumHeight = px(44); minWidth = 0; minimumWidth = 0
-        setPadding(px(18), px(10), px(18), px(10))
+        minHeight = px(46); minimumHeight = px(46); minWidth = 0; minimumWidth = 0
+        setPadding(px(18), px(11), px(18), px(11))
         setTextColor(if (filled) Glass.onAccent() else Glass.ACCENT)
         background = Glass.ripple(this@MainActivity,
-            if (filled) Glass.pill(this@MainActivity, Glass.ACCENT, 0, 14f) else Glass.pill(this@MainActivity, Glass.accentA(0x1F), 0, 14f), 14f)
+            if (filled) Glass.accentFill(this@MainActivity, 16f)
+            else Glass.pill(this@MainActivity, Glass.accentA(0x20), Glass.accentA(0x3A), 16f), 16f)
+        Glass.press(this, 0.97f)
         setOnClickListener { onClick() }
     }
 }

@@ -5,6 +5,13 @@ import android.content.Context
 object Prefs {
     private fun sp(c: Context) = c.getSharedPreferences("isla", Context.MODE_PRIVATE)
 
+    /**
+     * El historial se escribe desde el servicio de notificaciones, el de accesibilidad y la app a la vez.
+     * SharedPreferences no hace atómica la secuencia leer-modificar-escribir, así que dos avisos simultáneos
+     * podían perder una entrada. Todo el acceso al historial pasa por este cerrojo.
+     */
+    private val histLock = Any()
+
     fun durationSeconds(c: Context): Int = sp(c).getInt("duration_s", 5)
     fun durationMs(c: Context): Long = durationSeconds(c) * 1000L
     fun setDurationSeconds(c: Context, s: Int) = sp(c).edit().putInt("duration_s", s).apply()
@@ -99,7 +106,7 @@ object Prefs {
     // que «Aplicaciones» muestre cada copia, incluidas las de un segundo espacio
     // o perfil de trabajo que no aparecen en el cajón de apps.
     fun knownClones(c: Context): Set<String> = sp(c).getStringSet("known_clones", emptySet()) ?: emptySet()
-    fun addKnownClone(c: Context, key: String) {
+    fun addKnownClone(c: Context, key: String) = synchronized(histLock) {
         val cur = knownClones(c).toMutableSet()
         if (cur.add(key)) sp(c).edit().putStringSet("known_clones", cur).apply()
     }
@@ -161,7 +168,7 @@ object Prefs {
     fun histDir(c: Context): java.io.File = java.io.File(c.filesDir, "hist").also { it.mkdirs() }
 
     fun addHist(c: Context, pkg: String, title: String, text: String, img: String = "", kind: String = "",
-                windowMs: Long = 3000L) {
+                windowMs: Long = 3000L) = synchronized(histLock) {
         val old = try { org.json.JSONArray(sp(c).getString("hist2", "[]")) } catch (e: Exception) { org.json.JSONArray() }
         val now = System.currentTimeMillis()
         // ¿Ya está registrado lo mismo hace poco? Se revisan las últimas entradas (no solo la primera):
@@ -172,7 +179,7 @@ object Prefs {
             if (o.optString("p") == pkg && o.optString("t") == title && o.optString("x") == text &&
                 now - o.optLong("ts") < windowMs) {
                 if (img.isNotEmpty()) java.io.File(histDir(c), img).delete()
-                return
+                return@synchronized
             }
         }
         val out = org.json.JSONArray()
@@ -186,11 +193,13 @@ object Prefs {
         }
         sp(c).edit().putString("hist2", out.toString()).apply()
     }
-    fun histAll(c: Context): List<HistItem> = try {
-        val a = org.json.JSONArray(sp(c).getString("hist2", "[]"))
-        (0 until a.length()).map { val o = a.getJSONObject(it)
-            HistItem(o.optString("p"), o.optString("t"), o.optString("x"), o.optLong("ts"), o.optString("i"), o.optString("k")) }
-    } catch (e: Exception) { emptyList() }
+    fun histAll(c: Context): List<HistItem> = synchronized(histLock) {
+        try {
+            val a = org.json.JSONArray(sp(c).getString("hist2", "[]"))
+            (0 until a.length()).map { val o = a.getJSONObject(it)
+                HistItem(o.optString("p"), o.optString("t"), o.optString("x"), o.optLong("ts"), o.optString("i"), o.optString("k")) }
+        } catch (e: Exception) { emptyList() }
+    }
 
     /**
      * Fuerza una lectura fresca del historial desde el disco. Sirve para el gesto «arrastra hacia abajo para
@@ -203,8 +212,10 @@ object Prefs {
         return histAll(c)
     }
     fun clearHist(c: Context) {
-        sp(c).edit().remove("hist2").apply()
-        histDir(c).listFiles()?.forEach { it.delete() }
+        synchronized(histLock) {
+            sp(c).edit().remove("hist2").apply()
+            histDir(c).listFiles()?.forEach { it.delete() }
+        }
     }
 
     // ---- Método con privilegios ----
@@ -370,6 +381,17 @@ object Prefs {
     fun setA11yAsked(c: Context, v: Boolean) = sp(c).edit().putBoolean("a11y_asked", v).apply()
     fun restoreAsked(c: Context): Boolean = sp(c).getBoolean("restore_asked", false)
     fun setRestoreAsked(c: Context, v: Boolean) = sp(c).edit().putBoolean("restore_asked", v).apply()
-    fun histRaw(c: Context): String = sp(c).getString("hist2", "[]") ?: "[]"
-    fun setHistRaw(c: Context, v: String) = sp(c).edit().putString("hist2", v).apply()
+    fun histRaw(c: Context): String = synchronized(histLock) { sp(c).getString("hist2", "[]") ?: "[]" }
+    fun setHistRaw(c: Context, v: String) = synchronized(histLock) { sp(c).edit().putString("hist2", v).apply() }
+
+    /**
+     * Lee, transforma y escribe el historial en una sola operación atómica. Necesario al restaurar una copia:
+     * si se leyera y escribiera por separado, una notificación que llegue entre medias se perdería.
+     */
+    fun updateHistRaw(c: Context, transform: (String) -> String): String = synchronized(histLock) {
+        val old = sp(c).getString("hist2", "[]") ?: "[]"
+        val out = transform(old)
+        sp(c).edit().putString("hist2", out).apply()
+        out
+    }
 }
