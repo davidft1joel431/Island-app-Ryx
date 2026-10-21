@@ -1856,12 +1856,13 @@ class MainActivity : Activity() {
                     }
                 } catch (e: Throwable) {}
             }
-        } else if (h2.kind.startsWith("Foto") || h2.kind.startsWith("Vídeo") || h2.kind.startsWith("Video") ||
-                   h2.kind.startsWith("Sticker") || h2.kind.startsWith("GIF") || h2.kind.startsWith("Audio") ||
-                   h2.kind.startsWith("Documento") || h2.kind.startsWith("Ver una vez")) {
-            // Entrada capturada LEYENDO LA PANTALLA: la accesibilidad no da los píxeles, así que solo se sabe
-            // el TIPO del adjunto. Se dice claro para que no parezca que falta la imagen.
-            r.addView(label("📎 ${h2.kind} · visto en pantalla (sin imagen: la accesibilidad no da los píxeles)",
+        } else if (h2.kind.startsWith("Imagen") || h2.kind.startsWith("Foto") || h2.kind.startsWith("Vídeo") ||
+                   h2.kind.startsWith("Video") || h2.kind.startsWith("Sticker") || h2.kind.startsWith("GIF") ||
+                   h2.kind.startsWith("Audio") || h2.kind.startsWith("Documento") ||
+                   h2.kind.startsWith("Ver una vez")) {
+            // Se conoce el TIPO del adjunto pero no hay píxeles: la app no compartió la vista previa en el
+            // aviso (o la entrada se capturó leyendo la pantalla). Se dice claro para que no parezca un fallo.
+            r.addView(label("📎 ${h2.kind} · el aviso no trajo la vista previa",
                 11f, R.color.gold).apply { setPadding(0, px(4), 0, 0) })
         }
         val foot = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(0, px(2), 0, 0) }

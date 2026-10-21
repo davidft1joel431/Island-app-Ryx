@@ -601,16 +601,36 @@ class NotifListener : NotificationListenerService() {
         }
     }
 
+    /** Describe claves y tipos de un Bundle (sin volcar bitmaps) para el diagnóstico de medios. */
+    @Suppress("DEPRECATION")
+    private fun describeBundle(b: android.os.Bundle, depth: Int = 0): String =
+        b.keySet().sorted().joinToString("; ") { k ->
+            try {
+                val v = b.get(k)
+                val d = when (v) {
+                    null -> "null"
+                    is Bitmap -> "Bitmap(${v.width}x${v.height})"
+                    is android.graphics.drawable.Icon -> "Icon"
+                    is android.net.Uri -> "Uri($v)"
+                    is android.os.Bundle -> if (depth < 1) "{" + describeBundle(v, depth + 1) + "}" else "Bundle"
+                    is Array<*> -> {
+                        val first = v.firstOrNull() as? android.os.Bundle
+                        if (first != null && depth < 1) "Array(${v.size})[" + describeBundle(first, depth + 1) + "]"
+                        else "Array(${v.size})"
+                    }
+                    is CharSequence -> "${v.javaClass.simpleName}(\"${v.toString().replace('\n', ' ').take(50)}\")"
+                    else -> v.javaClass.simpleName
+                }
+                "$k=$d"
+            } catch (t: Throwable) { "$k=?" }
+        }
+
     /** Anota en el diagnóstico qué extras trae un aviso con foto/sticker del que no se pudo sacar la imagen. */
     private fun noteMediaMiss(sbn: StatusBarNotification, n: Notification) {
         try {
-            val keys = n.extras.keySet().filter { k ->
-                val l = k.lowercase()
-                l.contains("picture") || l.contains("icon") || l.contains("image") ||
-                    l.contains("uri") || l.contains("media")
-            }.sorted().joinToString(", ")
             val t = java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.getDefault()).format(java.util.Date())
-            val line = "$t ${sbn.packageName} → sin imagen; extras: ${if (keys.isEmpty()) "(ninguno)" else keys}"
+            val line = "$t ${sbn.packageName} → sin imagen (${mediaHintKind(n)}); " +
+                describeBundle(n.extras).take(1600)
             synchronized(diagLines) {
                 diagLines.add(line)
                 while (diagLines.size > 6) diagLines.removeAt(0)
@@ -1930,11 +1950,32 @@ class NotifListener : NotificationListenerService() {
 
     // ---------- Medios para el historial ----------
 
-    /** URI de un mensaje de MessagingStyle: unas apps la guardan como texto y otras como Uri (Parcelable). */
+    /** Convierte en URI solo valores que de verdad lo parezcan (evita coger textos cualquiera). */
+    private fun uriValue(v: Any?): String? = when (v) {
+        is android.net.Uri -> v.toString()
+        is String -> if (v.startsWith("content://") || v.startsWith("file://") ||
+            v.startsWith("http://") || v.startsWith("https://")) v else null
+        else -> null
+    }
+
+    /**
+     * URI de un mensaje de MessagingStyle: unas apps la guardan como texto y otras como Uri (Parcelable).
+     * Además se revisan claves no estándar (media_uri, image_uri, thumbnail…) sin tocar las del remitente,
+     * que normalmente apuntan a su avatar.
+     */
     @Suppress("DEPRECATION")
     private fun bundleUri(m: android.os.Bundle): String? {
         m.getString("uri")?.let { return it }
-        return (m.getParcelable<android.os.Parcelable>("uri") as? android.net.Uri)?.toString()
+        (m.getParcelable<android.os.Parcelable>("uri") as? android.net.Uri)?.let { return it.toString() }
+        for (k in m.keySet()) {
+            val kl = k.lowercase()
+            if (kl.contains("sender") || kl.contains("person") || kl == "icon") continue
+            if (!(kl.contains("uri") || kl.contains("image") || kl.contains("picture") ||
+                    kl.contains("photo") || kl.contains("sticker") || kl.contains("media") ||
+                    kl.contains("thumbnail"))) continue
+            uriValue(try { m.get(k) } catch (t: Throwable) { null })?.let { return it }
+        }
+        return null
     }
 
     /**
@@ -1975,9 +2016,9 @@ class NotifListener : NotificationListenerService() {
         } catch (t: Throwable) { null }
     }
 
-    /** ¿El texto del aviso habla de una foto, sticker o vídeo? Sirve para aceptar el icono grande como imagen. */
+    /** Todo el texto visible del aviso, en minúsculas, para reconocer el tipo de adjunto. */
     @Suppress("DEPRECATION")
-    private fun looksLikeMedia(n: Notification): Boolean {
+    private fun mediaText(n: Notification): String {
         val sb = StringBuilder()
         fun add(cs: CharSequence?) { if (cs != null) sb.append(' ').append(cs) }
         val ex = n.extras
@@ -1991,30 +2032,95 @@ class NotifListener : NotificationListenerService() {
                 add(b.getCharSequence("text")); add(b.getCharSequence("sender"))
             }
         } catch (t: Throwable) {}
-        val s = sb.toString().lowercase()
-        return listOf("sticker", "foto", "photo", "imagen", "image", "gif", "video", "vídeo",
-            "📷", "🖼", "🎥", "cámara", "camara").any { s.contains(it) }
+        return sb.toString().lowercase()
+    }
+
+    /** Tipo de adjunto que se deduce del texto («Envió una foto», «Envió un sticker»…). */
+    private fun mediaHintKind(n: Notification): String {
+        val s = try { mediaText(n) } catch (t: Throwable) { return "" }
+        return when {
+            s.contains("sticker") -> "Sticker"
+            s.contains("gif") -> "GIF"
+            s.contains("video") || s.contains("vídeo") || s.contains("🎥") -> "Video"
+            s.contains("audio") || s.contains("nota de voz") || s.contains("voice message") -> "Audio"
+            s.contains("documento") || s.contains("document") -> "Documento"
+            s.contains("foto") || s.contains("photo") || s.contains("imagen") || s.contains("image") ||
+                s.contains("📷") || s.contains("🖼") || s.contains("cámara") || s.contains("camara") -> "Foto"
+            else -> ""
+        }
+    }
+
+    private fun looksLikeMedia(n: Notification): Boolean = mediaHintKind(n).isNotEmpty()
+
+    /** Busca un Bitmap en claves no estándar de los mensajes (media, thumbnail, picture…). */
+    @Suppress("DEPRECATION")
+    private fun mediaBitmapFromMessages(n: Notification): Bitmap? {
+        val msgs = try { n.extras.getParcelableArray(Notification.EXTRA_MESSAGES) } catch (t: Throwable) { null } ?: return null
+        for (i in msgs.indices.reversed()) {
+            val b = msgs[i] as? android.os.Bundle ?: continue
+            for (k in b.keySet()) {
+                val kl = k.lowercase()
+                if (kl.contains("sender") || kl.contains("person") || kl == "icon") continue
+                if (!(kl.contains("image") || kl.contains("picture") || kl.contains("photo") ||
+                        kl.contains("sticker") || kl.contains("media") || kl.contains("thumbnail"))) continue
+                bitmapExtra(b, k)?.let { return it }
+            }
+        }
+        return null
+    }
+
+    /** Busca un Bitmap en extras propios de la app/ROM (nunca en el icono grande, que suele ser el avatar). */
+    @Suppress("DEPRECATION")
+    private fun mediaBitmapFromExtras(ex: android.os.Bundle): Bitmap? {
+        for (k in ex.keySet()) {
+            val kl = k.lowercase()
+            if (kl.contains("largeicon") || kl.contains("smallicon") || kl.contains("pictureicon")) continue
+            if (!(kl.contains("picture") || kl.contains("image") || kl.contains("photo") ||
+                    kl.contains("sticker") || kl.contains("media") || kl.contains("thumbnail"))) continue
+            bitmapExtra(ex, k)?.let { return it }
+        }
+        return null
+    }
+
+    /** URI de imagen en extras propios de la app/ROM (miui.extra, image_uri, thumbnail…). */
+    @Suppress("DEPRECATION")
+    private fun mediaUriFromExtras(ex: android.os.Bundle): String? {
+        for (k in ex.keySet()) {
+            val kl = k.lowercase()
+            if (kl.contains("largeicon") || kl.contains("smallicon") || kl.contains("pictureicon")) continue
+            if (!(kl.contains("picture") || kl.contains("image") || kl.contains("photo") ||
+                    kl.contains("sticker") || kl.contains("media") || kl.contains("thumbnail") ||
+                    kl.contains("uri"))) continue
+            uriValue(try { ex.get(k) } catch (t: Throwable) { null })?.let { return it }
+        }
+        return null
     }
 
     /** Imagen o sticker de la notificación (si hay) y su tipo. NUNCA hace E/S: eso va en loadUriMedia(). */
     @Suppress("DEPRECATION")
     private fun extractMedia(n: Notification): Pair<Bitmap?, String> {
         val ex = n.extras
-        val (imgUri, mime) = try { latestImage(n) } catch (t: Throwable) { Pair(null, "") }
+        val (lastUri, mime) = try { latestImage(n) } catch (t: Throwable) { Pair(null, "") }
+        val imgUri = lastUri ?: try { mediaUriFromExtras(ex) } catch (t: Throwable) { null }
         val stickerMime = mime.contains("webp") || mime.contains("png")
         val hint = try { looksLikeMedia(n) } catch (t: Throwable) { false }
+        val hintKind = try { mediaHintKind(n) } catch (t: Throwable) { "" }
+        val messaging = try {
+            ex.getParcelableArray(Notification.EXTRA_MESSAGES) != null || n.category == Notification.CATEGORY_MESSAGE
+        } catch (t: Throwable) { true }
 
         // 1) La imagen grande de verdad (BigPictureStyle / MessagingStyle con foto).
         var bmp = bitmapExtra(ex, Notification.EXTRA_PICTURE)
         if (bmp == null) bmp = bitmapExtra(ex, Notification.EXTRA_PICTURE_ICON)
-        // 2) Respaldo: icono grande. Muchas apps (WhatsApp incluido) dejan ahí la foto o el sticker;
-        //    también puede ser el avatar del contacto, así que solo se acepta si el aviso habla de multimedia.
-        //    Si hay una URI de imagen, se prefiere esa (es el adjunto real, no el avatar).
-        if (bmp == null && imgUri == null) {
+        // 2) Extras con nombre de imagen/media que algunas apps o la propia ROM añaden.
+        if (bmp == null) bmp = mediaBitmapFromMessages(n)
+        if (bmp == null) bmp = mediaBitmapFromExtras(ex)
+        // 3) El icono grande SOLO se usa en avisos que no son de mensajería. En WhatsApp y demás chats
+        //    ese icono es el avatar del contacto, no la foto/sticker enviado: usarlo llenaba el historial
+        //    de fotos de perfil que no eran el mensaje.
+        if (bmp == null && imgUri == null && !messaging) {
             val large = bitmapExtra(ex, Notification.EXTRA_LARGE_ICON)
                 ?: bitmapExtra(ex, Notification.EXTRA_LARGE_ICON_BIG)
-            // Si el aviso habla de foto/sticker se acepta el icono grande aunque sea cuadrado
-            // (WhatsApp deja ahí el sticker o la miniatura de la foto).
             if (large != null && (stickerMime || hint)) bmp = large
         }
 
@@ -2030,11 +2136,11 @@ class NotifListener : NotificationListenerService() {
             mime.startsWith("video/") -> "Video"
             else -> ""
         }
+        // Si la app NO comparte la imagen (WhatsApp solo manda «Envió una foto»), al menos se guarda el TIPO
+        // para que el historial deje constancia del adjunto en vez de perderlo.
+        if (kind.isEmpty()) kind = hintKind
         // «Ver una vez»: WhatsApp/Signal/Telegram marcan estos mensajes en el texto o el canal.
-        val lowAll = (ex.getCharSequence(Notification.EXTRA_TITLE)?.toString() ?: "") + " " +
-            (ex.getCharSequence(Notification.EXTRA_TEXT)?.toString() ?: "") + " " +
-            (ex.getCharSequence(Notification.EXTRA_SUB_TEXT)?.toString() ?: "")
-        val l = lowAll.lowercase()
+        val l = try { mediaText(n) } catch (t: Throwable) { "" }
         if (l.contains("ver una vez") || l.contains("view once") || l.contains("solo una vez") ||
             l.contains("una sola vez") || l.contains("one-time") || l.contains("temporal"))
             kind = if (kind.isEmpty()) "Ver una vez" else "$kind · Ver una vez"
@@ -2045,7 +2151,10 @@ class NotifListener : NotificationListenerService() {
      * URI del adjunto de una notificación (solo si es una IMAGEN). Se devuelve la URI sin abrirla: quien la use
      * la leerá en un hilo aparte. Abrir el stream en el hilo principal congelaba la isla (vídeos/audios grandes).
      */
-    private fun mediaUri(n: Notification): String? = try { latestImage(n).first } catch (e: Throwable) { null }
+    private fun mediaUri(n: Notification): String? {
+        val fromMsg = try { latestImage(n).first } catch (e: Throwable) { null }
+        return fromMsg ?: try { mediaUriFromExtras(n.extras) } catch (e: Throwable) { null }
+    }
 
     /**
      * Abre la URI de una imagen y la convierte en bitmap. SIEMPRE en un hilo aparte (hace E/S y decodifica).
