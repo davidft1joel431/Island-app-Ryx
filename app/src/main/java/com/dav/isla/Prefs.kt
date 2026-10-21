@@ -178,8 +178,20 @@ object Prefs {
             val o = old.optJSONObject(i) ?: continue
             if (o.optString("p") == pkg && o.optString("t") == title && o.optString("x") == text &&
                 now - o.optLong("ts") < windowMs) {
-                if (img.isNotEmpty()) java.io.File(histDir(c), img).delete()
-                return@synchronized
+                // Algunas apps publican primero el texto y después actualizan el aviso con la foto/sticker.
+                // Ese segundo aviso tiene el mismo título/texto; antes se descartaba y la imagen se perdía.
+                // Si la entrada guardada aún no tiene imagen, se completa con la nueva.
+                val prev = o.optString("i")
+                if (img.isEmpty()) {
+                    return@synchronized
+                } else if (prev.isEmpty()) {
+                    o.put("i", img).put("k", kind).put("ts", now)
+                    sp(c).edit().putString("hist2", old.toString()).apply()
+                    return@synchronized
+                } else {
+                    if (prev != img) java.io.File(histDir(c), img).delete()
+                    return@synchronized
+                }
             }
         }
         val out = org.json.JSONArray()
