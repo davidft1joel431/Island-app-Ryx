@@ -77,6 +77,14 @@ class NotifListener : NotificationListenerService() {
     private var badgeView: LinearLayout? = null
     private var countView: TextView? = null
     private var detailImg: ImageView? = null
+    /** Miniatura que se ve al desplegar la isla (la imagen grande solo cabe en el detalle y en el historial). */
+    private var previewImg: ImageView? = null
+    /** Adjuntos ya decodificados, por URI: la misma imagen no se vuelve a leer al cambiar de tarjeta. */
+    private val mediaCache = object : android.util.LruCache<String, Bitmap>(16 * 1024 * 1024) {
+        override fun sizeOf(key: String, value: Bitmap): Int = value.allocationByteCount
+    }
+    private val mediaTried = java.util.Collections.newSetFromMap(java.util.concurrent.ConcurrentHashMap<String, Boolean>())
+    private val mediaFailed = java.util.Collections.newSetFromMap(java.util.concurrent.ConcurrentHashMap<String, Boolean>())
     private var actionsRow: LinearLayout? = null
     private var detail = false
 
@@ -92,6 +100,7 @@ class NotifListener : NotificationListenerService() {
         val userId: Int = -1,            // espacio de la app (clon / app dual); -1 = el principal
         val user: android.os.UserHandle? = null,
         val mediaUri: String? = null,    // imagen del adjunto por URI: se carga en 2º plano (abrirla bloquea)
+        val mediaKind: String = "",      // "Imagen", "Sticker"… para decidir recorte y transparencia
         val actions: List<CardAction> = emptyList()   // botones propios: contestar/colgar, cambiar de Wi-Fi, apagar el punto de acceso…
     )
 
@@ -413,6 +422,12 @@ class NotifListener : NotificationListenerService() {
         // Si la imagen viene por URI (WhatsApp/Telegram la mandan así), se carga en SEGUNDO PLANO: abrir el
         // stream en el hilo principal congelaba la isla. El tipo ya se conoce ahora; la imagen llega al instante.
         val attachUri = if (mediaBmp == null) mediaUri(n) else null
+        // Si la imagen solo viene por URI y la app no dijo el tipo, se trata como imagen normal.
+        val attachKind = when {
+            mediaKind.isNotEmpty() -> mediaKind
+            attachUri != null -> "Imagen"
+            else -> ""
+        }
 
         // 1) La isla REGISTRA todo en el historial, por aplicación, con el texto COMPLETO.
         //    Se guardan también los avisos «en curso» (música, descargas, navegación…): así el historial ve
@@ -426,7 +441,7 @@ class NotifListener : NotificationListenerService() {
                 try {
                     // Si la imagen venía por URI, se abre AQUÍ (hilo aparte). Nunca en el hilo principal.
                     val bmp = mediaBmp ?: hUri?.let { loadUriMedia(it) }
-                    Prefs.addHist(this, hp, ht, hx, saveBitmap(bmp, mediaKind), mediaKind, win)
+                    Prefs.addHist(this, hp, ht, hx, saveBitmap(bmp, attachKind), attachKind, win)
                     Backup.maybeUpload(this)     // copia a la carpeta elegida (Drive u otra), si hay
                     Backup.autoLocal(this)       // copia a la carpeta PROPIA de la app, sola y sin tocar nada
                 } catch (e: Exception) {}
@@ -479,7 +494,7 @@ class NotifListener : NotificationListenerService() {
             fallback = small, media = mediaBmp, detailText = full ?: text,
             sig = "${sbn.key}|$title|$text", user = sbn.user, userId = uid,
             label = tag?.first, accentOverride = tag?.second,
-            mediaUri = attachUri,
+            mediaUri = attachUri, mediaKind = attachKind,
             systemKey = if (why == null) sbn.key else "")
     }
 
@@ -1187,6 +1202,14 @@ class NotifListener : NotificationListenerService() {
             }
             clipToOutline = true
         }
+        val pImg = ImageView(this).apply {
+            visibility = View.GONE; scaleType = ImageView.ScaleType.CENTER_CROP
+            outlineProvider = object : android.view.ViewOutlineProvider() {
+                override fun getOutline(view: View, o: android.graphics.Outline) { o.setRoundRect(0, 0, view.width, view.height, px(12).toFloat()) }
+            }
+            clipToOutline = true
+        }
+        previewImg = pImg
         val acts = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL; visibility = View.GONE
             val chipLp = { l: Int, r: Int -> LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply { marginStart = px(l); marginEnd = px(r) } }
@@ -1232,6 +1255,7 @@ class NotifListener : NotificationListenerService() {
             addView(col, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
                 marginStart = px(10)
             })
+            addView(pImg, LinearLayout.LayoutParams(px(46), px(46)).apply { marginStart = px(8) })
             addView(badge, LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT).apply { marginStart = px(8) })
             setOnTouchListener(touchHandler)
@@ -1374,6 +1398,7 @@ class NotifListener : NotificationListenerService() {
         iconView?.scaleX = 1f; iconView?.scaleY = 1f; textCol?.translationX = 0f
         iconView?.visibility = View.GONE
         textCol?.visibility = View.GONE
+        previewImg?.visibility = View.GONE
         setContentAlpha(1f)
         island?.gravity = Gravity.END or Gravity.CENTER_VERTICAL
         setBlend(0f)
@@ -1411,6 +1436,7 @@ class NotifListener : NotificationListenerService() {
         sig: String = "", target: String? = null, label: String? = null, accentOverride: Int? = null,
         user: android.os.UserHandle? = null, userId: Int = -1, actions: List<CardAction> = emptyList(),
         mediaUri: String? = null,  // imagen del adjunto por URI: se carga fuera del hilo principal
+        mediaKind: String = "",    // tipo del adjunto (Imagen, Sticker…) para la vista previa
         systemKey: String = ""     // clave del aviso del sistema que hay que quitar al mostrarlo ("" = ninguno)
     ) {
         main.post {
@@ -1453,7 +1479,7 @@ class NotifListener : NotificationListenerService() {
             }
             val fullText: CharSequence? = if (lines.size > 1) lines.filter { it.isNotEmpty() }.joinToString("\n") else detailText
             cards.removeAll { it.key == key }
-            cards.add(0, Card(key, pkg, t, b, shown, accent, ephemeral, fullText, media, count, lines, sig, target = target, label = label, userId = userId, user = user, mediaUri = mediaUri, actions = actions))
+            cards.add(0, Card(key, pkg, t, b, shown, accent, ephemeral, fullText, media, count, lines, sig, target = target, label = label, userId = userId, user = user, mediaUri = mediaUri, mediaKind = mediaKind, actions = actions))
             val limit = System.currentTimeMillis() - 15 * 60_000L
             cards.removeAll { it.time < limit }
             while (cards.size > 8) cards.removeAt(cards.size - 1)
@@ -1495,6 +1521,7 @@ class NotifListener : NotificationListenerService() {
         textCol?.visibility = View.VISIBLE
         setContentAlpha(0f)
         updateBadge()
+        cards.getOrNull(cardIndex)?.let { syncMedia(it) }
         morph(true, null)
     }
 
@@ -1519,10 +1546,8 @@ class NotifListener : NotificationListenerService() {
         rebuildActions(c)
         // Las tarjetas con botones propios (llamada, Wi-Fi, punto de acceso) los muestran ya al abrirse
         actionsRow?.visibility = if (detail || c.actions.isNotEmpty()) View.VISIBLE else View.GONE
-        if (detail) {
-            bodyView?.text = c.detail ?: c.body
-            applyMedia(c)
-        }
+        if (detail) bodyView?.text = c.detail ?: c.body
+        syncMedia(c)
     }
 
     /** Acumulación a la derecha: iconos apilados al expandir, contador al reposo. */
@@ -1710,9 +1735,11 @@ class NotifListener : NotificationListenerService() {
 
     private fun resetDetail() {
         detail = false
-        detailImg?.visibility = View.GONE
         val cur = cards.getOrNull(cardIndex)
-        if (cur != null) rebuildActions(cur)
+        if (cur != null) {
+            rebuildActions(cur)
+            syncMedia(cur)      // vuelve la miniatura; la imagen grande se oculta
+        } else detailImg?.visibility = View.GONE
         actionsRow?.visibility = if (cur != null && cur.actions.isNotEmpty()) View.VISIBLE else View.GONE
         bodyView?.maxLines = 1
         appView?.visibility = if (style.showAppName) View.VISIBLE else View.GONE
@@ -1723,25 +1750,72 @@ class NotifListener : NotificationListenerService() {
         island?.minimumHeight = px(maxOf(style.iconDp + 2 * style.padV, 64))
     }
 
+    /** Fondo tenue para stickers (se ve la transparencia) y mientras llega una imagen. */
+    private fun mediaTile(radius: Float): Drawable = GradientDrawable().apply {
+        cornerRadius = px(radius).toFloat()
+        setColor(0x1FFFFFFF)
+    }
+
+    /** Pinta una imagen con un fundido corto; si ya estaba puesta, no se repite la animación. */
+    private fun paintMedia(iv: ImageView, bmp: Bitmap, tag: String) {
+        val same = iv.tag == tag
+        iv.setImageBitmap(bmp)
+        iv.tag = tag
+        if (!same) {
+            iv.alpha = 0f
+            iv.animate().alpha(1f).setDuration(180).start()
+        } else iv.alpha = 1f
+    }
+
     /**
-     * Muestra la imagen de la tarjeta en la vista de detalle. Si viene por URI (WhatsApp/Telegram), la carga en
-     * un HILO APARTE y la pinta cuando está: abrirla en el hilo principal congelaba toda la isla.
+     * Coloca el adjunto de la tarjeta: miniatura al desplegar la isla e imagen grande en el detalle.
+     * Los stickers se muestran enteros (FIT_CENTER, sin recortar) sobre un fondo tenue; las fotos se recortan.
+     * Si la imagen viene por URI (WhatsApp/Telegram) se carga en un HILO APARTE: abrirla en el hilo principal
+     * congelaba toda la isla.
      */
-    private fun applyMedia(c: Card) {
-        val iv = detailImg ?: return
-        if (c.media != null) {
-            iv.setImageBitmap(c.media); iv.visibility = View.VISIBLE; return
-        }
+    private fun syncMedia(c: Card) {
         val uri = c.mediaUri
-        if (uri == null) { iv.visibility = View.GONE; return }
-        iv.visibility = View.GONE
+        val sticker = c.mediaKind.contains("Sticker", ignoreCase = true)
+        val bmp = c.media ?: uri?.let { mediaCache.get(it) }
+        val has = bmp != null || (uri != null && !mediaFailed.contains(uri))
+
+        previewImg?.let { p ->
+            val show = expanded && !detail && has
+            p.visibility = if (show) View.VISIBLE else View.GONE
+            if (show) {
+                p.scaleType = if (sticker) ImageView.ScaleType.FIT_CENTER else ImageView.ScaleType.CENTER_CROP
+                val pad = if (sticker) px(4) else 0
+                p.setPadding(pad, pad, pad, pad)
+                p.background = if (sticker || bmp == null) mediaTile(12f) else null
+                if (bmp != null) paintMedia(p, bmp, uri ?: c.key)
+                else { p.setImageDrawable(null); uri?.let { loadMedia(it) } }
+            }
+        }
+
+        detailImg?.let { iv ->
+            val show = detail && has
+            iv.visibility = if (show) View.VISIBLE else View.GONE
+            if (show) {
+                iv.scaleType = if (sticker) ImageView.ScaleType.FIT_CENTER else ImageView.ScaleType.CENTER_CROP
+                val pad = if (sticker) px(6) else 0
+                iv.setPadding(pad, pad, pad, pad)
+                iv.background = if (sticker || bmp == null) mediaTile(14f) else null
+                if (bmp != null) paintMedia(iv, bmp, uri ?: c.key)
+                else { iv.setImageDrawable(null); uri?.let { loadMedia(it) } }
+            }
+        }
+    }
+
+    /** Descarga una imagen por URI una sola vez y refresca la tarjeta que la esté mostrando. */
+    private fun loadMedia(uri: String) {
+        if (mediaCache.get(uri) != null || mediaFailed.contains(uri)) return
+        if (!mediaTried.add(uri)) return
         Thread {
             val bm = loadUriMedia(uri)
-            if (bm != null) main.post {
-                val i = cards.indexOfFirst { it.key == c.key }
-                if (i >= 0 && i == cardIndex && detail && detailImg === iv) {
-                    iv.setImageBitmap(bm); iv.visibility = View.VISIBLE
-                }
+            if (bm != null) mediaCache.put(uri, bm) else mediaFailed.add(uri)
+            main.post {
+                val cur = cards.getOrNull(cardIndex)
+                if (cur != null && cur.mediaUri == uri) syncMedia(cur)
             }
         }.start()
     }
@@ -1755,7 +1829,7 @@ class NotifListener : NotificationListenerService() {
         bodyView?.text = c.detail ?: c.body
         appView?.visibility = View.VISIBLE
         appView?.text = nameOf(c) + if (c.count > 1) " · ${c.count} notificaciones" else ""
-        applyMedia(c)
+        syncMedia(c)
         rebuildActions(c)
         actionsRow?.visibility = View.VISIBLE
         animateDetail(true)
@@ -1831,37 +1905,65 @@ class NotifListener : NotificationListenerService() {
 
     // ---------- Medios para el historial ----------
 
+    /** URI de un mensaje de MessagingStyle: unas apps la guardan como texto y otras como Uri (Parcelable). */
+    @Suppress("DEPRECATION")
+    private fun bundleUri(m: android.os.Bundle): String? {
+        m.getString("uri")?.let { return it }
+        return (m.getParcelable<android.os.Parcelable>("uri") as? android.net.Uri)?.toString()
+    }
+
+    /**
+     * Última imagen de una notificación de mensajes y su MIME. Se recorre hacia atrás TODA la lista: si el último
+     * mensaje es texto pero el anterior traía foto/sticker, antes se perdía la imagen. El segundo valor es el MIME
+     * de la imagen encontrada o, si no hay ninguna, el del último mensaje (para reconocer audio/vídeo).
+     */
+    @Suppress("DEPRECATION")
+    private fun latestImage(n: Notification): Pair<String?, String> {
+        val msgs = n.extras.getParcelableArray(Notification.EXTRA_MESSAGES) ?: return Pair(null, "")
+        var lastMime = ""
+        for (i in msgs.indices.reversed()) {
+            val m = msgs[i] as? android.os.Bundle ?: continue
+            val mime = (m.getCharSequence("type") ?: m.getString("type"))?.toString() ?: ""
+            if (lastMime.isEmpty()) lastMime = mime
+            val uri = bundleUri(m)
+            if (mime.startsWith("image/")) return Pair(uri, mime)
+            if (uri != null && mime.isEmpty()) return Pair(uri, mime)
+        }
+        return Pair(null, lastMime)
+    }
+
     /** Imagen o sticker de la notificación (si hay) y su tipo. NUNCA hace E/S: eso va en loadUriMedia(). */
     @Suppress("DEPRECATION")
     private fun extractMedia(n: Notification): Pair<Bitmap?, String> {
         try {
             val ex = n.extras
+            val (_, mime) = latestImage(n)
+            val stickerMime = mime.contains("webp") || mime.contains("png")
             var bmp: Bitmap? = ex.getParcelable<Bitmap>(Notification.EXTRA_PICTURE)
-            var kind = if (bmp != null) "Imagen" else ""
-            if (bmp == null && Build.VERSION.SDK_INT >= 31) {
+            var kind = if (bmp != null) (if (stickerMime) "Sticker" else "Imagen") else ""
+            if (bmp != null) {
+                // EXTRA_PICTURE suele ser la vista previa de la imagen o del sticker que se envió.
+            } else if (Build.VERSION.SDK_INT >= 31) {
                 bmp = ex.getParcelable<android.graphics.drawable.Icon>(Notification.EXTRA_PICTURE_ICON)
                     ?.loadDrawable(this)?.let { toBitmap(it) }
-                if (bmp != null) kind = "Imagen"
+                if (bmp != null) kind = if (stickerMime) "Sticker" else "Imagen"
             }
             // Varias apps ponen la imagen grande aparte de EXTRA_PICTURE (Telegram, Instagram, Gmail…).
+            // El icono grande también puede ser el avatar de la app: se usa solo como último recurso.
             if (bmp == null) {
                 bmp = try { ex.getParcelable<Bitmap>(Notification.EXTRA_LARGE_ICON_BIG) } catch (e: Throwable) { null }
-                if (bmp != null) kind = "Imagen"
+                if (bmp != null) kind = if (stickerMime) "Sticker" else "Imagen"
             }
             if (bmp == null && Build.VERSION.SDK_INT >= 31) {
                 bmp = try {
                     ex.getParcelable<android.graphics.drawable.Icon>(Notification.EXTRA_LARGE_ICON_BIG)
                         ?.loadDrawable(this)?.let { toBitmap(it) }
                 } catch (e: Throwable) { null }
-                if (bmp != null) kind = "Imagen"
+                if (bmp != null) kind = if (stickerMime) "Sticker" else "Imagen"
             }
             // Tipo del adjunto por su MIME (SIN abrir la URI: abrirla bloquea el hilo y congelaba la isla).
-            val msgs = ex.getParcelableArray(Notification.EXTRA_MESSAGES)
-            val last = msgs?.lastOrNull() as? android.os.Bundle
-            val mime = last?.getString("type") ?: ""
-            if (bmp != null && (mime.contains("webp") || mime.contains("png"))) kind = "Sticker"
             if (kind.isEmpty()) kind = when {
-                mime.startsWith("image/") -> if (mime.contains("webp") || mime.contains("png")) "Sticker" else "Imagen"
+                mime.startsWith("image/") -> if (stickerMime) "Sticker" else "Imagen"
                 mime.startsWith("audio/") -> "Audio"
                 mime.startsWith("video/") -> "Video"
                 else -> ""
@@ -1874,7 +1976,7 @@ class NotifListener : NotificationListenerService() {
             if (l.contains("ver una vez") || l.contains("view once") || l.contains("solo una vez") ||
                 l.contains("una sola vez") || l.contains("one-time") || l.contains("temporal"))
                 kind = if (kind.isEmpty()) "Ver una vez" else "$kind · Ver una vez"
-            return Pair(bmp?.let { scaleDown(it, 640) }, kind)
+            return Pair(bmp?.let { scaleDown(it, 1024) }, kind)
         } catch (e: Throwable) {
             return Pair(null, "")
         }
@@ -1884,29 +1986,33 @@ class NotifListener : NotificationListenerService() {
      * URI del adjunto de una notificación (solo si es una IMAGEN). Se devuelve la URI sin abrirla: quien la use
      * la leerá en un hilo aparte. Abrir el stream en el hilo principal congelaba la isla (vídeos/audios grandes).
      */
-    @Suppress("DEPRECATION")
-    private fun mediaUri(n: Notification): String? = try {
-        val msgs = n.extras.getParcelableArray(Notification.EXTRA_MESSAGES)
-        val last = msgs?.lastOrNull() as? android.os.Bundle
-        val mime = last?.getString("type") ?: ""
-        val uri = last?.getString("uri")
-        if (uri != null && (mime.startsWith("image/") || mime.isEmpty())) uri else null
-    } catch (e: Throwable) { null }
+    private fun mediaUri(n: Notification): String? = try { latestImage(n).first } catch (e: Throwable) { null }
 
-    /** Abre la URI de una imagen y la convierte en bitmap. SIEMPRE en un hilo aparte (hace E/S y decodifica). */
-    private fun loadUriMedia(uri: String): Bitmap? = try {
-        val b = contentResolver.openInputStream(android.net.Uri.parse(uri))?.use {
-            BitmapFactory.decodeStream(it)
-        }
-        b?.let { scaleDown(it, 640) }
-    } catch (e: Throwable) { null }
+    /**
+     * Abre la URI de una imagen y la convierte en bitmap. SIEMPRE en un hilo aparte (hace E/S y decodifica).
+     * Primero se leen las dimensiones y se reduce al decodificar: una foto de cámara ya no puede agotar la memoria.
+     */
+    private fun loadUriMedia(uri: String): Bitmap? {
+        return try {
+            val u = android.net.Uri.parse(uri)
+            val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+            contentResolver.openInputStream(u)?.use { BitmapFactory.decodeStream(it, null, bounds) }
+            if (bounds.outWidth > 0 && bounds.outHeight > 0) {
+                var sample = 1
+                while (bounds.outWidth / (sample * 2) >= 960 && bounds.outHeight / (sample * 2) >= 960) sample *= 2
+                val opts = BitmapFactory.Options().apply { inSampleSize = sample }
+                val b = contentResolver.openInputStream(u)?.use { BitmapFactory.decodeStream(it, null, opts) }
+                b?.let { scaleDown(it, 960) }
+            } else null
+        } catch (e: Throwable) { null }
+    }
 
     private fun saveBitmap(bmp: Bitmap?, kind: String): String {
         if (bmp == null) return ""
         return try {
             val name = "${System.currentTimeMillis()}_${(Math.random() * 99999).toInt()}.img"
             FileOutputStream(File(Prefs.histDir(this), name)).use {
-                if (kind == "Sticker") bmp.compress(Bitmap.CompressFormat.PNG, 100, it)
+                if (kind.startsWith("Sticker")) bmp.compress(Bitmap.CompressFormat.PNG, 100, it)
                 else bmp.compress(Bitmap.CompressFormat.JPEG, 82, it)
             }
             name

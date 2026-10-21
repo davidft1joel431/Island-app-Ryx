@@ -37,6 +37,11 @@ jobs:
           tag_name: v${{ steps.ver.outputs.v }}
           name: Ryx Island v${{ steps.ver.outputs.v }}
           body: |
+            - NOTIFICACIONES MEJORADAS: la isla ahora entiende las fotos y los stickers que las apps envían en el aviso (WhatsApp, Telegram, Instagram, Gmail…), no solo el texto. La imagen se ve como miniatura dentro de la isla desplegada y en grande al abrir el detalle.
+            - La isla lee el adjunto por todas las vías estándar de Android: imagen grande del aviso, icono grande de respaldo y los mensajes con foto de las conversaciones. Si el último mensaje es texto pero el anterior traía una foto o un sticker, ahora sí se encuentra la imagen (antes se perdía).
+            - STICKERS sin recortes: se muestran enteros y conservan la transparencia, tanto en la isla como en el historial. Las fotos se recortan solo en la miniatura de la isla.
+            - HISTORIAL CON IMÁGENES GRANDES: cada foto o sticker ocupa todo el ancho de su entrada (hasta 300 dp de alto) en vez de una miniatura de 110/190 px. Se descodifica al tamaño de la vista y se abre a pantalla completa con un toque.
+            - Las imágenes de los avisos se cargan y descodifican fuera del hilo principal, con caché: la isla ya no se congela al abrir un chat con fotos, ni se repite la lectura de la misma imagen al cambiar de tarjeta.
             - Formato libre SIN TIRONES: el arrastre ya no toca la ventana real (solo un marco fantasma instantáneo) y, al soltar, la ventana se coloca de UNA vez (antes se hacían 5 pasos interpolados de 50 ms que parecían «no responder»). Los envíos van por una cola con un solo hueco, con escritura y lectura ATÓMICAS: se acabó el perder un movimiento y quedarse la ventana quieta.
             - Formato libre: la BARRA ya no tapa los botones de minimizar/maximizar que dibuja la ROM sobre la ventana (la esquina superior derecha se deja libre). Ese era el motivo de que «no respondieran».
             - Formato libre: la barra ya no se toca a sí misma 3 veces por fotograma (solo se actualiza lo que de verdad cambia), el tirador no se redibuja mientras solo MUEVES y las lecturas de ventanas se espacian a 50 ms (antes 12 ms): se acaban los tirones al mover, al cambiar tamaño y al minimizar/maximizar.
