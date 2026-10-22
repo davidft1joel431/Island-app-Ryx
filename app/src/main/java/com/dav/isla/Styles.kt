@@ -152,7 +152,68 @@ object Styles {
         padH = 14, padV = 12, textColor = 0xFF0E2A24.toInt(), subColor = 0xCC1E4A40.toInt()
     )
 
-    val ALL = listOf(HYPEROS, IOS, SAMSUNG, CLASSIC, AURORA, NEON, AMBAR, BOSQUE, MINIMAL, CLARO, OCEANO, RUBI, MENTA)
+    // Titanio cepillado: gris con brillo metálico y borde frío.
+    val TITANIO = IslandStyle(
+        id = "titanio", label = "Titanio",
+        bgTop = 0xF22A3039.toInt(), bgBottom = 0xF20C0F14.toInt(),
+        strokeColor = 0x70DCE6F2.toInt(), strokeDp = 1.4f, highlight = 0x4DFFFFFF,
+        cornerDp = 24f, iconCircle = false, iconCornerDp = 12f, iconDp = 40,
+        showAppName = false, expandedWidthDp = 350, titleSp = 14f, bodySp = 12f,
+        padH = 14, padV = 12
+    )
+
+    // Lavanda clara, suave y luminosa.
+    val LAVANDA = IslandStyle(
+        id = "lavanda", label = "Lavanda",
+        bgTop = 0xF2F0EBFF.toInt(), bgBottom = 0xF2DCD2FF.toInt(),
+        strokeColor = 0x997C5CFF.toInt(), strokeDp = 1.2f, highlight = 0x77FFFFFF,
+        cornerDp = 26f, iconCircle = false, iconCornerDp = 12f, iconDp = 40,
+        showAppName = false, expandedWidthDp = 350, titleSp = 14f, bodySp = 12f,
+        padH = 14, padV = 12, textColor = 0xFF241A3A.toInt(), subColor = 0xCC4A3A6A.toInt()
+    )
+
+    // Atardecer coral con texto blanco.
+    val ATARDECER = IslandStyle(
+        id = "atardecer", label = "Atardecer",
+        bgTop = 0xF5FF8A65.toInt(), bgBottom = 0xF5C9184A.toInt(),
+        strokeColor = 0x66FFE0D6.toInt(), strokeDp = 1.3f, highlight = 0x40FFFFFF,
+        cornerDp = 26f, iconCircle = false, iconCornerDp = 13f, iconDp = 40,
+        showAppName = false, expandedWidthDp = 350, titleSp = 14f, bodySp = 12f,
+        padH = 14, padV = 12
+    )
+
+    // Ciberpúrpura con borde neón rosa.
+    val CIBER = IslandStyle(
+        id = "ciber", label = "Ciber",
+        bgTop = 0xF51A0826.toInt(), bgBottom = 0xF50A0312.toInt(),
+        strokeColor = 0xFFB026FF.toInt(), strokeDp = 1.6f, highlight = 0x33FF6EC7,
+        cornerDp = 24f, iconCircle = false, iconCornerDp = 13f, iconDp = 40,
+        showAppName = false, expandedWidthDp = 350, titleSp = 14f, bodySp = 12f,
+        padH = 14, padV = 12, subColor = 0xCCF0B6FF.toInt()
+    )
+
+    // Arena cálida para quien prefiere algo claro y sobrio.
+    val ARENA = IslandStyle(
+        id = "arena", label = "Arena",
+        bgTop = 0xF2F7EDD9.toInt(), bgBottom = 0xF2E8D5B5.toInt(),
+        strokeColor = 0x889C7A4A.toInt(), strokeDp = 1.2f, highlight = 0x66FFFFFF,
+        cornerDp = 26f, iconCircle = false, iconCornerDp = 12f, iconDp = 40,
+        showAppName = false, expandedWidthDp = 350, titleSp = 14f, bodySp = 12f,
+        padH = 14, padV = 12, textColor = 0xFF2B2114.toInt(), subColor = 0xCC5A4A32.toInt()
+    )
+
+    // Hielo: azul muy claro, casi transparente, con texto profundo.
+    val HIELO = IslandStyle(
+        id = "hielo", label = "Hielo",
+        bgTop = 0xEEE6F7FF.toInt(), bgBottom = 0xEEB9DFFF.toInt(),
+        strokeColor = 0x99FFFFFF.toInt(), strokeDp = 1.4f, highlight = 0x77FFFFFF,
+        cornerDp = 26f, iconCircle = false, iconCornerDp = 12f, iconDp = 40,
+        showAppName = false, expandedWidthDp = 350, titleSp = 14f, bodySp = 12f,
+        padH = 14, padV = 12, textColor = 0xFF08243A.toInt(), subColor = 0xCC164A6A.toInt()
+    )
+
+    val ALL = listOf(HYPEROS, IOS, SAMSUNG, CLASSIC, AURORA, NEON, AMBAR, BOSQUE, MINIMAL,
+        CLARO, OCEANO, RUBI, MENTA, TITANIO, LAVANDA, ATARDECER, CIBER, ARENA, HIELO)
 
     fun byId(id: String): IslandStyle = ALL.firstOrNull { it.id == id } ?: HYPEROS
 }

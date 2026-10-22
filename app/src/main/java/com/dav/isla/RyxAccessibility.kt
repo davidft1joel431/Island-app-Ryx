@@ -247,6 +247,72 @@ class RyxAccessibility : AccessibilityService() {
     /** Paquete de la app que está al frente ahora (la ventana activa). */
     fun currentPackage(): String? = try { rootInActiveWindow?.packageName?.toString() } catch (e: Exception) { null }
 
+    /**
+     * Busca una URI de imagen que la app exponga en su árbol de accesibilidad (extras, texto o descripción).
+     * No hace capturas de pantalla ni lee píxeles: solo reutiliza la URI que la propia app publica. Se descartan
+     * avatares/fotos de perfil y se elige el nodo con el área más grande, que suele ser el adjunto y no el icono
+     * del contacto. Si la app está en segundo plano no hay árbol que leer y devuelve null.
+     */
+    fun findMediaUri(pkg: String): String? {
+        if (pkg == packageName) return null
+        var bestArea = 0
+        var best: String? = null
+        val seen = HashSet<String>()
+        val uriRegex = Regex("(content|file)://[^\\s\"'<>]+", RegexOption.IGNORE_CASE)
+        fun accept(uri: String?, node: AccessibilityNodeInfo) {
+            if (uri.isNullOrBlank() || !seen.add(uri)) return
+            try {
+                val r = Rect(); node.getBoundsInScreen(r)
+                val area = (r.width().coerceAtLeast(1)) * (r.height().coerceAtLeast(1))
+                if (area >= bestArea) { bestArea = area; best = uri }
+            } catch (t: Throwable) {
+                if (best == null) best = uri
+            }
+        }
+        fun scan(node: AccessibilityNodeInfo?, depth: Int) {
+            if (node == null || depth > 45) return
+            val desc = node.contentDescription?.toString() ?: ""
+            val text = node.text?.toString() ?: ""
+            val hint = try { node.hintText?.toString() } catch (t: Throwable) { null } ?: ""
+            val tool = try { node.tooltipText?.toString() } catch (t: Throwable) { null } ?: ""
+            val all = "$desc $text $hint $tool"
+            val low = all.lowercase()
+            // Avatares, fotos de perfil y adjuntos de contacto: no son la imagen del mensaje.
+            val avatar = low.contains("avatar") || low.contains("foto de perfil") ||
+                low.contains("profile photo") || low.contains("profile picture") ||
+                low.contains("contact photo")
+            try {
+                val extras = node.extras
+                if (extras != null) for (k in extras.keySet()) {
+                    val kl = k.lowercase()
+                    if (avatar || kl.contains("avatar") || kl.contains("profile") ||
+                        kl.contains("sender") || kl.contains("person")) continue
+                    if (!(kl.contains("uri") || kl.contains("image") || kl.contains("photo") ||
+                            kl.contains("picture") || kl.contains("media") || kl.contains("thumbnail"))) continue
+                    val v = try { extras.get(k) } catch (t: Throwable) { null }
+                    val u = when (v) {
+                        is android.net.Uri -> v.toString()
+                        is String -> v
+                        is CharSequence -> v.toString()
+                        else -> null
+                    }
+                    if (u != null && (u.startsWith("content://") || u.startsWith("file://"))) accept(u, node)
+                }
+            } catch (t: Throwable) {}
+            if (!avatar) for (m in uriRegex.findAll(all)) accept(m.value, node)
+            val n = node.childCount
+            for (i in 0 until n) {
+                scan(try { node.getChild(i) } catch (t: Throwable) { null }, depth + 1)
+            }
+        }
+        try {
+            for (r in roots()) {
+                if (r.packageName?.toString() == pkg) scan(r, 0)
+            }
+        } catch (t: Throwable) {}
+        return best
+    }
+
     // ─────────────────────────────────────────────────────────────────────────────────────────────
     // FORMATO LIBRE DIRECTO: lo lanza este servicio (tiene ventana propia y exención de segundo plano) pidiendo el modo libre
     // con ActivityOptions + la clave «android.activity.windowingMode» = 5. Android no avisa si la ROM lo respetó, así que
