@@ -78,11 +78,15 @@ class MainActivity : Activity() {
     private val imgWork = java.util.concurrent.Executors.newFixedThreadPool(2)
     private var htmlBuilding = false
     // Gestos: el índice se guarda en los ajustes, así que la lista NO cambia de tamaño (así los gestos ya elegidos
-    // siguen funcionando). La opción «Burbuja» se retiró: su hueco queda como «Nada (sin acción)».
+    // siguen funcionando). «Burbuja» y los códigos Base64/binario se retiraron: sus huecos quedan como «Nada».
+    // La base binaria/Base64 es interna; al usuario solo se le ofrece copiar el mensaje o la imagen/sticker.
     private val actionNames = listOf("Nada", "Abrir app", "Ventana en formato libre", "Descartar tarjeta",
         "Siguiente tarjeta", "Tarjeta anterior", "Contraer isla", "Ver detalle",
         "Nada (sin acción)", "Formato libre", "Copiar mensaje completo", "Silenciar esta app",
-        "Copiar Base64", "Copiar binario (hex)", "Copiar imagen/sticker", "Copiar Base64 de imagen")
+        "Nada (sin acción)", "Nada (sin acción)", "Copiar imagen/sticker", "Nada (sin acción)")
+    // Solo se ofrecen acciones reales. Un gesto guardado en un hueco retirado se lee como «Nada».
+    private val selectableActions = listOf(0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 14)
+    private fun normalizedAction(a: Int): Int = if (a in selectableActions) a else 0
     private val permListener = Shizuku.OnRequestPermissionResultListener { _, _ -> runOnUiThread { render() } }
     private val binderListener = Shizuku.OnBinderReceivedListener { runOnUiThread { render() } }
     private val deadListener = Shizuku.OnBinderDeadListener { runOnUiThread { render() } }
@@ -1318,9 +1322,13 @@ class MainActivity : Activity() {
     private fun gestureRow(parent: LinearLayout, title: String, current: Int, set: (Int) -> Unit) {
         val r = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
         r.addView(label(title, 15f, R.color.text, true), LinearLayout.LayoutParams(0, WRAP, 1f))
-        r.addView(button(actionNames[current.coerceIn(0, actionNames.size - 1)], false) {
+        val selected = normalizedAction(current)
+        r.addView(button(actionNames[selected], false) {
+            val choices = selectableActions.map { actionNames[it] }.toTypedArray()
             glass(AlertDialog.Builder(this).setTitle(title)
-                .setSingleChoiceItems(actionNames.toTypedArray(), current) { d, i -> set(i); d.dismiss(); render() }
+                .setSingleChoiceItems(choices, selectableActions.indexOf(selected)) { d, i ->
+                    set(selectableActions[i]); d.dismiss(); render()
+                }
                 .setNegativeButton("Cancelar", null).show())
         })
         parent.addView(r, lp(8))
@@ -1579,6 +1587,7 @@ class MainActivity : Activity() {
             LinearLayout.LayoutParams(0, WRAP, 1f).apply { marginStart = px(4) })
         top.addView(sum)
         top.addView(label("El historial conserva el aviso aunque la app elimine el mensaje después. Los mensajes largos se archivan completos y se muestran en su propia tarjeta, sin límite de altura.", 12f, R.color.muted), lp(8))
+        top.addView(label("Si un mensaje largo, una imagen o un sticker no llega completo, Ryx lo reconstruye solo desde su copia interna.", 12f, R.color.muted), lp(6))
         top.addView(button("Borrar historial", false) {
             Prefs.clearHist(this)
             histCache = null; histQuery = ""; histFilter = "__apps__"
@@ -1587,23 +1596,6 @@ class MainActivity : Activity() {
             render()
         }, lp(10))
         p.addView(top, lp(8))
-
-        // Base de códigos: cada mensaje tiene su texto, su archivo binario y su código Base64.
-        val coded = all.count { it.b64.isNotEmpty() || it.bin.isNotEmpty() || it.b64f.isNotEmpty() }
-        val base = card()
-        base.addView(label("Base de mensajes", 16f, R.color.text, true))
-        base.addView(label("Cada aviso guarda su texto completo, un archivo binario (.bin) y su código Base64 (.b64). " +
-            "Si el texto normal no carga, el Historial y la isla reconstruyen el mensaje desde la copia más larga. " +
-            "Las imágenes y stickers se guardan como archivo binario y su Base64 se genera al copiarlos.", 12f, R.color.muted), lp(4))
-        base.addView(label("$coded de ${all.size} avisos ya tienen código binario y Base64. " +
-            "Los antiguos se completan solos al abrir la app.", 12f, R.color.gold), lp(8))
-        base.addView(button("Completar códigos antiguos", false) {
-            Thread {
-                Prefs.migrateCodes(this, true)
-                runOnUiThread { histCache = null; render(); toast("Códigos completados") }
-            }.start()
-        }, lp(10))
-        p.addView(base, lp(8))
 
         // Solo dos secciones: los avisos de las apps y los grupos del sistema, sin «Todo» ni filtros múltiples.
         val menu = card()
@@ -2098,14 +2090,9 @@ class MainActivity : Activity() {
             val v = copyChip(label, color) { copyHist(h2, mode) }
             row.addView(v, LinearLayout.LayoutParams(WRAP, WRAP).apply { marginEnd = px(6) })
         }
-        if (hasText) {
-            chip("Copiar mensaje", 0)
-            chip("Base64", 1)
-            chip("Binario (hex)", 2)
-        }
+        if (hasText) chip("Copiar mensaje", 0)
         if (hasMedia) {
             chip(if (h2.kind.contains("Sticker", ignoreCase = true)) "Copiar sticker" else "Copiar imagen", 3)
-            chip("Base64 imagen", 4)
         }
         return HorizontalScrollView(this).apply {
             isHorizontalScrollBarEnabled = false
@@ -2132,29 +2119,11 @@ class MainActivity : Activity() {
                 if (Clip.text(this, "Ryx", text)) toast("Mensaje completo copiado (${text.length} caracteres)")
                 else toast("No se pudo copiar el mensaje")
             }
-            1 -> {
-                val code = MsgBase.base64(this, h2)
-                if (code.isEmpty()) { toast("No hay Base64 que copiar"); return }
-                if (Clip.text(this, "Ryx Base64", code)) toast("Base64 copiado (${code.length} caracteres)")
-                else toast("No se pudo copiar Base64")
-            }
-            2 -> {
-                val bytes = MsgBase.binary(this, h2)
-                if (bytes.isEmpty()) { toast("No hay binario que copiar"); return }
-                if (Clip.binary(this, "Ryx binario", bytes)) toast("Binario (hex) copiado (${bytes.size} bytes)")
-                else toast("No se pudo copiar el binario")
-            }
             3 -> {
                 val f = MsgBase.mediaFile(this, h2)
                 if (f == null) { toast("Esta entrada no tiene imagen ni sticker"); return }
                 if (Clip.image(this, f, h2.kind)) toast("Imagen copiada: pégala en el chat")
                 else toast("No se pudo copiar la imagen")
-            }
-            4 -> {
-                val code = MsgBase.mediaBase64(this, h2)
-                if (code.isNullOrEmpty()) { toast("Esta entrada no tiene imagen ni sticker"); return }
-                if (Clip.text(this, "Ryx imagen Base64", code)) toast("Base64 de la imagen copiado (${code.length} caracteres)")
-                else toast("No se pudo copiar el Base64 de la imagen")
             }
         }
     }

@@ -1876,10 +1876,8 @@ class NotifListener : NotificationListenerService() {
             9 -> openCurrent(true, 0)       // formato libre
             10 -> copyCurrent()
             11 -> muteCurrent()
-            12 -> copyCurrentBase64()
-            13 -> copyCurrentBinary()
+            // 12, 13 y 15 se retiraron: Base64 y binario son recuperación interna, no acciones del usuario.
             14 -> copyCurrentImage()
-            15 -> copyCurrentImageBase64()
         }
     }
 
@@ -1898,30 +1896,6 @@ class NotifListener : NotificationListenerService() {
         }
         if (Clip.text(this, "Ryx", txt)) toast("Mensaje completo copiado (${txt.length} caracteres)")
         else toast("No se pudo copiar el mensaje")
-        pulse()
-    }
-
-    /** Copia el código Base64 del mensaje completo. */
-    private fun copyCurrentBase64() {
-        val c = cards.getOrNull(cardIndex) ?: return
-        val hint = (c.detail ?: c.body ?: c.title)?.toString() ?: return
-        val h = MsgBase.findHist(this, c.pkg, c.title?.toString() ?: "", hint, c.userId)
-        val code = if (h != null) MsgBase.base64(this, h)
-        else android.util.Base64.encodeToString(hint.toByteArray(Charsets.UTF_8), android.util.Base64.NO_WRAP)
-        if (code.isEmpty()) return
-        if (Clip.text(this, "Ryx Base64", code)) toast("Base64 copiado (${code.length} caracteres)")
-        else toast("No se pudo copiar Base64")
-        pulse()
-    }
-
-    /** Copia el código binario (hexadecimal) del mensaje completo. */
-    private fun copyCurrentBinary() {
-        val c = cards.getOrNull(cardIndex) ?: return
-        val hint = (c.detail ?: c.body ?: c.title)?.toString() ?: return
-        val h = MsgBase.findHist(this, c.pkg, c.title?.toString() ?: "", hint, c.userId)
-        val bytes = if (h != null) MsgBase.binary(this, h) else hint.toByteArray(Charsets.UTF_8)
-        if (Clip.binary(this, "Ryx binario", bytes)) toast("Binario (hex) copiado (${bytes.size} bytes)")
-        else toast("No se pudo copiar el binario")
         pulse()
     }
 
@@ -1952,53 +1926,6 @@ class NotifListener : NotificationListenerService() {
                         toast("Imagen copiada: pégala en el chat")
                         pulse()
                     } else toast("No pude copiar la imagen")
-                }
-            }
-            return
-        }
-        toast("Esta tarjeta no tiene imagen ni sticker")
-    }
-
-    /** Copia el código Base64 de la imagen o sticker. */
-    private fun copyCurrentImageBase64() {
-        val c = cards.getOrNull(cardIndex) ?: return
-        val hint = (c.detail ?: c.body ?: c.title)?.toString() ?: ""
-        val h = MsgBase.findHist(this, c.pkg, c.title?.toString() ?: "", hint, c.userId)
-        val saved = h?.let { MsgBase.mediaBase64(this, it) }
-        if (!saved.isNullOrEmpty()) {
-            Clip.text(this, "Ryx imagen Base64", saved)
-            toast("Base64 de la imagen copiado (${saved.length} caracteres)")
-            pulse()
-            return
-        }
-        val bmp = c.media
-        if (bmp != null) {
-            val bytes = java.io.ByteArrayOutputStream()
-            val sticker = c.mediaKind.contains("Sticker", ignoreCase = true)
-            bmp.compress(if (sticker) Bitmap.CompressFormat.PNG else Bitmap.CompressFormat.JPEG,
-                if (sticker) 100 else 92, bytes)
-            Clip.base64(this, "Ryx imagen Base64", bytes.toByteArray())
-            toast("Base64 de la imagen copiado")
-            pulse()
-            return
-        }
-        // La imagen puede existir solo como URI del aviso; se carga y se convierte fuera del hilo principal.
-        val uri = c.mediaUri
-        if (uri != null) {
-            histExec.execute {
-                val loaded = loadUriMedia(uri)
-                if (loaded == null) {
-                    main.post { toast("No pude leer la imagen para Base64") }
-                    return@execute
-                }
-                val bytes = java.io.ByteArrayOutputStream()
-                val sticker = c.mediaKind.contains("Sticker", ignoreCase = true)
-                loaded.compress(if (sticker) Bitmap.CompressFormat.PNG else Bitmap.CompressFormat.JPEG,
-                    if (sticker) 100 else 92, bytes)
-                main.post {
-                    Clip.base64(this, "Ryx imagen Base64", bytes.toByteArray())
-                    toast("Base64 de la imagen copiado")
-                    pulse()
                 }
             }
             return
@@ -2078,8 +2005,20 @@ class NotifListener : NotificationListenerService() {
     private fun syncMedia(c: Card) {
         val uri = c.mediaUri
         val sticker = c.mediaKind.contains("Sticker", ignoreCase = true)
+        // Si el aviso no trajo la imagen/sticker, se usa la copia binaria que el Historial guardó para
+        // ESTE mensaje. Es recuperación interna: no se muestra ningún código ni botón técnico.
+        val canUseHistory = c.mediaKind.contains("Imagen", ignoreCase = true) ||
+            c.mediaKind.contains("Foto", ignoreCase = true) ||
+            c.mediaKind.contains("Sticker", ignoreCase = true) ||
+            c.mediaKind.contains("GIF", ignoreCase = true)
+        val histKey = if (canUseHistory) mediaHistKey(c) else ""
         val bmp = c.media ?: uri?.let { mediaCache.get(it) }
-        val has = bmp != null || (uri != null && !mediaFailed.contains(uri))
+            ?: histKey.takeIf { it.isNotEmpty() }?.let { mediaCache.get(it) }
+        val uriPending = uri != null && !mediaFailed.contains(uri)
+        if (bmp == null && !uriPending && histKey.isNotEmpty()) loadHistoryMedia(c, histKey)
+        val histPending = histKey.isNotEmpty() && !mediaFailed.contains(histKey)
+        val has = bmp != null || uriPending || histPending
+        val tag = uri ?: histKey.ifEmpty { c.key }
 
         previewImg?.let { p ->
             val show = expanded && !detail && has
@@ -2089,7 +2028,7 @@ class NotifListener : NotificationListenerService() {
                 val pad = if (sticker) px(4) else 0
                 p.setPadding(pad, pad, pad, pad)
                 p.background = if (sticker || bmp == null) mediaTile(12f) else null
-                if (bmp != null) paintMedia(p, bmp, uri ?: c.key)
+                if (bmp != null) paintMedia(p, bmp, tag)
                 else { p.setImageDrawable(null); uri?.let { loadMedia(it) } }
             }
         }
@@ -2102,8 +2041,50 @@ class NotifListener : NotificationListenerService() {
                 val pad = if (sticker) px(6) else 0
                 iv.setPadding(pad, pad, pad, pad)
                 iv.background = if (sticker || bmp == null) mediaTile(14f) else null
-                if (bmp != null) paintMedia(iv, bmp, uri ?: c.key)
+                if (bmp != null) paintMedia(iv, bmp, tag)
                 else { iv.setImageDrawable(null); uri?.let { loadMedia(it) } }
+            }
+        }
+    }
+
+    /** Clave estable del respaldo de imagen del Historial para una tarjeta. */
+    private fun mediaHistKey(c: Card): String {
+        val hint = (c.detail ?: c.body ?: c.title)?.toString() ?: ""
+        return "hist|${c.key}|${hint.length}:${hint.hashCode()}|${c.userId}"
+    }
+
+    /**
+     * Recupera en segundo plano la imagen/sticker guardado en el Historial cuando el aviso en vivo no
+     * trajo el adjunto. Se decodifica una sola vez y se refresca la tarjeta que lo esté mostrando.
+     */
+    private fun loadHistoryMedia(c: Card, key: String) {
+        if (key.isEmpty() || mediaCache.get(key) != null || mediaFailed.contains(key)) return
+        if (!mediaTried.add(key)) return
+        histExec.execute {
+            var found: Bitmap? = null
+            var foundKind = c.mediaKind
+            try {
+                val hint = (c.detail ?: c.body ?: c.title)?.toString() ?: ""
+                val h = MsgBase.findHist(this, c.pkg, c.title?.toString() ?: "", hint, c.userId)
+                if (h != null) {
+                    if (h.kind.isNotEmpty()) foundKind = h.kind
+                    val f = MsgBase.mediaFile(this, h)
+                    if (f != null) found = loadFileMedia(f.absolutePath)
+                }
+            } catch (t: Throwable) {}
+            val bmp = found
+            if (bmp != null) mediaCache.put(key, bmp) else mediaFailed.add(key)
+            main.post {
+                val i = cards.indexOfFirst { mediaHistKey(it) == key }
+                if (bmp != null && i >= 0) {
+                    val old = cards[i]
+                    val updated = old.copy(media = bmp, mediaKind = old.mediaKind.ifEmpty { foundKind })
+                    cards[i] = updated
+                    if (i == cardIndex) syncMedia(updated)
+                } else {
+                    val cur = cards.getOrNull(cardIndex)
+                    if (cur != null && mediaHistKey(cur) == key) syncMedia(cur)
+                }
             }
         }
     }
@@ -2156,8 +2137,14 @@ class NotifListener : NotificationListenerService() {
      * pasar a ser desplazable en vez de crecer sin límite.
      */
     private fun updateDetailText(c: Card) {
-        val fullText = c.detail ?: c.body
-        val longText = (fullText?.length ?: 0) > 280
+        val hint = (c.detail ?: c.body ?: c.title)?.toString() ?: ""
+        // El Historial puede tener la versión completa aunque el aviso haya llegado recortado.
+        // Se consulta la base interna solo cuando el detalle ya tiene algo de texto.
+        val resolved = if (hint.isNotEmpty())
+            MsgBase.fullTextFor(this, c.pkg, c.title?.toString() ?: "", hint, c.userId)
+        else hint
+        val fullText: CharSequence = if (resolved.length >= hint.length) resolved else hint
+        val longText = fullText.length > 280
         bodyView?.let { b ->
             b.maxLines = Int.MAX_VALUE
             b.ellipsize = null
@@ -2632,6 +2619,22 @@ class NotifListener : NotificationListenerService() {
             } else null
         } catch (e: Throwable) { null }
     }
+
+    /**
+     * Decodifica una imagen guardada en el Historial (PNG, JPEG, GIF o WebP) reduciéndola antes de
+     * retenerla en memoria. Se usa solo como respaldo interno cuando el aviso no trajo el adjunto.
+     */
+    private fun loadFileMedia(path: String): Bitmap? = try {
+        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        BitmapFactory.decodeFile(path, bounds)
+        if (bounds.outWidth <= 0 || bounds.outHeight <= 0) null
+        else {
+            var sample = 1
+            while (bounds.outWidth / (sample * 2) >= 960 && bounds.outHeight / (sample * 2) >= 960) sample *= 2
+            val opts = BitmapFactory.Options().apply { inSampleSize = sample }
+            BitmapFactory.decodeFile(path, opts)?.let { scaleDown(it, 960) }
+        }
+    } catch (t: Throwable) { null }
 
     /** ¿La app puede leer la galería? En Android 13+ es READ_MEDIA_IMAGES; antes, READ_EXTERNAL_STORAGE. */
     private fun canReadGallery(): Boolean = try {

@@ -181,8 +181,8 @@ object Prefs {
     // ---- Historial por app (JSON) con imágenes ----
     /**
      * [b64] lleva el código Base64 del texto completo (solo en mensajes cortos), [bin] el archivo con
-     * los bytes UTF-8 y [b64f] el archivo con el Base64 de los mensajes largos. Así el texto se puede
-     * reconstruir aunque la vista no haya podido cargarlo.
+     * los bytes UTF-8 y [b64f] el archivo con el Base64 de los mensajes largos. Son copias internas:
+     * permiten reconstruir el texto aunque la vista no haya podido cargarlo y no se muestran al usuario.
      */
     data class HistItem(val pkg: String, val title: String, val text: String, val ts: Long,
                         val img: String = "", val kind: String = "",
@@ -227,8 +227,8 @@ object Prefs {
                 }
             }
         }
-        // Cada mensaje nuevo guarda también su binario y su Base64. Si el texto normal falla al cargar,
-        // el Historial y la isla reconstruyen el mensaje completo desde estas copias.
+        // Cada mensaje nuevo guarda también su binario y su Base64 como respaldo interno. Si el texto
+        // normal falla al cargar, el Historial y la isla reconstruyen el mensaje completo desde estas copias.
         val code = MsgBase.write(c, now, text)
         val out = org.json.JSONArray()
         out.put(org.json.JSONObject().put("p", pkg).put("t", title).put("x", text).put("ts", now)
