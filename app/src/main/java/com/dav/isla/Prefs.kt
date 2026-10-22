@@ -30,8 +30,22 @@ object Prefs {
     fun yOffsetDp(c: Context): Int = sp(c).getInt("y_dp", 8)
     fun setYOffsetDp(c: Context, v: Int) = sp(c).edit().putInt("y_dp", v).apply()
 
-    fun idleWidthDp(c: Context): Int = sp(c).getInt("idle_w", 96)
+    fun idleWidthDp(c: Context): Int = sp(c).getInt("idle_w", IslandGeometry.COLLAPSED_WIDTH_DP)
     fun setIdleWidthDp(c: Context, v: Int) = sp(c).edit().putInt("idle_w", v).apply()
+
+    /**
+     * Migración de la geometría anterior (96 dp) a la base de Ryx 0.9.50:
+     * 160 × 32 dp contraída y 350 × 74 dp expandida. Solo se toca el 96 de fábrica;
+     * si el usuario había elegido otro ancho, se conserva.
+     */
+    fun migrateGeometry(c: Context) {
+        val s = sp(c)
+        if (s.getInt("geom_v", 0) >= 1) return
+        val e = s.edit()
+        if (s.getInt("idle_w", 96) == 96) e.putInt("idle_w", IslandGeometry.COLLAPSED_WIDTH_DP)
+        e.putInt("geom_v", 1)
+        e.apply()
+    }
 
     fun lastLog(c: Context): String = sp(c).getString("last_log", "") ?: ""
     fun setLastLog(c: Context, s: String) = sp(c).edit().putString("last_log", s.takeLast(8000)).apply()
@@ -336,6 +350,15 @@ object Prefs {
      */
     fun chatMedia(c: Context): Boolean = sp(c).getBoolean("chat_media", true)
     fun setChatMedia(c: Context, v: Boolean) = sp(c).edit().putBoolean("chat_media", v).apply()
+
+    /**
+     * Último recurso para fotos de WhatsApp: si el aviso dice «Foto» pero la app no
+     * comparte los píxeles, se busca la última imagen reciente de su carpeta en la
+     * galería del sistema. Es opcional y solo se usa cuando no hay imagen en el aviso;
+     * nunca se hace una captura de pantalla.
+     */
+    fun mediaFolder(c: Context): Boolean = sp(c).getBoolean("media_folder", true)
+    fun setMediaFolder(c: Context, v: Boolean) = sp(c).edit().putBoolean("media_folder", v).apply()
 
     // ---- Copia en la nube y actualizaciones ----
     fun cloudUri(c: Context): String = sp(c).getString("cloud_uri", "") ?: ""

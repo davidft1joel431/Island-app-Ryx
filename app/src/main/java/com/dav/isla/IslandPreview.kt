@@ -124,17 +124,16 @@ class IslandPreview(c: Context) : View(c) {
         // Isla con los valores guardados
         val st = Styles.byId(Prefs.style(ctx))
         val screenWdp = screenW / dens
-        val margin = Prefs.sideMarginDp(ctx)
-        val expDp = minOf(screenWdp - 2 * margin, Prefs.expandedWidthDp(ctx).let { if (it > 0) it else st.expandedWidthDp }.toFloat())
+        // El mismo margen mínimo que usa la isla real: 12 dp aunque el ajuste esté en 0.
+        val margin = maxOf(Prefs.sideMarginDp(ctx), 12)
+        val expDp = minOf(screenWdp - 2 * margin, IslandGeometry.expandedWidthDp(ctx).toFloat())
         val wdp = lerp(Prefs.idleWidthDp(ctx).toFloat(), expDp, progress)
-        val hdp = lerp(Prefs.heightDp(ctx).toFloat(), 74f, progress)
+        val hdp = lerp(Prefs.heightDp(ctx).toFloat(), IslandGeometry.EXPANDED_HEIGHT_DP.toFloat(), progress)
         val cx = w / 2f + u(Prefs.xOffsetDp(ctx).toFloat())
         val top = u(Prefs.yOffsetDp(ctx).toFloat())
         rect.set(cx - u(wdp) / 2f, top, cx + u(wdp) / 2f, top + u(hdp))
-        val cd = Prefs.cornerDp(ctx)
-        val cornerDp = if (cd >= 0) cd.toFloat() else st.cornerDp
-        val cdIdle = Prefs.idleCornerDp(ctx)
-        val idleCornerDp = if (cdIdle >= 0) cdIdle.toFloat() else st.cornerDp
+        val cornerDp = IslandGeometry.expandedCornerDp(ctx)
+        val idleCornerDp = IslandGeometry.collapsedCornerDp(ctx)
         // Cada capa usa su propio radio: la contraída puede ser cuadrada y la expandida circular, o al revés.
         val crIdle = u(minOf(idleCornerDp, hdp / 2f))
         val cr2 = u(minOf(cornerDp, hdp / 2f))

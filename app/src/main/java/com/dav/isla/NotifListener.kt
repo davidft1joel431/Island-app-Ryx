@@ -16,9 +16,12 @@ import java.io.FileOutputStream
 import kotlin.math.abs
 import android.graphics.PorterDuff
 import android.graphics.PorterDuffColorFilter
+import android.content.ContentUris
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.content.pm.PackageManager
+import android.provider.MediaStore
 import android.os.BatteryManager
 import android.os.PowerManager
 import android.os.VibrationEffect
@@ -90,11 +93,17 @@ class NotifListener : NotificationListenerService() {
     private val mediaFailed = java.util.Collections.newSetFromMap(java.util.concurrent.ConcurrentHashMap<String, Boolean>())
     /** Avisos a los que se les está dando unos segundos para que la app adjunte la foto/sticker. */
     private val mediaRetry = java.util.Collections.newSetFromMap(java.util.concurrent.ConcurrentHashMap<String, Boolean>())
+    /** Huellas ya guardadas: si el aviso se borra después, no se duplica en el historial. */
+    private val historySaved = java.util.concurrent.ConcurrentHashMap<String, Long>()
+    /** Evita repetir la búsqueda de último recurso para el mismo aviso y el mismo texto. */
+    private val mediaFallbackTried = java.util.Collections.newSetFromMap(java.util.concurrent.ConcurrentHashMap<String, Boolean>())
+    /** Imágenes de la carpeta ya usadas por un aviso, para no asignar la misma foto a dos mensajes. */
+    private val folderImagesUsed = java.util.Collections.newSetFromMap(java.util.concurrent.ConcurrentHashMap<Long, Boolean>())
     private var actionsRow: LinearLayout? = null
     private var detail = false
 
     /** Una tarjeta acumulada en la isla. */
-    private class Card(
+    private data class Card(
         val key: String, val pkg: String, val title: CharSequence?, val body: CharSequence?,
         val icon: Drawable?, val accent: Int?, val ephemeral: Boolean,
         val detail: CharSequence? = null, val media: Bitmap? = null,
@@ -343,6 +352,13 @@ class NotifListener : NotificationListenerService() {
             if (!attached || !::wm.isInitialized) return@post
             try {
                 p.width = if (expanded) expandedWidth() else idleWidth()
+                // La altura base también se refresca al mover los deslizadores. En el detalle no se toca,
+                // porque la tarjeta puede haber crecido para mostrar el texto completo.
+                if (!detail) island?.minimumHeight = px(if (expanded) IslandGeometry.EXPANDED_HEIGHT_DP else Prefs.heightDp(this))
+                // La pastilla contraída depende del alto elegido: al mover el deslizador, sus esquinas se
+                // recalculan en el acto para que siga siendo una cápsula y no un rectángulo a medio redondear.
+                setIdleCorners(idleCornerPx())
+                if (!expanded) setCorners(idleCornerPx())
                 // x es el desplazamiento desde el centro (la ventana usa CENTER_HORIZONTAL). Antes se le sumaba
                 // el margen lateral, así que al mover el deslizador la isla se iba hacia un lado y podía salirse.
                 p.x = px(Prefs.xOffsetDp(this))
@@ -410,14 +426,14 @@ class NotifListener : NotificationListenerService() {
         // La app lo recorta al mostrarlo, pero se guarda entero para que el .html descargado salga con todo.
         var full: CharSequence? = n.extras.getCharSequence(Notification.EXTRA_BIG_TEXT)
         if (full == null) {
-            @Suppress("DEPRECATION")
-            val lines = n.extras.getParcelableArray(Notification.EXTRA_MESSAGES)
-                ?.mapNotNull { it as? android.os.Bundle }?.takeLast(5)?.mapNotNull { m ->
-                    val t = m.getCharSequence("text") ?: return@mapNotNull null
-                    val who = m.getCharSequence("sender")
-                    if (who != null) "$who: $t" else t.toString()
-                }
-            if (!lines.isNullOrEmpty()) full = lines.joinToString("\n")
+            // Se guardan TODOS los mensajes disponibles (hasta 60) para que un «testamento» no se corte.
+            // Antes solo se conservaban los últimos 5: los mensajes largos se perdían en el historial.
+            val lines = messageBundles(n).takeLast(60).mapNotNull { m ->
+                val t = m.getCharSequence("text") ?: return@mapNotNull null
+                val who = m.getCharSequence("sender")
+                if (who != null) "$who: $t" else t.toString()
+            }
+            if (lines.isNotEmpty()) full = lines.joinToString("\n")
         }
         if (words.isNotEmpty() && text == "Contenido oculto") full = text
         if (full == null) full = text
@@ -429,7 +445,7 @@ class NotifListener : NotificationListenerService() {
         readSigs.entries.removeAll { nowMs - it.value > 120_000L }
         val alreadyRead = readSigs.containsKey("${sbn.key}|$title|$text")
 
-        val (mediaBmp, mediaKind) = extractMedia(n)
+        val (mediaBmp, mediaKind) = extractMedia(n, sbn.packageName)
         // Si la imagen viene por URI (WhatsApp/Telegram la mandan así), se carga en SEGUNDO PLANO: abrir el
         // stream en el hilo principal congelaba la isla. El tipo ya se conoce ahora; la imagen llega al instante.
         val attachUri = if (mediaBmp == null) mediaUri(n) else null
@@ -458,8 +474,11 @@ class NotifListener : NotificationListenerService() {
             // y no se mezcle con la app original, que comparte el mismo paquete.
             val hp = appKey(sbn.packageName, uid); val ht = title?.toString() ?: ""; val hx = (full ?: text)?.toString() ?: ""
             // Los avisos del sistema se de-duplican durante más tiempo: no queremos cuatro avisos de batería seguidos.
-            val win = if (Sys.isSystemPkg(hp)) 120_000L else 3_000L
+            val win = if (Sys.isSystemPkg(hp)) 120_000L else if (hx.length > 320) 15_000L else 3_000L
             val hUri = attachUri
+            val fingerprint = "$hp|$ht|$hx"
+            historySaved[fingerprint] = nowMs
+            if (historySaved.size > 320) historySaved.entries.removeAll { nowMs - it.value > 60 * 60_000L }
             histExec.execute {      // disco y copia de seguridad fuera del hilo principal: la isla sale antes
                 try {
                     // Si la imagen venía por URI, se abre AQUÍ (hilo aparte). Nunca en el hilo principal.
@@ -468,6 +487,11 @@ class NotifListener : NotificationListenerService() {
                     Backup.maybeUpload(this)     // copia a la carpeta elegida (Drive u otra), si hay
                     Backup.autoLocal(this)       // copia a la carpeta PROPIA de la app, sola y sin tocar nada
                 } catch (e: Exception) {}
+            }
+            // Último recurso: si el aviso habla de foto/sticker pero no comparte la imagen, se intenta
+            // leer una URI de accesibilidad y, para WhatsApp, la última foto reciente de su carpeta.
+            if (mediaBmp == null && attachUri == null && wantsBitmap) {
+                scheduleMediaFallback(sbn, hp, ht, hx, attachKind, uid, nowMs)
             }
         }
 
@@ -528,6 +552,9 @@ class NotifListener : NotificationListenerService() {
         if (wasSelfCanceled(sbn.key)) return
         if (reason == NotificationListenerService.REASON_LISTENER_CANCEL || reason == NotificationListenerService.REASON_LISTENER_CANCEL_ALL) return
         if (sbn.packageName == packageName) return
+        // El aviso se borró antes de que el historial lo viera (teléfono inactivo, mensaje eliminado…).
+        // Se archiva igualmente; si ya estaba guardado, la huella evita el duplicado.
+        captureRemoved(sbn)
         // Se colgó o se rechazó la llamada: la tarjeta unificada se retira
         val cn = sbn.notification
         if (cn != null && (cn.category == "call" || cn.category == "missed_call")) main.post { dropKey("sys:call") }
@@ -546,7 +573,7 @@ class NotifListener : NotificationListenerService() {
         try {
             val active = activeNotifications?.firstOrNull { it.key == key }
             if (active != null) {
-                val (bmp, _) = try { extractMedia(active.notification) } catch (t: Throwable) { Pair(null, "") }
+                val (bmp, _) = try { extractMedia(active.notification, active.packageName) } catch (t: Throwable) { Pair(null, "") }
                 val uri = if (bmp == null) try { mediaUri(active.notification) } catch (t: Throwable) { null } else null
                 if (bmp != null || uri != null) {
                     onNotificationPosted(active)
@@ -1188,11 +1215,11 @@ class NotifListener : NotificationListenerService() {
     private fun setCorners(r: Float) { cornerTargets.forEach { it.cornerRadius = r } }
     private fun setIdleCorners(r: Float) { idleTargets.forEach { it.cornerRadius = r } }
 
-    /** Radio de la isla contraída: lo que elijas en Diseño → Isla contraída, o el del estilo. */
-    private fun idleCornerPx(): Float {
-        val cd = Prefs.idleCornerDp(this)
-        return px(if (cd >= 0) cd.toFloat() else style.cornerDp).toFloat()
-    }
+    /** Radio de la isla contraída: pastilla HyperOS por defecto (alto / 2). */
+    private fun idleCornerPx(): Float = px(IslandGeometry.collapsedCornerDp(this)).toFloat()
+
+    /** Radio de la isla expandida: cuadrado redondeado por defecto, nunca una píldora completa. */
+    private fun expandedCornerPx(): Float = px(IslandGeometry.expandedCornerDp(this)).toFloat()
 
     /** 0 = aspecto de reposo, 1 = tarjeta; se mezclan al abrir y cerrar. */
     private fun setBlend(b: Float) {
@@ -1220,8 +1247,7 @@ class NotifListener : NotificationListenerService() {
     }
 
     private fun buildBackground(s: IslandStyle, accent: Int? = null): Drawable {
-        val cd = Prefs.cornerDp(this)
-        val r = px(if (cd >= 0) cd.toFloat() else s.cornerDp).toFloat()
+        val r = expandedCornerPx()
         val rIdle = idleCornerPx()
         cornerTargets.clear()
         idleTargets.clear()
@@ -1490,7 +1516,7 @@ class NotifListener : NotificationListenerService() {
 
     private fun expandedWidth(): Int =
         minOf(resources.displayMetrics.widthPixels - 2 * cardMarginPx(),
-            px(Prefs.expandedWidthDp(this).let { if (it > 0) it else style.expandedWidthDp }))
+            px(IslandGeometry.expandedWidthDp(this)))
 
     /**
      * Alto de la caja de texto en el detalle. Antes eran ~4 líneas (92 dp) y un mensaje largo parecía
@@ -1539,6 +1565,7 @@ class NotifListener : NotificationListenerService() {
 
     private fun setIdleContent() {
         island?.minimumHeight = px(Prefs.heightDp(this))
+        island?.minimumWidth = 0
         iconView?.scaleX = 1f; iconView?.scaleY = 1f; textCol?.translationX = 0f
         iconView?.visibility = View.GONE
         textCol?.visibility = View.GONE
@@ -1547,6 +1574,7 @@ class NotifListener : NotificationListenerService() {
         island?.gravity = Gravity.END or Gravity.CENTER_VERTICAL
         setBlend(0f)
         setCorners(px(Prefs.heightDp(this)) / 2f)
+        setIdleCorners(idleCornerPx())
         updateBadge()
         updateCount()
     }
@@ -2064,7 +2092,7 @@ class NotifListener : NotificationListenerService() {
         }
         row.measure(View.MeasureSpec.makeMeasureSpec(w, View.MeasureSpec.EXACTLY),
             View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED))
-        val compact = px(maxOf(style.iconDp + 2 * style.padV, 64))
+        val compact = px(maxOf(style.iconDp + 2 * style.padV, IslandGeometry.EXPANDED_HEIGHT_DP))
         val maxH = minOf((resources.displayMetrics.heightPixels * 0.55f).toInt(), px(420))
             .coerceAtLeast(compact)
         val target = if (open) minOf(maxOf(row.measuredHeight, compact), maxH) else compact
@@ -2127,8 +2155,17 @@ class NotifListener : NotificationListenerService() {
     /** Convierte en URI solo valores que de verdad lo parezcan (evita coger textos cualquiera). */
     private fun uriValue(v: Any?): String? = when (v) {
         is android.net.Uri -> v.toString()
-        is String -> if (v.startsWith("content://") || v.startsWith("file://") ||
-            v.startsWith("http://") || v.startsWith("https://")) v else null
+        is android.graphics.drawable.Icon -> try { v.uri?.toString() } catch (t: Throwable) { null }
+        is String -> {
+            val s = v.trim()
+            when {
+                s.startsWith("content://") || s.startsWith("file://") ||
+                    s.startsWith("http://") || s.startsWith("https://") -> s
+                // Algunas ROM/apps entregan la ruta absoluta sin esquema.
+                s.startsWith("/") && s.length > 3 -> "file://$s"
+                else -> null
+            }
+        }
         else -> null
     }
 
@@ -2139,12 +2176,11 @@ class NotifListener : NotificationListenerService() {
      */
     @Suppress("DEPRECATION")
     private fun bundleUri(m: android.os.Bundle): String? {
-        m.getString("uri")?.let { return it }
-        (m.getParcelable<android.os.Parcelable>("uri") as? android.net.Uri)?.let { return it.toString() }
+        uriValue(try { m.get("uri") } catch (t: Throwable) { null })?.let { return it }
         for (k in m.keySet()) {
             val kl = k.lowercase()
             if (kl.contains("sender") || kl.contains("person") || kl.contains("avatar") ||
-                kl.contains("profile") || kl == "icon") continue
+                kl.contains("profile") || kl.contains("icon")) continue
             if (!(kl.contains("uri") || kl.contains("image") || kl.contains("picture") ||
                     kl.contains("photo") || kl.contains("sticker") || kl.contains("media") ||
                     kl.contains("thumbnail"))) continue
@@ -2154,20 +2190,44 @@ class NotifListener : NotificationListenerService() {
     }
 
     /**
+     * Mensajes de MessagingStyle. Android 11+ añade EXTRA_HISTORIC_MESSAGES con la conversación anterior;
+     * algunas apps (WhatsApp y sus clones) publican ahí la foto que ya no está en EXTRA_MESSAGES. Se leen
+     * ambos sin tocar el remitente, que es donde suele venir el avatar.
+     */
+    @Suppress("DEPRECATION")
+    private fun messageBundles(n: Notification): List<android.os.Bundle> {
+        val out = ArrayList<android.os.Bundle>()
+        fun add(key: String) {
+            try {
+                n.extras.getParcelableArray(key)?.forEach { b ->
+                    (b as? android.os.Bundle)?.let { out.add(it) }
+                }
+            } catch (t: Throwable) {}
+        }
+        // Primero la conversación anterior y después los mensajes actuales: así el último elemento
+        // de la lista es siempre el mensaje más reciente (y las fotos se buscan de atrás hacia delante).
+        add(Notification.EXTRA_HISTORIC_MESSAGES)
+        add(Notification.EXTRA_MESSAGES)
+        return out
+    }
+
+    /**
      * Última imagen de una notificación de mensajes y su MIME. Se recorre hacia atrás TODA la lista: si el último
      * mensaje es texto pero el anterior traía foto/sticker, antes se perdía la imagen. El segundo valor es el MIME
      * de la imagen encontrada o, si no hay ninguna, el del último mensaje (para reconocer audio/vídeo).
      */
     @Suppress("DEPRECATION")
     private fun latestImage(n: Notification): Pair<String?, String> {
-        val msgs = n.extras.getParcelableArray(Notification.EXTRA_MESSAGES) ?: return Pair(null, "")
+        val msgs = messageBundles(n)
         var lastMime = ""
         for (i in msgs.indices.reversed()) {
-            val m = msgs[i] as? android.os.Bundle ?: continue
+            val m = msgs[i]
             val mime = (m.getCharSequence("type") ?: m.getString("type"))?.toString() ?: ""
             if (lastMime.isEmpty()) lastMime = mime
             val uri = bundleUri(m)
-            if (mime.startsWith("image/")) return Pair(uri, mime)
+            // Solo se detiene si además hay URI: un mensaje «image/*» sin URI no debe impedir que se
+            // encuentre la imagen real de un mensaje anterior.
+            if (mime.startsWith("image/") && uri != null) return Pair(uri, mime)
             if (uri != null && mime.isEmpty()) return Pair(uri, mime)
         }
         return Pair(null, lastMime)
@@ -2201,9 +2261,10 @@ class NotifListener : NotificationListenerService() {
         add(ex.getCharSequence(Notification.EXTRA_TEXT))
         add(ex.getCharSequence(Notification.EXTRA_BIG_TEXT))
         add(ex.getCharSequence(Notification.EXTRA_SUB_TEXT))
+        add(ex.getCharSequence(Notification.EXTRA_SUMMARY_TEXT))
+        add(ex.getCharSequence(Notification.EXTRA_INFO_TEXT))
         try {
-            ex.getParcelableArray(Notification.EXTRA_MESSAGES)?.forEach { m ->
-                val b = m as? android.os.Bundle ?: return@forEach
+            messageBundles(n).forEach { b ->
                 add(b.getCharSequence("text")); add(b.getCharSequence("sender"))
             }
         } catch (t: Throwable) {}
@@ -2212,14 +2273,17 @@ class NotifListener : NotificationListenerService() {
 
     /** Tipo de adjunto que se deduce del texto («Envió una foto», «Envió un sticker»…). */
     private fun mediaHintKind(n: Notification): String {
-        val s = try { mediaText(n) } catch (t: Throwable) { return "" }
+        val raw = try { mediaText(n) } catch (t: Throwable) { return "" }
+        // «Foto de perfil» no es un adjunto: se quita para no marcar como media un simple cambio de avatar.
+        val s = raw.replace("foto de perfil", " ").replace("profile photo", " ").replace("profile picture", " ")
         return when {
-            s.contains("sticker") -> "Sticker"
+            s.contains("sticker") || s.contains("pegatina") -> "Sticker"
             s.contains("gif") -> "GIF"
             s.contains("video") || s.contains("vídeo") || s.contains("🎥") -> "Video"
             s.contains("audio") || s.contains("nota de voz") || s.contains("voice message") -> "Audio"
-            s.contains("documento") || s.contains("document") -> "Documento"
+            s.contains("documento") || s.contains("document") || s.contains("archivo adjunto") -> "Documento"
             s.contains("foto") || s.contains("photo") || s.contains("imagen") || s.contains("image") ||
+                s.contains("fotografía") || s.contains("fotografia") || s.contains("multimedia") ||
                 s.contains("📷") || s.contains("🖼") || s.contains("cámara") || s.contains("camara") -> "Foto"
             else -> ""
         }
@@ -2230,9 +2294,9 @@ class NotifListener : NotificationListenerService() {
     /** Busca un Bitmap en claves no estándar de los mensajes (media, thumbnail, picture…). */
     @Suppress("DEPRECATION")
     private fun mediaBitmapFromMessages(n: Notification): Bitmap? {
-        val msgs = try { n.extras.getParcelableArray(Notification.EXTRA_MESSAGES) } catch (t: Throwable) { null } ?: return null
+        val msgs = messageBundles(n)
         for (i in msgs.indices.reversed()) {
-            val b = msgs[i] as? android.os.Bundle ?: continue
+            val b = msgs[i]
             for (k in b.keySet()) {
                 val kl = k.lowercase()
                 if (kl.contains("sender") || kl.contains("person") || kl.contains("avatar") ||
@@ -2241,6 +2305,10 @@ class NotifListener : NotificationListenerService() {
                         kl.contains("sticker") || kl.contains("media") || kl.contains("thumbnail"))) continue
                 bitmapExtra(b, k)?.let { return it }
             }
+            // Algunas apps meten la imagen dentro de un Bundle «extras» del mensaje.
+            try {
+                b.getBundle("extras")?.let { nested -> mediaBitmapFromExtras(nested)?.let { return it } }
+            } catch (t: Throwable) {}
         }
         return null
     }
@@ -2297,9 +2365,9 @@ class NotifListener : NotificationListenerService() {
             icon?.loadDrawable(this)?.let { toBitmap(it) }
         } catch (t: Throwable) { null }
         try {
-            val msgs = n.extras.getParcelableArray(Notification.EXTRA_MESSAGES)
-            if (msgs != null) for (i in msgs.indices.reversed()) {
-                val b = msgs[i] as? android.os.Bundle ?: continue
+            val msgs = messageBundles(n)
+            if (msgs.isNotEmpty()) for (i in msgs.indices.reversed()) {
+                val b = msgs[i]
                 val p = b.getParcelable<android.app.Person>("sender_person") ?: continue
                 fromIcon(p.icon)?.let { return it }
             }
@@ -2337,12 +2405,18 @@ class NotifListener : NotificationListenerService() {
         }
     } catch (t: Throwable) { false }
 
+    /** Apps que suelen publicar la imagen/vídeo como icono grande ancho (no como avatar redondo). */
+    private fun isVisualApp(pkg: String): Boolean = pkg in setOf(
+        "com.zhiliaoapp.musically", "com.ss.android.ugc.trill", "com.zhiliaoapp.musically.go",
+        "com.pinterest", "com.instagram.android", "com.google.android.youtube",
+        "com.twitter.android", "com.snapchat.android", "com.facebook.katana",
+        "com.linkedin.android", "com.reddit.frontpage")
+
     /** Imagen o sticker de la notificación (si hay) y su tipo. NUNCA hace E/S: eso va en loadUriMedia(). */
     @Suppress("DEPRECATION")
-    private fun extractMedia(n: Notification): Pair<Bitmap?, String> {
+    private fun extractMedia(n: Notification, pkg: String = ""): Pair<Bitmap?, String> {
         val ex = n.extras
-        val (lastUri, mime) = try { latestImage(n) } catch (t: Throwable) { Pair(null, "") }
-        val imgUri = lastUri ?: try { mediaUriFromExtras(ex) } catch (t: Throwable) { null }
+        val (_, mime) = try { latestImage(n) } catch (t: Throwable) { Pair(null, "") }
         val stickerMime = mime.contains("webp") || mime.contains("png")
         val hint = try { looksLikeMedia(n) } catch (t: Throwable) { false }
         val hintKind = try { mediaHintKind(n) } catch (t: Throwable) { "" }
@@ -2356,12 +2430,16 @@ class NotifListener : NotificationListenerService() {
         if (bmp == null) bmp = mediaBitmapFromWearable(n)
         // 3) Respaldo del icono grande. WhatsApp/HyperOS ponen ahí la foto o el sticker real y el avatar
         //    del contacto en sender_person. Si el largeIcon coincide con el avatar, se descarta; si es
-        //    distinto (o no hay avatar), se usa. Antes se rechazaba por forma y se perdían fotos reales.
+        //    distinto (o no hay avatar), se usa. TikTok/Pinterest suelen usar un icono grande ancho.
         var fromLarge = false
         if (bmp == null) {
             val large = bitmapExtra(ex, Notification.EXTRA_LARGE_ICON)
                 ?: bitmapExtra(ex, Notification.EXTRA_LARGE_ICON_BIG)
-            if (large != null && (stickerMime || hint)) {
+            val visual = isVisualApp(pkg) || n.category in setOf(
+                Notification.CATEGORY_SOCIAL, Notification.CATEGORY_RECOMMENDATION,
+                Notification.CATEGORY_PROMO, "news")
+            val wide = large != null && large.width >= large.height * 1.25f
+            if (large != null && (stickerMime || hint || (visual && wide))) {
                 val avatar = try { senderAvatar(n) } catch (t: Throwable) { null }
                 if (avatar == null || !sameImage(large, avatar)) {
                     bmp = large
@@ -2421,6 +2499,161 @@ class NotifListener : NotificationListenerService() {
                 b?.let { scaleDown(it, 960) }
             } else null
         } catch (e: Throwable) { null }
+    }
+
+    /** ¿La app puede leer la galería? En Android 13+ es READ_MEDIA_IMAGES; antes, READ_EXTERNAL_STORAGE. */
+    private fun canReadGallery(): Boolean = try {
+        val full = if (Build.VERSION.SDK_INT >= 33) "android.permission.READ_MEDIA_IMAGES"
+        else "android.permission.READ_EXTERNAL_STORAGE"
+        checkSelfPermission(full) == PackageManager.PERMISSION_GRANTED ||
+            (Build.VERSION.SDK_INT >= 34 && checkSelfPermission(
+                "android.permission.READ_MEDIA_VISUAL_USER_SELECTED") == PackageManager.PERMISSION_GRANTED)
+    } catch (t: Throwable) { false }
+
+    /**
+     * Último recurso para WhatsApp: busca una imagen recién añadida por la app en la galería del sistema.
+     * Solo se llama cuando el aviso dice Foto/Sticker pero no trae ningún bitmap ni URI, nunca para otros
+     * usuarios/clones (el MediaStore del proceso no puede leer su carpeta) y solo con permiso concedido.
+     */
+    private fun latestGalleryImage(pkg: String, around: Long): Bitmap? {
+        if (!Prefs.mediaFolder(this) || !canReadGallery()) return null
+        val folder = when (pkg) {
+            "com.whatsapp" -> "WhatsApp Images"
+            "com.whatsapp.w4b" -> "WhatsApp Business Images"
+            else -> return null
+        }
+        if (folderImagesUsed.size > 300) folderImagesUsed.clear()
+        val resolver = contentResolver
+        val since = ((around - 5 * 60_000L) / 1000L).coerceAtLeast(0L)
+        val until = (around + 60_000L) / 1000L
+        val time = "((${MediaStore.Images.Media.DATE_ADDED}>=? AND ${MediaStore.Images.Media.DATE_ADDED}<=?)" +
+            " OR (${MediaStore.Images.Media.DATE_MODIFIED}>=? AND ${MediaStore.Images.Media.DATE_MODIFIED}<=?))"
+        val timeArgs = arrayOf(since.toString(), until.toString(), since.toString(), until.toString())
+        val projection = arrayOf(MediaStore.Images.Media._ID)
+        fun query(selection: String, args: Array<String>): Bitmap? {
+            val cursor = try {
+                resolver.query(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, projection,
+                    selection, args, "${MediaStore.Images.Media.DATE_ADDED} DESC")
+            } catch (t: Throwable) { null } ?: return null
+            try {
+                var checked = 0
+                while (cursor.moveToNext() && checked < 12) {
+                    checked++
+                    val id = try { cursor.getLong(0) } catch (t: Throwable) { -1L }
+                    if (id <= 0 || !folderImagesUsed.add(id)) continue
+                    val uri = ContentUris.withAppendedId(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, id)
+                    val bmp = loadUriMedia(uri.toString())
+                    if (bmp != null) return bmp
+                }
+            } catch (t: Throwable) {} finally {
+                try { cursor.close() } catch (t: Throwable) {}
+            }
+            return null
+        }
+        // Primero por propietario (lo más fiable); si la ROM no lo rellena, por la ruta de la carpeta.
+        return query("${MediaStore.Images.Media.OWNER_PACKAGE_NAME}=? AND $time",
+                arrayOf(pkg) + timeArgs)
+            ?: query("${MediaStore.Images.Media.RELATIVE_PATH} LIKE ? AND $time",
+                arrayOf("%$folder%") + timeArgs)
+    }
+
+    /**
+     * Intenta completar una foto que la app no compartió. Primero lee una URI expuesta por accesibilidad
+     * (sin capturas de pantalla); si no, para WhatsApp usa la última imagen reciente de su carpeta.
+     * Se ejecuta en el hilo del historial, nunca en el principal.
+     */
+    private fun scheduleMediaFallback(
+        sbn: StatusBarNotification, hp: String, title: String, text: String,
+        kind: String, uid: Int, around: Long
+    ) {
+        if (uid != myUser) return
+        if (mediaFallbackTried.size > 500) mediaFallbackTried.clear()
+        val marker = "${sbn.key}|${text.hashCode()}"
+        if (!mediaFallbackTried.add(marker)) return
+        val pkg = sbn.packageName
+        val whatsapp = pkg == "com.whatsapp" || pkg == "com.whatsapp.w4b"
+        if (!whatsapp && RyxAccessibility.instance == null) return
+        histExec.execute {
+            try {
+                var bmp: Bitmap? = null
+                // 1) URI que la app expone en su árbol de accesibilidad (solo si esa app está al frente).
+                try {
+                    RyxAccessibility.instance?.findMediaUri(pkg)?.let { bmp = loadUriMedia(it) }
+                } catch (t: Throwable) {}
+                // 2) Último recurso: última imagen reciente de la carpeta de WhatsApp.
+                if (bmp == null && whatsapp) bmp = latestGalleryImage(pkg, around)
+                val found = bmp ?: return@execute
+                val saved = saveBitmap(found, kind)
+                // La ventana es amplia para que actualice la entrada ya guardada en vez de crear otra.
+                Prefs.addHist(this, hp, title, text, saved, kind, 120_000L)
+                main.post { applyMediaToCard(sbn.key, text, found, kind) }
+            } catch (t: Throwable) {}
+        }
+    }
+
+    /** Pinta la imagen encontrada en la tarjeta viva si sigue siendo la misma notificación. */
+    private fun applyMediaToCard(key: String, fullText: String, bmp: Bitmap, kind: String) {
+        val i = cards.indexOfFirst {
+            it.key == key && (it.detail?.toString() == fullText || it.body?.toString() == fullText)
+        }
+        if (i < 0) return
+        val old = cards[i]
+        val updated = old.copy(media = bmp, mediaKind = if (old.mediaKind.isNotEmpty()) old.mediaKind else kind)
+        cards[i] = updated
+        if (i == cardIndex) {
+            bindCard(updated)
+            if (detail) animateDetail(true)
+        }
+    }
+
+    /**
+     * Algunas apps quitan el aviso tan rápido que el historial no llega a verlo (o el teléfono estaba
+     * inactivo). Si el aviso se borra y no estaba ya guardado, se archiva su texto completo igualmente:
+     * el historial es un registro, y un mensaje eliminado en la app no debe desaparecer de él.
+     */
+    private fun captureRemoved(sbn: StatusBarNotification) {
+        if (!Prefs.keepHistory(this)) return
+        val n = sbn.notification ?: return
+        if ((n.flags and Notification.FLAG_GROUP_SUMMARY) != 0) return
+        val uid = if (sbn.userId >= 0) sbn.userId else myUser
+        val pkg = sbn.packageName
+        var title = n.extras.getCharSequence(Notification.EXTRA_TITLE) ?: appLabel(pkg, sbn.user, uid)
+        var text = n.extras.getCharSequence(Notification.EXTRA_TEXT)
+            ?: n.extras.getCharSequence(Notification.EXTRA_SUB_TEXT)
+            ?: n.extras.getCharSequence(Notification.EXTRA_INFO_TEXT) ?: ""
+        var full: CharSequence? = n.extras.getCharSequence(Notification.EXTRA_BIG_TEXT)
+        if (full == null) {
+            val lines = messageBundles(n).takeLast(60).mapNotNull { m ->
+                val t = m.getCharSequence("text") ?: return@mapNotNull null
+                val who = m.getCharSequence("sender")
+                if (who != null) "$who: $t" else t.toString()
+            }
+            if (lines.isNotEmpty()) full = lines.joinToString("\n")
+        }
+        // Privacidad: un aviso borrado no debe saltarse las palabras ocultas configuradas.
+        val words = Prefs.hiddenWords(this)
+        if (words.isNotEmpty() && words.any { "${title ?: ""} ${text ?: ""}".lowercase().contains(it) }) {
+            title = appLabel(pkg, sbn.user, uid)
+            text = "Contenido oculto"
+            full = text
+        }
+        if (full == null) full = text
+        val hx = (full ?: text)?.toString() ?: ""
+        if (hx.isBlank()) return
+        val hp = appKey(pkg, uid)
+        val ht = title?.toString() ?: ""
+        val fp = "$hp|$ht|$hx"
+        val now = System.currentTimeMillis()
+        if (historySaved.containsKey(fp)) return
+        historySaved[fp] = now
+        histExec.execute {
+            try {
+                val (bmp, kind) = extractMedia(n, pkg)
+                val uri = if (bmp == null) mediaUri(n) else null
+                val finalBmp = bmp ?: uri?.let { loadUriMedia(it) }
+                Prefs.addHist(this, hp, ht, hx, saveBitmap(finalBmp, kind), kind, 60_000L)
+            } catch (t: Throwable) {}
+        }
     }
 
     private fun saveBitmap(bmp: Bitmap?, kind: String): String {
@@ -2517,11 +2750,10 @@ class NotifListener : NotificationListenerService() {
         val params = lp ?: return
         val row = island
         val idleH = px(Prefs.heightDp(this))
-        val expH = px(maxOf(style.iconDp + 2 * style.padV, 64))
+        val expH = px(maxOf(style.iconDp + 2 * style.padV, IslandGeometry.EXPANDED_HEIGHT_DP))
         val fromW = params.width; val toW = if (toExpanded) expandedWidth() else idleWidth()
         val fromH = (row?.minimumHeight ?: idleH); val toH = if (toExpanded) expH else idleH
-        val cd = Prefs.cornerDp(this)
-        val cornerPx = px(if (cd >= 0) cd.toFloat() else style.cornerDp).toFloat()
+        val cornerPx = expandedCornerPx()
         val cornerIdle = idleCornerPx()
         val fromR = cornerTargets.firstOrNull()?.cornerRadius ?: (idleH / 2f)
         val fromB = blend
