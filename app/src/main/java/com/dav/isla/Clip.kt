@@ -8,16 +8,15 @@ import android.graphics.Bitmap
 import android.os.Build
 import android.os.Environment
 import android.provider.MediaStore
-import android.util.Base64
 import java.io.File
 import java.io.OutputStream
 
 /**
  * Copia al portapapeles sin depender de AndroidX.
  *
- * El texto y los códigos van como texto normal. Las imágenes/stickers se publican primero como una
- * imagen normal en Pictures/Ryx y se copia su URI: así se pueden pegar en WhatsApp, Telegram o cualquier
- * app que acepte imágenes, sin capturas de pantalla ni permisos especiales.
+ * El texto va como texto normal. Las imágenes/stickers se publican primero como una imagen normal en
+ * Pictures/Ryx y se copia su URI: así se pueden pegar en WhatsApp, Telegram o cualquier app que acepte
+ * imágenes, sin capturas de pantalla ni permisos especiales. Base64 y binario son internos y no se copian.
  */
 object Clip {
     fun text(c: Context, label: String, value: String): Boolean = try {
@@ -25,16 +24,6 @@ object Clip {
         cb.setPrimaryClip(ClipData.newPlainText(label, value))
         true
     } catch (t: Throwable) { false }
-
-    fun base64(c: Context, label: String, bytes: ByteArray): Boolean =
-        text(c, label, Base64.encodeToString(bytes, Base64.NO_WRAP))
-
-    fun base64Text(c: Context, label: String, value: String): Boolean =
-        text(c, label, Base64.encodeToString(value.toByteArray(Charsets.UTF_8), Base64.NO_WRAP))
-
-    /** Copia el código binario como hexadecimal (dos dígitos por byte). */
-    fun binary(c: Context, label: String, bytes: ByteArray): Boolean =
-        text(c, label, MsgBase.hex(bytes))
 
     fun image(c: Context, file: File, kind: String): Boolean {
         if (!file.isFile) return false

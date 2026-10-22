@@ -13,7 +13,8 @@ import java.io.File
  *
  * La idea es que el Historial y la isla nunca dependan de que la vista haya podido cargar el texto:
  * si el texto normal viene vacío, cortado o corrupto, se reconstruye desde el binario o desde Base64.
- * Las imágenes y stickers ya se guardan como archivo binario; su Base64 se calcula al copiarlo.
+ * Las imágenes y stickers se guardan como archivo binario; su Base64 se calcula solo cuando hace falta
+ * para una vista o una exportación. Nada de esto se ofrece como botón: es recuperación interna.
  *
  * Los archivos viven en la misma carpeta privada que las imágenes del Historial, así que entran en la
  * copia de seguridad y se borran junto con la entrada cuando el historial rota.
@@ -75,24 +76,6 @@ object MsgBase {
         return out
     }
 
-    /** Código Base64 del texto. Si la entrada es antigua, se genera desde el texto que haya. */
-    fun base64(c: Context, h: Prefs.HistItem): String {
-        if (h.b64.isNotEmpty()) return h.b64
-        if (h.b64f.isNotEmpty()) readText(File(dir(c), h.b64f))?.let { if (it.isNotBlank()) return it }
-        return Base64.encodeToString(fullText(c, h).toByteArray(Charsets.UTF_8), Base64.NO_WRAP)
-    }
-
-    /** Bytes binarios del texto. Si la entrada es antigua, se generan desde el texto. */
-    fun binary(c: Context, h: Prefs.HistItem): ByteArray {
-        if (h.bin.isNotEmpty()) {
-            try {
-                val f = File(dir(c), h.bin)
-                if (f.isFile) return f.readBytes()
-            } catch (t: Throwable) {}
-        }
-        return fullText(c, h).toByteArray(Charsets.UTF_8)
-    }
-
     /** Archivo de imagen o sticker de la entrada, o null si no existe. */
     fun mediaFile(c: Context, h: Prefs.HistItem): File? {
         if (h.img.isEmpty()) return null
@@ -102,7 +85,7 @@ object MsgBase {
         } catch (t: Throwable) { null }
     }
 
-    /** Código Base64 de la imagen o sticker (se calcula desde el archivo binario). */
+    /** Base64 interno de la imagen o sticker (se calcula desde el archivo binario; no se muestra al usuario). */
     fun mediaBase64(c: Context, h: Prefs.HistItem): String? = try {
         mediaFile(c, h)?.readBytes()?.let { Base64.encodeToString(it, Base64.NO_WRAP) }
     } catch (t: Throwable) { null }
@@ -140,9 +123,20 @@ object MsgBase {
         val h = findHist(c, pkg, title, hint, userId)
         if (h != null) {
             val full = fullText(c, h)
-            if (full.isNotEmpty()) return full
+            // Solo se cambia el texto visible si la copia guardada continúa el mensaje actual.
+            // Así una tarjeta corta recién llegada no muestra por error un mensaje anterior de la misma app.
+            if (full.isNotEmpty() && full.length >= hint.length && related(full, hint)) return full
         }
         return hint
+    }
+
+    /** ¿La copia guardada coincide o continúa el texto que mostró el aviso? */
+    private fun related(full: String, hint: String): Boolean {
+        if (hint.isBlank()) return true
+        val clean = hint.trim().trimEnd('…', '.', ' ')
+        if (clean.isEmpty()) return true
+        val saved = full.trim()
+        return saved == clean || saved.startsWith(clean.take(120)) || clean.startsWith(saved.take(120))
     }
 
     /** Borra los archivos de una entrada (imagen, binario y Base64). */
@@ -151,18 +145,6 @@ object MsgBase {
             if (name.isEmpty()) continue
             try { File(dir(c), name).delete() } catch (t: Throwable) {}
         }
-    }
-
-    /** Código binario legible (hexadecimal) para el portapapeles. */
-    fun hex(bytes: ByteArray): String {
-        val chars = CharArray(bytes.size * 2)
-        val digits = "0123456789ABCDEF"
-        for (i in bytes.indices) {
-            val v = bytes[i].toInt() and 0xFF
-            chars[i * 2] = digits[v ushr 4]
-            chars[i * 2 + 1] = digits[v and 0x0F]
-        }
-        return String(chars)
     }
 
     private fun readText(f: File): String? = try {
