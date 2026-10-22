@@ -102,6 +102,9 @@ object Prefs {
     fun setLockScreen(c: Context, v: Boolean) = sp(c).edit().putBoolean("lock", v).apply()
     fun keepHistory(c: Context): Boolean = sp(c).getBoolean("hist_on", true)
     fun setKeepHistory(c: Context, v: Boolean) = sp(c).edit().putBoolean("hist_on", v).apply()
+    /** Modo máximo: activa de una vez todo lo que Android permite sin root ni Shizuku. */
+    fun maxMode(c: Context): Boolean = sp(c).getBoolean("max_mode", false)
+    fun setMaxMode(c: Context, v: Boolean) = sp(c).edit().putBoolean("max_mode", v).apply()
     fun history(c: Context): String = sp(c).getString("hist", "") ?: ""
     fun addHistory(c: Context, line: String) =
         sp(c).edit().putString("hist", (line + "\n" + history(c)).lines().take(50).joinToString("\n")).apply()
@@ -176,8 +179,14 @@ object Prefs {
     fun setFwTestPkg(c: Context, v: String) = sp(c).edit().putString("fw_test", v).apply()
 
     // ---- Historial por app (JSON) con imágenes ----
+    /**
+     * [b64] lleva el código Base64 del texto completo (solo en mensajes cortos), [bin] el archivo con
+     * los bytes UTF-8 y [b64f] el archivo con el Base64 de los mensajes largos. Así el texto se puede
+     * reconstruir aunque la vista no haya podido cargarlo.
+     */
     data class HistItem(val pkg: String, val title: String, val text: String, val ts: Long,
-                        val img: String = "", val kind: String = "")
+                        val img: String = "", val kind: String = "",
+                        val b64: String = "", val bin: String = "", val b64f: String = "")
 
     fun histDir(c: Context): java.io.File = java.io.File(c.filesDir, "hist").also { it.mkdirs() }
 
@@ -196,7 +205,16 @@ object Prefs {
                 // Ese segundo aviso tiene el mismo título/texto; antes se descartaba y la imagen se perdía.
                 // Si la entrada guardada aún no tiene imagen, se completa con la nueva.
                 val prev = o.optString("i")
+                // Las entradas antiguas (anteriores a esta versión) no tenían códigos: se completan ahora.
+                var changed = false
+                if (text.isNotEmpty() && o.optString("b64").isEmpty() &&
+                    o.optString("bin").isEmpty() && o.optString("b64f").isEmpty()) {
+                    val code = MsgBase.write(c, now, text)
+                    o.put("b64", code.b64).put("bin", code.bin).put("b64f", code.b64f)
+                    changed = true
+                }
                 if (img.isEmpty()) {
+                    if (changed) sp(c).edit().putString("hist2", old.toString()).apply()
                     return@synchronized
                 } else if (prev.isEmpty()) {
                     o.put("i", img).put("k", kind).put("ts", now)
@@ -204,18 +222,23 @@ object Prefs {
                     return@synchronized
                 } else {
                     if (prev != img) java.io.File(histDir(c), img).delete()
+                    if (changed) sp(c).edit().putString("hist2", old.toString()).apply()
                     return@synchronized
                 }
             }
         }
+        // Cada mensaje nuevo guarda también su binario y su Base64. Si el texto normal falla al cargar,
+        // el Historial y la isla reconstruyen el mensaje completo desde estas copias.
+        val code = MsgBase.write(c, now, text)
         val out = org.json.JSONArray()
         out.put(org.json.JSONObject().put("p", pkg).put("t", title).put("x", text).put("ts", now)
-            .put("i", img).put("k", kind))
+            .put("i", img).put("k", kind)
+            .put("b64", code.b64).put("bin", code.bin).put("b64f", code.b64f))
         for (i in 0 until minOf(old.length(), 599)) out.put(old.get(i))
-        // las entradas que se caen de la lista se llevan su imagen
+        // Las entradas que se caen de la lista se llevan su imagen y sus códigos.
         for (i in 599 until old.length()) {
-            val n = old.optJSONObject(i)?.optString("i") ?: ""
-            if (n.isNotEmpty()) java.io.File(histDir(c), n).delete()
+            val o = old.optJSONObject(i) ?: continue
+            MsgBase.deleteFiles(c, o.optString("i"), o.optString("bin"), o.optString("b64f"))
         }
         sp(c).edit().putString("hist2", out.toString()).apply()
     }
@@ -223,8 +246,33 @@ object Prefs {
         try {
             val a = org.json.JSONArray(sp(c).getString("hist2", "[]"))
             (0 until a.length()).map { val o = a.getJSONObject(it)
-                HistItem(o.optString("p"), o.optString("t"), o.optString("x"), o.optLong("ts"), o.optString("i"), o.optString("k")) }
+                HistItem(o.optString("p"), o.optString("t"), o.optString("x"), o.optLong("ts"),
+                    o.optString("i"), o.optString("k"), o.optString("b64"), o.optString("bin"), o.optString("b64f")) }
         } catch (e: Exception) { emptyList() }
+    }
+
+    /**
+     * Completa los códigos binario/Base64 de las entradas antiguas. Se ejecuta en segundo plano una sola
+     * vez; las entradas nuevas ya nacen con ellos en [addHist].
+     */
+    @Suppress("ApplySharedPref")
+    fun migrateCodes(c: Context, force: Boolean = false) {
+        synchronized(histLock) {
+            if (!force && sp(c).getInt("code_v", 0) >= 1) return
+            val arr = try { org.json.JSONArray(sp(c).getString("hist2", "[]")) } catch (e: Exception) { org.json.JSONArray() }
+            var changed = false
+            for (i in 0 until arr.length()) {
+                val o = arr.optJSONObject(i) ?: continue
+                if (o.optString("b64").isNotEmpty() || o.optString("bin").isNotEmpty() || o.optString("b64f").isNotEmpty()) continue
+                val text = o.optString("x")
+                if (text.isEmpty()) continue
+                val code = MsgBase.write(c, o.optLong("ts", System.currentTimeMillis()), text)
+                o.put("b64", code.b64).put("bin", code.bin).put("b64f", code.b64f)
+                changed = true
+            }
+            if (changed) sp(c).edit().putString("hist2", arr.toString()).apply()
+            sp(c).edit().putInt("code_v", 1).apply()
+        }
     }
 
     /**

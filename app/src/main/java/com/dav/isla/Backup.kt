@@ -221,7 +221,9 @@ object Backup {
                 e = z.nextEntry
             }
         }
-        return "Ajustes: ${if (settings) "restaurados" else "no encontrados"}\nNotificaciones en el historial: $items\nImágenes: $imgs"
+        // Una copia antigua puede no traer los códigos .bin/.b64: se generan al restaurarla.
+        try { Prefs.migrateCodes(c, true) } catch (t: Throwable) {}
+        return "Ajustes: ${if (settings) "restaurados" else "no encontrados"}\nNotificaciones en el historial: $items\nArchivos restaurados: $imgs"
     }
 
     private fun mergeHistory(c: Context, incoming: String): Int {
