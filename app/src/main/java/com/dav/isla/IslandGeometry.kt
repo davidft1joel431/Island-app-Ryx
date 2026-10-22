@@ -8,9 +8,9 @@ import android.content.Context
  * Contraída: 160 × 32 dp, con esquinas de pastilla como la HyperOS Island.
  * Expandida: 350 × 74 dp, con esquinas de cuadrado redondeado (no una píldora completa).
  *
- * Los ajustes manuales siguen mandando: si el usuario mueve un deslizador o elige
- * otra forma, se respeta. Estos valores son los de fábrica y los que usa la vista
- * previa para que lo que se ve sea exactamente lo que se dibuja.
+ * El tamaño abierto es fijo: 350 × 74 dp. No cambia con el texto ni con la imagen;
+ * el contenido se ajusta y se desplaza dentro de esa caja. La vista previa usa los
+ * mismos valores para que lo que se ve sea exactamente lo que se dibuja.
  */
 object IslandGeometry {
     const val COLLAPSED_WIDTH_DP = 160
@@ -21,11 +21,8 @@ object IslandGeometry {
     /** Radio máximo por defecto de la tarjeta abierta: cuadrado redondeado, no pastilla. */
     const val EXPANDED_CORNER_DP = 24f
 
-    /** Ancho abierto efectivo: el ajuste del usuario o los 350 dp de fábrica. */
-    fun expandedWidthDp(c: Context): Int {
-        val custom = Prefs.expandedWidthDp(c)
-        return if (custom > 0) custom else EXPANDED_WIDTH_DP
-    }
+    /** Ancho abierto efectivo: siempre 350 dp (el ajuste viejo se ignora). */
+    fun expandedWidthDp(@Suppress("UNUSED_PARAMETER") c: Context): Int = EXPANDED_WIDTH_DP
 
     /** La isla cerrada es una pastilla: radio = mitad del alto, salvo que el usuario fije otro. */
     fun collapsedCornerDp(c: Context): Float {
