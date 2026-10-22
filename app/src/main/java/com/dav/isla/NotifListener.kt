@@ -82,13 +82,14 @@ class NotifListener : NotificationListenerService() {
     private var anim: ValueAnimator? = null
     private var badgeView: LinearLayout? = null
     private var countView: TextView? = null
-    private var detailImg: ImageView? = null
-    /** Miniatura que se ve al desplegar la isla (la imagen grande solo cabe en el detalle y en el historial). */
+    /** Miniatura de la imagen/sticker. La isla abierta mide 74 dp: la foto grande vive en el Historial. */
     private var previewImg: ImageView? = null
     /** Adjuntos ya decodificados, por URI: la misma imagen no se vuelve a leer al cambiar de tarjeta. */
     private val mediaCache = object : android.util.LruCache<String, Bitmap>(16 * 1024 * 1024) {
         override fun sizeOf(key: String, value: Bitmap): Int = value.allocationByteCount
     }
+    /** Dibujos ya decodificados, incluidos los animados (AnimatedImageDrawable). */
+    private val mediaArtCache = android.util.LruCache<String, Drawable>(32)
     private val mediaTried = java.util.Collections.newSetFromMap(java.util.concurrent.ConcurrentHashMap<String, Boolean>())
     private val mediaFailed = java.util.Collections.newSetFromMap(java.util.concurrent.ConcurrentHashMap<String, Boolean>())
     /** Avisos a los que se les está dando unos segundos para que la app adjunte la foto/sticker. */
@@ -438,12 +439,26 @@ class NotifListener : NotificationListenerService() {
         val alreadyRead = readSigs.containsKey("${sbn.key}|$title|$text")
 
         val (mediaBmp, mediaKind) = extractMedia(n, sbn.packageName)
-        // Si la imagen viene por URI (WhatsApp/Telegram la mandan así), se carga en SEGUNDO PLANO: abrir el
-        // stream en el hilo principal congelaba la isla. El tipo ya se conoce ahora; la imagen llega al instante.
-        val attachUri = if (mediaBmp == null) mediaUri(n) else null
-        // Si la imagen solo viene por URI y la app no dijo el tipo, se trata como imagen normal.
+        // La URI también se conserva cuando ya hay un bitmap de respaldo: el bitmap suele ser el primer
+        // fotograma (o el avatar), mientras que la URI puede ser el GIF/WebP animado completo. La isla
+        // muestra el bitmap al instante y lo cambia por el dibujo animado cuando termina de cargar.
+        val candidateUri = try { mediaUri(n) } catch (t: Throwable) { null }
+        val uriKind = candidateUri?.let { kindOfUri(it) } ?: ""
+        val imageKind = mediaKind.isEmpty() ||
+            mediaKind.contains("Imagen", ignoreCase = true) ||
+            mediaKind.contains("Foto", ignoreCase = true) ||
+            mediaKind.contains("Sticker", ignoreCase = true) ||
+            mediaKind.contains("GIF", ignoreCase = true) ||
+            mediaKind.contains("Animación", ignoreCase = true)
+        val attachUri = candidateUri.takeIf { uriKind.isNotEmpty() || imageKind }
         val attachKind = when {
+            mediaKind.contains("Sticker", ignoreCase = true) -> "Sticker"
+            mediaKind.contains("GIF", ignoreCase = true) -> "GIF"
+            // El tipo real de la URI manda sobre un "Imagen" genérico del aviso.
+            uriKind == "GIF" -> "GIF"
+            uriKind == "Sticker" -> "Sticker"
             mediaKind.isNotEmpty() -> mediaKind
+            uriKind.isNotEmpty() -> uriKind
             attachUri != null -> "Imagen"
             else -> ""
         }
@@ -451,8 +466,11 @@ class NotifListener : NotificationListenerService() {
         // quitarlo del sistema. WhatsApp y otras apps publican el texto primero y actualizan la imagen después;
         // si se cancela el aviso en ese instante, la actualización (y el permiso de la URI) se pierde.
         val wantsBitmap = attachKind.startsWith("Foto") || attachKind.startsWith("Sticker") ||
-            attachKind.startsWith("Imagen") || attachKind.startsWith("GIF")
-        val mediaHold = if (mediaBmp == null && wantsBitmap) 2_500L else 0L
+            attachKind.startsWith("Imagen") || attachKind.startsWith("GIF") ||
+            attachKind.startsWith("Animación")
+        // Si hay URI animada, aunque exista un bitmap de respaldo, se espera antes de quitar el aviso:
+        // al cancelarlo algunas apps revocan el permiso de lectura de la URI.
+        val mediaHold = if (wantsBitmap && (mediaBmp == null || attachUri != null)) 2_500L else 0L
         // Diagnóstico para Puente → Solo la isla: si el aviso habla de foto/sticker pero no se encontró
         // ninguna imagen, se anotan los extras que trae para poder afinar la detección.
         if (mediaBmp == null && attachUri == null && looksLikeMedia(n)) noteMediaMiss(sbn, n)
@@ -473,9 +491,15 @@ class NotifListener : NotificationListenerService() {
             if (historySaved.size > 320) historySaved.entries.removeAll { nowMs - it.value > 60 * 60_000L }
             histExec.execute {      // disco y copia de seguridad fuera del hilo principal: la isla sale antes
                 try {
-                    // Si la imagen venía por URI, se abre AQUÍ (hilo aparte). Nunca en el hilo principal.
-                    val bmp = mediaBmp ?: hUri?.let { loadUriMedia(it) }
-                    Prefs.addHist(this, hp, ht, hx, saveBitmap(bmp, attachKind), attachKind, win)
+                    // La URI conserva los bytes originales (GIF/WebP animados, transparencia de stickers).
+                    // Si no se puede leer, se usa el bitmap que trajo el aviso. Todo fuera del hilo principal.
+                    val saved = hUri?.let { saveUriMedia(it, attachKind) }
+                        ?: mediaBmp?.let {
+                            val k = refineMediaKind(attachKind, null, false)
+                            SavedMedia(saveBitmap(it, k), k)
+                        }
+                        ?: SavedMedia("", attachKind)
+                    Prefs.addHist(this, hp, ht, hx, saved.name, saved.kind, win)
                     Backup.maybeUpload(this)     // copia a la carpeta elegida (Drive u otra), si hay
                     Backup.autoLocal(this)       // copia a la carpeta PROPIA de la app, sola y sin tocar nada
                 } catch (e: Exception) {}
@@ -871,11 +895,8 @@ class NotifListener : NotificationListenerService() {
     private fun showCard(ev: IslandEvent, force: Boolean) {
         val shouldExpand = !force || Prefs.demoExpanded(this)
         val bat = ev.id in BATTERY_EVENTS
-        // Los cambios de batería se registran UNA vez (con el nivel de ese momento), nunca como cuatro avisos sueltos.
-        if (bat && !force) {
-            val line = batteryLine(ev)
-            histExec.execute { try { Prefs.addHist(this, "android", "Batería", line, "", "", 5 * 60_000L) } catch (e: Exception) {} }
-        }
+        // Los cambios internos de batería solo se muestran en la isla. El Historial es para
+        // notificaciones y mensajes largos, no para un registro de eventos de la app.
         show(packageName,
             if (bat) "Batería" else ev.title,
             if (bat) batteryLine(ev) else ev.body,
@@ -1333,13 +1354,6 @@ class NotifListener : NotificationListenerService() {
             maxLines = 1
             ellipsize = TextUtils.TruncateAt.END
         }
-        val dImg = ImageView(this).apply {
-            visibility = View.GONE; scaleType = ImageView.ScaleType.CENTER_CROP
-            outlineProvider = object : android.view.ViewOutlineProvider() {
-                override fun getOutline(view: View, o: android.graphics.Outline) { o.setRoundRect(0, 0, view.width, view.height, px(14).toFloat()) }
-            }
-            clipToOutline = true
-        }
         val pImg = ImageView(this).apply {
             visibility = View.GONE; scaleType = ImageView.ScaleType.CENTER_CROP
             outlineProvider = object : android.view.ViewOutlineProvider() {
@@ -1355,17 +1369,13 @@ class NotifListener : NotificationListenerService() {
             addView(actionIcon(R.drawable.ic_arrow_down, s.textColor, false, s) { openCurrent(true, 0) }, chipLp(3, 3))
             addView(actionIcon(R.drawable.ic_close, 0xFFFF5A5F.toInt(), false, s) { dismissCurrent() }, chipLp(3, 0))
         }
-        detailImg = dImg
         actionsRow = acts
         val col = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             addView(app, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
             addView(title, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
+            // El cuerpo ocupa una caja fija y se desplaza dentro. La isla NO crece con el mensaje.
             addView(body, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
-            // La imagen grande del detalle no crece con el mensaje: un alto fijo evita que la tarjeta se
-            // convierta en un cuadrado. El texto largo se lee desplazándolo dentro de su propia caja.
-            addView(dImg, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, detailImageHeight()).apply { topMargin = px(8) })
-            addView(acts, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { topMargin = px(10) })
         }
         val cnt = TextView(this).apply {
             visibility = View.GONE; textSize = 10.5f; gravity = Gravity.CENTER
@@ -1396,6 +1406,8 @@ class NotifListener : NotificationListenerService() {
                 marginStart = px(10)
             })
             addView(pImg, LinearLayout.LayoutParams(px(46), px(46)).apply { marginStart = px(8) })
+            addView(acts, LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT).apply { marginStart = px(6) })
             addView(badge, LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT).apply { marginStart = px(8) })
             setOnTouchListener(touchHandler)
@@ -1461,16 +1473,16 @@ class NotifListener : NotificationListenerService() {
      * Se usa el mismo fondo de píldora que los botones de texto para que la fila siga viéndose uniforme.
      */
     private fun actionIcon(res: Int, tint: Int, primary: Boolean, s: IslandStyle, onClick: () -> Unit) = FrameLayout(this).apply {
-        setPadding(px(10), px(9), px(10), px(9))
+        setPadding(px(6), px(5), px(6), px(5))
         background = GradientDrawable().apply {
-            cornerRadius = px(16).toFloat()
+            cornerRadius = px(14).toFloat()
             setColor(if (primary) Glass.ACCENT else if (s.textColor == 0xFFFFFFFF.toInt()) 0x30FFFFFF else 0x22000000)
         }
         // getDrawable puede devolver null si el recurso no está en esta densidad/versión: nunca debe tumbar la isla.
         val d = getDrawable(res)?.mutate()
         d?.setTint(if (primary) 0xFF10131A.toInt() else tint)
         val iv = ImageView(this@NotifListener).apply { setImageDrawable(d); scaleType = ImageView.ScaleType.FIT_CENTER }
-        addView(iv, FrameLayout.LayoutParams(px(18), px(18), Gravity.CENTER))
+        addView(iv, FrameLayout.LayoutParams(px(16), px(16), Gravity.CENTER))
         setOnClickListener { onClick() }
     }
 
@@ -1479,7 +1491,10 @@ class NotifListener : NotificationListenerService() {
         val acts = actionsRow ?: return
         acts.removeAllViews()
         val s = style
-        val chipLp = { l: Int, r: Int -> LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply { marginStart = px(l); marginEnd = px(r) } }
+        // La fila va a la derecha de la tarjeta, no debajo: así el alto abierto sigue siendo 74 dp.
+        val chipLp = { l: Int, r: Int -> LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT)
+            .apply { marginStart = px(l); marginEnd = px(r) } }
         if (c.actions.isNotEmpty()) {
             c.actions.forEachIndexed { i, a ->
                 acts.addView(chip(a.label, a.color, a.filled, s) {
@@ -1488,54 +1503,38 @@ class NotifListener : NotificationListenerService() {
                 }, chipLp(if (i == 0) 0 else 3, if (i == c.actions.size - 1) 0 else 3))
             }
         } else {
-            // Iconos pequeños alineados a la derecha: » abrir · ⇣ formato libre · ✕ descartar.
-            // Antes cada icono ocupaba un tercio del ancho y el botón amarillo salía como una barra enorme.
-            val lpIcon = { l: Int -> LinearLayout.LayoutParams(px(38), px(38)).apply { marginStart = px(l) } }
-            acts.addView(View(this), LinearLayout.LayoutParams(0, 1, 1f))
+            // Iconos compactos: » abrir · ⇣ formato libre · ✕ descartar.
+            val lpIcon = { l: Int -> LinearLayout.LayoutParams(px(30), px(30)).apply { marginStart = px(l) } }
             acts.addView(actionIcon(R.drawable.ic_arrow_right, s.textColor, true, s) { openCurrent(false) }, lpIcon(0))
-            acts.addView(actionIcon(R.drawable.ic_arrow_down, s.textColor, false, s) { openCurrent(true, 0) }, lpIcon(6))
-            acts.addView(actionIcon(R.drawable.ic_close, 0xFFFF5A5F.toInt(), false, s) { dismissCurrent() }, lpIcon(6))
+            acts.addView(actionIcon(R.drawable.ic_arrow_down, s.textColor, false, s) { openCurrent(true, 0) }, lpIcon(4))
+            acts.addView(actionIcon(R.drawable.ic_close, 0xFFFF5A5F.toInt(), false, s) { dismissCurrent() }, lpIcon(4))
         }
     }
 
     private fun idleWidth(): Int = px(Prefs.idleWidthDp(this))
 
-    /**
-     * Margen lateral de la tarjeta. Aunque el ajuste esté en 0, se respeta un mínimo de 12 dp: una tarjeta
-     * expandida que toca los bordes deja de parecer una notificación y se convierte en un cuadrado enorme.
-     */
-    private fun cardMarginPx(): Int = maxOf(px(Prefs.sideMarginDp(this)), px(12))
-
+    /** Ancho abierto: 350 dp exactos; solo se recorta si la pantalla física es más estrecha. */
     private fun expandedWidth(): Int =
-        minOf(resources.displayMetrics.widthPixels - 2 * cardMarginPx(),
-            px(IslandGeometry.expandedWidthDp(this)))
+        minOf(resources.displayMetrics.widthPixels, px(IslandGeometry.EXPANDED_WIDTH_DP))
 
     /**
-     * Alto de la caja de texto en el detalle. Antes eran ~4 líneas (92 dp) y un mensaje largo parecía
-     * cortado al 1 %. Ahora la caja es mucho más alta y el resto se sigue desplazando dentro; así se lee
-     * casi todo de un vistazo sin convertir la tarjeta en una pantalla completa.
+     * Caja de texto del detalle dentro de los 74 dp fijos. Se muestran dos o tres líneas y el resto se
+     * desplaza dentro de esa misma caja: el mensaje largo nunca hace crecer la isla.
      */
-    private fun detailBodyHeight(): Int =
-        minOf(px(190), (resources.displayMetrics.heightPixels * 0.30f).toInt()).coerceAtLeast(px(96))
-
-    /** La foto grande del detalle también se limita según el alto real de la pantalla. */
-    private fun detailImageHeight(): Int =
-        minOf(px(80), (resources.displayMetrics.heightPixels * 0.10f).toInt()).coerceAtLeast(px(56))
+    private fun detailBodyHeight(): Int = px(28)
 
     /**
-     * Deja el ancho y el desplazamiento dentro de los márgenes de la pantalla. La ventana va centrada
-     * (`CENTER_HORIZONTAL`), así que un ancho grande + un `x` grande se salían por el borde (el mensaje largo
-     * «se expandía de más»). Aquí se recorta el ancho y se limita el desplazamiento para que nunca sobrepase.
+     * Deja el ancho y el desplazamiento dentro de la pantalla. La ventana va centrada
+     * (`CENTER_HORIZONTAL`), así que un ancho grande + un `x` grande se salían por el borde.
+     * El ancho expandido no se reduce por el margen: 350 dp mandan, y el margen que quede se reparte.
      */
     private fun clampParams(p: WindowManager.LayoutParams) {
         val dm = resources.displayMetrics
-        val margin = cardMarginPx()
-        val maxW = (dm.widthPixels - 2 * margin).coerceAtLeast(px(80))
+        val maxW = dm.widthPixels.coerceAtLeast(px(40))
         if (p.width > maxW) p.width = maxW
         if (p.width < px(40)) p.width = px(40)
-        // Con CENTER_HORIZONTAL, x es el desplazamiento desde el centro: no debe sacar la tarjeta de los bordes.
         val half = p.width / 2
-        val maxX = (dm.widthPixels / 2 - margin - half).coerceAtLeast(0)
+        val maxX = (dm.widthPixels / 2 - half).coerceAtLeast(0)
         if (p.x > maxX) p.x = maxX
         if (p.x < -maxX) p.x = -maxX
     }
@@ -1580,7 +1579,10 @@ class NotifListener : NotificationListenerService() {
         val v = island ?: return
         val params = lp ?: return
         if (!attached) {
+            // La ventana se reutiliza al cambiar de ajustes o al volver del modo detalle; hay que
+            // devolver el alto a WRAP_CONTENT o la isla en reposo conservaría los 74 dp del detalle.
             params.width = idleWidth()
+            params.height = WindowManager.LayoutParams.WRAP_CONTENT
             setIdleContent()
             addHit(params)
             try {
@@ -1728,6 +1730,9 @@ class NotifListener : NotificationListenerService() {
     private fun updateBadge() {
         val b = badgeView ?: return
         b.removeAllViews()
+        // En el detalle manda el texto completo: la pila de iconos se retira para no dejar la
+        // columna del mensaje en un par de letras.
+        if (detail) { b.visibility = View.GONE; return }
         val others: List<Card> = if (expanded) cards.filterIndexed { i, _ -> i != cardIndex } else cards.filter { !it.ephemeral }
         if (others.isEmpty()) { b.visibility = View.GONE; return }
         b.visibility = View.VISIBLE
@@ -1957,9 +1962,11 @@ class NotifListener : NotificationListenerService() {
         val cur = cards.getOrNull(cardIndex)
         if (cur != null) {
             rebuildActions(cur)
-            syncMedia(cur)      // vuelve la miniatura; la imagen grande se oculta
-        } else detailImg?.visibility = View.GONE
+            syncMedia(cur)      // vuelve la miniatura al tamaño compacto
+        }
         actionsRow?.visibility = if (cur != null && cur.actions.isNotEmpty()) View.VISIBLE else View.GONE
+        actionsRow?.alpha = 1f
+        updateBadge()
         bodyView?.let { b ->
             b.maxLines = 1
             b.ellipsize = TextUtils.TruncateAt.END
@@ -1976,7 +1983,7 @@ class NotifListener : NotificationListenerService() {
             bodyView?.text = it.body
             appView?.text = nameOf(it) + if (it.count > 1) " · ${it.count}" else ""
         }
-        island?.minimumHeight = px(maxOf(style.iconDp + 2 * style.padV, 64))
+        island?.minimumHeight = px(IslandGeometry.EXPANDED_HEIGHT_DP)
     }
 
     /** Fondo tenue para stickers (se ve la transparencia) y mientras llega una imagen. */
@@ -1988,6 +1995,7 @@ class NotifListener : NotificationListenerService() {
     /** Pinta una imagen con un fundido corto; si ya estaba puesta, no se repite la animación. */
     private fun paintMedia(iv: ImageView, bmp: Bitmap, tag: String) {
         val same = iv.tag == tag
+        MediaArt.stop(iv.drawable)
         iv.setImageBitmap(bmp)
         iv.tag = tag
         if (!same) {
@@ -1996,54 +2004,70 @@ class NotifListener : NotificationListenerService() {
         } else iv.alpha = 1f
     }
 
+    /** Pinta un dibujo (puede ser GIF/WebP animado) y arranca la animación si existe. */
+    private fun paintArt(iv: ImageView, art: Drawable, tag: String) {
+        val same = iv.tag == tag
+        val fresh = art.constantState?.newDrawable(iv.resources)?.mutate() ?: art
+        if (iv.drawable !== fresh) MediaArt.stop(iv.drawable)
+        iv.setImageDrawable(fresh)
+        iv.tag = tag
+        MediaArt.start(fresh)
+        if (!same) {
+            iv.alpha = 0f
+            iv.animate().alpha(1f).setDuration(180).start()
+        } else iv.alpha = 1f
+    }
+
+    private fun stopAnimated(iv: ImageView?) = MediaArt.stop(iv?.drawable)
+
     /**
-     * Coloca el adjunto de la tarjeta: miniatura al desplegar la isla e imagen grande en el detalle.
-     * Los stickers se muestran enteros (FIT_CENTER, sin recortar) sobre un fondo tenue; las fotos se recortan.
+     * Coloca el adjunto de la tarjeta: miniatura al desplegar la isla y en el detalle.
+     * Los stickers y las animaciones se muestran enteros (FIT_CENTER) sobre un fondo tenue.
      * Si la imagen viene por URI (WhatsApp/Telegram) se carga en un HILO APARTE: abrirla en el hilo principal
-     * congelaba toda la isla.
+     * congelaba toda la isla. La copia binaria del Historial es el respaldo interno.
      */
     private fun syncMedia(c: Card) {
         val uri = c.mediaUri
-        val sticker = c.mediaKind.contains("Sticker", ignoreCase = true)
-        // Si el aviso no trajo la imagen/sticker, se usa la copia binaria que el Historial guardó para
-        // ESTE mensaje. Es recuperación interna: no se muestra ningún código ni botón técnico.
-        val canUseHistory = c.mediaKind.contains("Imagen", ignoreCase = true) ||
-            c.mediaKind.contains("Foto", ignoreCase = true) ||
-            c.mediaKind.contains("Sticker", ignoreCase = true) ||
-            c.mediaKind.contains("GIF", ignoreCase = true)
+        val kind = c.mediaKind
+        val fit = kind.contains("Sticker", ignoreCase = true) ||
+            kind.contains("GIF", ignoreCase = true) ||
+            kind.contains("Animación", ignoreCase = true)
+        val canUseHistory = kind.contains("Imagen", ignoreCase = true) ||
+            kind.contains("Foto", ignoreCase = true) ||
+            kind.contains("Sticker", ignoreCase = true) ||
+            kind.contains("GIF", ignoreCase = true) ||
+            kind.contains("Animación", ignoreCase = true)
         val histKey = if (canUseHistory) mediaHistKey(c) else ""
+        val art = uri?.let { mediaArtCache.get(it) }
+            ?: histKey.takeIf { it.isNotEmpty() }?.let { mediaArtCache.get(it) }
         val bmp = c.media ?: uri?.let { mediaCache.get(it) }
             ?: histKey.takeIf { it.isNotEmpty() }?.let { mediaCache.get(it) }
-        val uriPending = uri != null && !mediaFailed.contains(uri)
-        if (bmp == null && !uriPending && histKey.isNotEmpty()) loadHistoryMedia(c, histKey)
-        val histPending = histKey.isNotEmpty() && !mediaFailed.contains(histKey)
-        val has = bmp != null || uriPending || histPending
+        // Aunque ya haya un bitmap de respaldo, se intenta la URI: puede ser el GIF/WebP animado real
+        // y el bitmap solo su primer fotograma. Se carga una sola vez por clave.
+        if (uri != null && art == null && !mediaFailed.contains(uri)) loadMedia(uri)
+        val uriPending = uri != null && art == null && !mediaFailed.contains(uri)
+        if (art == null && histKey.isNotEmpty() && !uriPending) loadHistoryMedia(c, histKey)
+        val histPending = histKey.isNotEmpty() && art == null && bmp == null &&
+            !mediaFailed.contains(histKey)
+        val has = art != null || bmp != null || uriPending || histPending
         val tag = uri ?: histKey.ifEmpty { c.key }
 
         previewImg?.let { p ->
-            val show = expanded && !detail && has
+            // La misma miniatura se ve al abrir la tarjeta y en el detalle. La foto grande queda en el
+            // Historial, donde sí hay espacio para verla completa.
+            val show = expanded && has
             p.visibility = if (show) View.VISIBLE else View.GONE
             if (show) {
-                p.scaleType = if (sticker) ImageView.ScaleType.FIT_CENTER else ImageView.ScaleType.CENTER_CROP
-                val pad = if (sticker) px(4) else 0
+                p.scaleType = if (fit) ImageView.ScaleType.FIT_CENTER else ImageView.ScaleType.CENTER_CROP
+                val pad = if (fit) px(4) else 0
                 p.setPadding(pad, pad, pad, pad)
-                p.background = if (sticker || bmp == null) mediaTile(12f) else null
-                if (bmp != null) paintMedia(p, bmp, tag)
-                else { p.setImageDrawable(null); uri?.let { loadMedia(it) } }
-            }
-        }
-
-        detailImg?.let { iv ->
-            val show = detail && has
-            iv.visibility = if (show) View.VISIBLE else View.GONE
-            if (show) {
-                iv.scaleType = if (sticker) ImageView.ScaleType.FIT_CENTER else ImageView.ScaleType.CENTER_CROP
-                val pad = if (sticker) px(6) else 0
-                iv.setPadding(pad, pad, pad, pad)
-                iv.background = if (sticker || bmp == null) mediaTile(14f) else null
-                if (bmp != null) paintMedia(iv, bmp, tag)
-                else { iv.setImageDrawable(null); uri?.let { loadMedia(it) } }
-            }
+                p.background = if (fit || (art == null && bmp == null)) mediaTile(12f) else null
+                when {
+                    art != null -> paintArt(p, art, tag)
+                    bmp != null -> paintMedia(p, bmp, tag)
+                    else -> { p.setImageDrawable(null); uri?.let { loadMedia(it) } }
+                }
+            } else stopAnimated(p)
         }
     }
 
@@ -2058,9 +2082,11 @@ class NotifListener : NotificationListenerService() {
      * trajo el adjunto. Se decodifica una sola vez y se refresca la tarjeta que lo esté mostrando.
      */
     private fun loadHistoryMedia(c: Card, key: String) {
-        if (key.isEmpty() || mediaCache.get(key) != null || mediaFailed.contains(key)) return
+        // Un bitmap en caché no impide buscar el dibujo animado: puede ser solo el primer fotograma.
+        if (key.isEmpty() || mediaArtCache.get(key) != null || mediaFailed.contains(key)) return
         if (!mediaTried.add(key)) return
         histExec.execute {
+            var foundArt: Drawable? = null
             var found: Bitmap? = null
             var foundKind = c.mediaKind
             try {
@@ -2069,16 +2095,28 @@ class NotifListener : NotificationListenerService() {
                 if (h != null) {
                     if (h.kind.isNotEmpty()) foundKind = h.kind
                     val f = MsgBase.mediaFile(this, h)
-                    if (f != null) found = loadFileMedia(f.absolutePath)
+                    if (f != null) {
+                        foundArt = MediaArt.fromFile(this, f, 512)
+                        if (foundArt == null) found = loadFileMedia(f.absolutePath)
+                    }
                 }
             } catch (t: Throwable) {}
+            val art = foundArt
             val bmp = found
-            if (bmp != null) mediaCache.put(key, bmp) else mediaFailed.add(key)
+            if (art != null) mediaArtCache.put(key, art)
+            if (bmp != null) mediaCache.put(key, bmp)
+            if (art == null && bmp == null) mediaFailed.add(key)
             main.post {
                 val i = cards.indexOfFirst { mediaHistKey(it) == key }
-                if (bmp != null && i >= 0) {
+                if ((art != null || bmp != null) && i >= 0) {
                     val old = cards[i]
-                    val updated = old.copy(media = bmp, mediaKind = old.mediaKind.ifEmpty { foundKind })
+                    // El Historial sabe si el archivo guardado es un GIF/sticker animado; si el aviso
+                    // solo decía "Imagen", se adopta ese tipo para mostrarlo entero y sin recortes.
+                    val kindOut = if (old.mediaKind.isEmpty() ||
+                        foundKind.contains("GIF", true) || foundKind.contains("Sticker", true) ||
+                        foundKind.contains("Animación", true)) foundKind
+                    else old.mediaKind
+                    val updated = old.copy(media = bmp ?: old.media, mediaKind = kindOut)
                     cards[i] = updated
                     if (i == cardIndex) syncMedia(updated)
                 } else {
@@ -2091,11 +2129,15 @@ class NotifListener : NotificationListenerService() {
 
     /** Descarga una imagen por URI una sola vez y refresca la tarjeta que la esté mostrando. */
     private fun loadMedia(uri: String) {
-        if (mediaCache.get(uri) != null || mediaFailed.contains(uri)) return
+        if (mediaArtCache.get(uri) != null || mediaFailed.contains(uri)) return
         if (!mediaTried.add(uri)) return
         Thread {
-            val bm = loadUriMedia(uri)
-            if (bm != null) mediaCache.put(uri, bm) else mediaFailed.add(uri)
+            val art = MediaArt.fromUri(this, uri, 512)
+            val bm = if (art == null) loadUriMedia(uri)
+            else (art as? android.graphics.drawable.BitmapDrawable)?.bitmap
+            if (art != null) mediaArtCache.put(uri, art)
+            if (bm != null) mediaCache.put(uri, bm)
+            if (art == null && bm == null) mediaFailed.add(uri)
             main.post {
                 val cur = cards.getOrNull(cardIndex)
                 if (cur != null && cur.mediaUri == uri) syncMedia(cur)
@@ -2113,8 +2155,10 @@ class NotifListener : NotificationListenerService() {
         // y la tarjeta creciera como un cuadrado enorme.
         lp?.let { p ->
             val w = expandedWidth()
-            if (p.width != w) {
+            val h = px(IslandGeometry.EXPANDED_HEIGHT_DP)
+            if (p.width != w || p.height != h) {
                 p.width = w
+                p.height = h
                 clampParams(p)
                 upd(island, p)
             }
@@ -2123,6 +2167,8 @@ class NotifListener : NotificationListenerService() {
         syncMedia(c)
         rebuildActions(c)
         actionsRow?.visibility = View.VISIBLE
+        actionsRow?.alpha = 0f
+        badgeView?.visibility = View.GONE
         // Si se entra en el detalle mientras la isla aún se está abriendo, se cancela esa animación:
         // el contenido debe quedar visible al 100 %, no a medio fundir.
         setContentAlpha(1f)
@@ -2144,7 +2190,6 @@ class NotifListener : NotificationListenerService() {
             MsgBase.fullTextFor(this, c.pkg, c.title?.toString() ?: "", hint, c.userId)
         else hint
         val fullText: CharSequence = if (resolved.length >= hint.length) resolved else hint
-        val longText = fullText.length > 280
         bodyView?.let { b ->
             b.maxLines = Int.MAX_VALUE
             b.ellipsize = null
@@ -2153,20 +2198,18 @@ class NotifListener : NotificationListenerService() {
             b.overScrollMode = View.OVER_SCROLL_IF_CONTENT_SCROLLS
             b.scrollTo(0, 0)
             b.text = fullText
-            // Los mensajes cortos se ajustan a su contenido; los largos usan la caja alta desplazable.
-            val height = if (longText)
-                detailBodyHeight() else LinearLayout.LayoutParams.WRAP_CONTENT
+            // La caja es fija: el detalle no pasa de 74 dp. Los mensajes largos se desplazan dentro.
             (b.layoutParams as? LinearLayout.LayoutParams)?.let { p ->
-                p.height = height
+                p.height = detailBodyHeight()
                 b.layoutParams = p
             } ?: run {
-                b.layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, height)
+                b.layoutParams = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT, detailBodyHeight())
             }
         }
-        appView?.visibility = View.VISIBLE
-        appView?.text = nameOf(c) +
-            (if (c.count > 1) " · ${c.count} notificaciones" else "") +
-            (if (longText) " · desliza" else "")
+        // En el detalle manda el mensaje: el nombre de la app ya está en su icono. Sin esta fila el
+        // título y el texto caben en los 74 dp y la tarjeta no crece.
+        appView?.visibility = View.GONE
     }
 
     private fun exitDetail() {
@@ -2175,34 +2218,30 @@ class NotifListener : NotificationListenerService() {
         main.postDelayed(hideTask, Prefs.durationMs(this))
     }
 
-    /** Crece o se encoge la tarjeta con resorte y aparece el contenido extra. */
+    /** Abre o cierra el detalle sin cambiar el tamaño: la tarjeta sigue siendo 350 × 74 dp. */
     private fun animateDetail(open: Boolean) {
         val row = island ?: return
         val params = lp ?: return
-        // Medir con el ancho definitivo (no con el de la píldora) y limitar el alto evita el «cuadrado»
-        // que aparecía al abrir el detalle o al mostrar un mensaje largo.
         val w = expandedWidth()
-        if (params.width != w) {
+        val compact = px(IslandGeometry.EXPANDED_HEIGHT_DP)
+        if (params.width != w || params.height != compact) {
             params.width = w
+            params.height = compact
             clampParams(params)
             if (attached) upd(row, params)
         }
+        row.minimumHeight = compact
+        // El detalle no gana altura: solo aparece el texto desplazable y los botones. La ventana se
+        // mantiene en 74 dp aunque el mensaje sea larguísimo o incluya una imagen.
         row.measure(View.MeasureSpec.makeMeasureSpec(w, View.MeasureSpec.EXACTLY),
-            View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED))
-        val compact = px(maxOf(style.iconDp + 2 * style.padV, IslandGeometry.EXPANDED_HEIGHT_DP))
-        val maxH = minOf((resources.displayMetrics.heightPixels * 0.55f).toInt(), px(420))
-            .coerceAtLeast(compact)
-        val target = if (open) minOf(maxOf(row.measuredHeight, compact), maxH) else compact
-        val from = if (row.height > 0) row.height else compact
+            View.MeasureSpec.makeMeasureSpec(compact, View.MeasureSpec.EXACTLY))
+        val from = if ((actionsRow?.alpha ?: 0f) > 0f) 1f else 0f
         anim?.cancel()
-        val a = ValueAnimator.ofFloat(0f, 1f)
+        val a = ValueAnimator.ofFloat(from, if (open) 1f else 0f)
         a.duration = if (open) Motion.expandMs(this) else Motion.collapseMs(this)
         a.interpolator = if (open) Motion.spring() else Motion.smooth()
         a.addUpdateListener { va ->
-            val t = va.animatedValue as Float
-            row.minimumHeight = lerp(from.toFloat(), target.toFloat(), t).toInt().coerceAtLeast(compact)
-            val k = if (open) t.coerceIn(0f, 1f) else (1f - t).coerceIn(0f, 1f)
-            detailImg?.alpha = k; actionsRow?.alpha = k
+            actionsRow?.alpha = va.animatedValue as Float
             if (attached) upd(row, params)
         }
         a.addListener(object : AnimatorListenerAdapter() {
@@ -2536,7 +2575,8 @@ class NotifListener : NotificationListenerService() {
     private fun extractMedia(n: Notification, pkg: String = ""): Pair<Bitmap?, String> {
         val ex = n.extras
         val (_, mime) = try { latestImage(n) } catch (t: Throwable) { Pair(null, "") }
-        val stickerMime = mime.contains("webp") || mime.contains("png")
+        val gifMime = mime.contains("gif")
+        val stickerMime = !gifMime && (mime.contains("webp") || mime.contains("png"))
         val hint = try { looksLikeMedia(n) } catch (t: Throwable) { false }
         val hintKind = try { mediaHintKind(n) } catch (t: Throwable) { "" }
 
@@ -2569,6 +2609,7 @@ class NotifListener : NotificationListenerService() {
 
         var kind = when {
             bmp == null -> ""
+            gifMime -> "GIF"
             stickerMime -> "Sticker"
             else -> "Imagen"
         }
@@ -2576,7 +2617,11 @@ class NotifListener : NotificationListenerService() {
         if (fromLarge && hintKind.isNotEmpty()) kind = hintKind
         // Tipo del adjunto por su MIME (SIN abrir la URI: abrirla bloquea el hilo y congelaba la isla).
         if (kind.isEmpty()) kind = when {
-            mime.startsWith("image/") -> if (stickerMime) "Sticker" else "Imagen"
+            mime.startsWith("image/") -> when {
+                gifMime -> "GIF"
+                stickerMime -> "Sticker"
+                else -> "Imagen"
+            }
             mime.startsWith("audio/") -> "Audio"
             mime.startsWith("video/") -> "Video"
             else -> ""
@@ -2599,6 +2644,119 @@ class NotifListener : NotificationListenerService() {
     private fun mediaUri(n: Notification): String? {
         val fromMsg = try { latestImage(n).first } catch (e: Throwable) { null }
         return fromMsg ?: try { mediaUriFromExtras(n.extras) } catch (e: Throwable) { null }
+    }
+
+    /** Tipo de imagen que sugiere una URI, sin abrir el contenido. */
+    private fun kindOfUri(uri: String): String = try {
+        val u = android.net.Uri.parse(uri)
+        val mime = contentResolver.getType(u)?.lowercase().orEmpty()
+        val path = (u.path ?: "").lowercase()
+        when {
+            mime.contains("gif") || path.endsWith(".gif") -> "GIF"
+            mime.contains("webp") && path.contains("sticker") -> "Sticker"
+            mime.startsWith("image/") -> "Imagen"
+            path.endsWith(".png") || path.endsWith(".jpg") || path.endsWith(".jpeg") ||
+                path.endsWith(".webp") -> "Imagen"
+            else -> ""
+        }
+    } catch (t: Throwable) { "" }
+
+    private data class SavedMedia(val name: String, val kind: String)
+
+    /** Ajusta el tipo según los bytes reales: un GIF/WebP animado no debe guardarse como foto estática. */
+    private fun refineMediaKind(kind: String, mime: String?, animated: Boolean): String {
+        val k = kind.trim()
+        val m = mime?.lowercase().orEmpty()
+        return when {
+            k.contains("Sticker", ignoreCase = true) -> "Sticker"
+            m.contains("gif") -> "GIF"
+            animated && m.contains("webp") && (k.isEmpty() || k == "Imagen" || k == "Foto") -> "Sticker"
+            k.isNotEmpty() -> k
+            m.startsWith("image/") -> "Imagen"
+            else -> k
+        }
+    }
+
+    /**
+     * Guarda el adjunto conservando los bytes originales cuando son pequeños o animados. Antes se
+     * re-codificaba todo a JPEG/PNG y los GIF/WebP animados quedaban congelados y los stickers perdían
+     * transparencia. Si el archivo es enorme, se reduce y se comprime como antes.
+     */
+    private fun saveUriMedia(uri: String, kind: String): SavedMedia? {
+        if (uri.isBlank()) return null
+        return try {
+            val bytes = readMediaBytes(uri, 16 * 1024 * 1024)
+            val mime = (bytes?.let { sniffImageMime(it) }
+                ?: try { contentResolver.getType(android.net.Uri.parse(uri))?.lowercase() } catch (t: Throwable) { null })
+                ?: return null
+            if (!mime.startsWith("image/")) return null
+            val animated = bytes != null && isAnimatedImage(bytes, mime)
+            val finalKind = refineMediaKind(kind, mime, animated)
+            if (bytes != null && (animated || bytes.size <= 3 * 1024 * 1024)) {
+                val ext = when {
+                    mime.contains("gif") -> "gif"
+                    mime.contains("webp") -> "webp"
+                    mime.contains("png") -> "png"
+                    else -> "jpg"
+                }
+                val name = "${System.currentTimeMillis()}_${(Math.random() * 99999).toInt()}.$ext"
+                FileOutputStream(File(Prefs.histDir(this), name)).use { it.write(bytes) }
+                SavedMedia(name, finalKind)
+            } else {
+                val bmp = bytes?.let { decodeSampledBytes(it, 1600) } ?: loadUriMedia(uri)
+                bmp?.let { SavedMedia(saveBitmap(it, finalKind), finalKind) }
+            }
+        } catch (t: Throwable) { null }
+    }
+
+    private fun readMediaBytes(uri: String, max: Int): ByteArray? = try {
+        contentResolver.openInputStream(android.net.Uri.parse(uri))?.use { input ->
+            val out = java.io.ByteArrayOutputStream()
+            val buf = ByteArray(16 * 1024)
+            var total = 0
+            while (true) {
+                val n = input.read(buf)
+                if (n <= 0) break
+                total += n
+                if (total > max) return null
+                out.write(buf, 0, n)
+            }
+            out.toByteArray()
+        }
+    } catch (t: Throwable) { null }
+
+    private fun sniffImageMime(b: ByteArray): String? {
+        if (b.size < 12) return null
+        fun at(i: Int): Int = b[i].toInt() and 0xFF
+        return when {
+            at(0) == 0x89 && at(1) == 0x50 && at(2) == 0x4E && at(3) == 0x47 -> "image/png"
+            at(0) == 0xFF && at(1) == 0xD8 && at(2) == 0xFF -> "image/jpeg"
+            at(0) == 'G'.code && at(1) == 'I'.code && at(2) == 'F'.code && at(3) == '8'.code -> "image/gif"
+            at(0) == 'R'.code && at(1) == 'I'.code && at(2) == 'F'.code && at(3) == 'F'.code &&
+                at(8) == 'W'.code && at(9) == 'E'.code && at(10) == 'B'.code && at(11) == 'P'.code -> "image/webp"
+            else -> null
+        }
+    }
+
+    private fun isAnimatedImage(b: ByteArray, mime: String): Boolean {
+        if (mime.contains("gif")) return b.size > 6 && b[0] == 'G'.code.toByte() && b[1] == 'I'.code.toByte()
+        if (mime.contains("webp") && b.size > 20) {
+            val vp8x = b[12] == 'V'.code.toByte() && b[13] == 'P'.code.toByte() &&
+                b[14] == '8'.code.toByte() && b[15] == 'X'.code.toByte()
+            // En VP8X, el bit 1 de las banderas indica animación.
+            if (vp8x && (b[20].toInt() and 0x02) != 0) return true
+        }
+        return false
+    }
+
+    private fun decodeSampledBytes(bytes: ByteArray, maxPx: Int): Bitmap? {
+        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
+        if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return null
+        var sample = 1
+        while (bounds.outWidth / sample > maxPx || bounds.outHeight / sample > maxPx) sample *= 2
+        val opts = BitmapFactory.Options().apply { inSampleSize = sample }
+        return BitmapFactory.decodeByteArray(bytes, 0, bytes.size, opts)
     }
 
     /**
@@ -2711,17 +2869,22 @@ class NotifListener : NotificationListenerService() {
         histExec.execute {
             try {
                 var bmp: Bitmap? = null
+                var foundUri: String? = null
                 // 1) URI que la app expone en su árbol de accesibilidad (solo si esa app está al frente).
                 try {
-                    RyxAccessibility.instance?.findMediaUri(pkg)?.let { bmp = loadUriMedia(it) }
+                    RyxAccessibility.instance?.findMediaUri(pkg)?.let {
+                        foundUri = it
+                        bmp = loadUriMedia(it)
+                    }
                 } catch (t: Throwable) {}
                 // 2) Último recurso: última imagen reciente de la carpeta de WhatsApp.
                 if (bmp == null && whatsapp) bmp = latestGalleryImage(pkg, around)
                 val found = bmp ?: return@execute
-                val saved = saveBitmap(found, kind)
+                val saved = foundUri?.let { saveUriMedia(it, kind) }
+                    ?: SavedMedia(saveBitmap(found, kind), refineMediaKind(kind, null, false))
                 // La ventana es amplia para que actualice la entrada ya guardada en vez de crear otra.
-                Prefs.addHist(this, hp, title, text, saved, kind, 120_000L)
-                main.post { applyMediaToCard(sbn.key, text, found, kind) }
+                Prefs.addHist(this, hp, title, text, saved.name, saved.kind, 120_000L)
+                main.post { applyMediaToCard(sbn.key, text, found, saved.kind) }
             } catch (t: Throwable) {}
         }
     }
@@ -2776,9 +2939,14 @@ class NotifListener : NotificationListenerService() {
         histExec.execute {
             try {
                 val (bmp, kind) = extractMedia(n, pkg)
-                val uri = if (bmp == null) mediaUri(n) else null
-                val finalBmp = bmp ?: uri?.let { loadUriMedia(it) }
-                Prefs.addHist(this, hp, ht, hx, saveBitmap(finalBmp, kind), kind, 60_000L)
+                val uri = mediaUri(n)
+                val saved = uri?.let { saveUriMedia(it, kind) }
+                    ?: bmp?.let {
+                        val k = refineMediaKind(kind, null, false)
+                        SavedMedia(saveBitmap(it, k), k)
+                    }
+                if (saved != null) Prefs.addHist(this, hp, ht, hx, saved.name, saved.kind, 60_000L)
+                else Prefs.addHist(this, hp, ht, hx, "", kind, 60_000L)
             } catch (t: Throwable) {}
         }
     }
@@ -2786,10 +2954,16 @@ class NotifListener : NotificationListenerService() {
     private fun saveBitmap(bmp: Bitmap?, kind: String): String {
         if (bmp == null) return ""
         return try {
-            val name = "${System.currentTimeMillis()}_${(Math.random() * 99999).toInt()}.img"
+            // Los stickers y cualquier imagen con transparencia se guardan en PNG: pasarlos a JPEG
+            // convertía la transparencia en un fondo negro.
+            val png = kind.contains("Sticker", ignoreCase = true) ||
+                kind.contains("GIF", ignoreCase = true) ||
+                kind.contains("Animación", ignoreCase = true) || bmp.hasAlpha()
+            val ext = if (png) "png" else "jpg"
+            val name = "${System.currentTimeMillis()}_${(Math.random() * 99999).toInt()}.$ext"
             FileOutputStream(File(Prefs.histDir(this), name)).use {
-                if (kind.startsWith("Sticker")) bmp.compress(Bitmap.CompressFormat.PNG, 100, it)
-                else bmp.compress(Bitmap.CompressFormat.JPEG, 82, it)
+                if (png) bmp.compress(Bitmap.CompressFormat.PNG, 100, it)
+                else bmp.compress(Bitmap.CompressFormat.JPEG, 88, it)
             }
             name
         } catch (e: Throwable) { "" }
@@ -2877,7 +3051,9 @@ class NotifListener : NotificationListenerService() {
         val params = lp ?: return
         val row = island
         val idleH = px(Prefs.heightDp(this))
-        val expH = px(maxOf(style.iconDp + 2 * style.padV, IslandGeometry.EXPANDED_HEIGHT_DP))
+        // El alto abierto es SIEMPRE 74 dp, con cualquier estilo, texto o imagen.
+        val expH = px(IslandGeometry.EXPANDED_HEIGHT_DP)
+        if (!toExpanded) params.height = WindowManager.LayoutParams.WRAP_CONTENT
         val fromW = params.width; val toW = if (toExpanded) expandedWidth() else idleWidth()
         val fromH = (row?.minimumHeight ?: idleH); val toH = if (toExpanded) expH else idleH
         val cornerPx = expandedCornerPx()
@@ -2913,7 +3089,20 @@ class NotifListener : NotificationListenerService() {
         a.addListener(object : AnimatorListenerAdapter() {
             private var canceled = false
             override fun onAnimationCancel(animation: Animator) { canceled = true }
-            override fun onAnimationEnd(animation: Animator) { if (!canceled) end?.invoke() }
+            override fun onAnimationEnd(animation: Animator) {
+                if (canceled) return
+                if (toExpanded) {
+                    // Fija la ventana al alto exacto. El contenido ya está medido para caber dentro.
+                    params.height = expH
+                    row?.minimumHeight = expH
+                    clampParams(params)
+                    if (attached) upd(row, params)
+                } else {
+                    params.height = WindowManager.LayoutParams.WRAP_CONTENT
+                    if (attached) upd(row, params)
+                }
+                end?.invoke()
+            }
         })
         anim = a
         a.start()

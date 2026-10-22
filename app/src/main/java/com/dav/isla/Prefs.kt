@@ -146,10 +146,6 @@ object Prefs {
         e.apply(); true
     } catch (e: Exception) { false }
 
-    fun expandedWidthDp(c: Context): Int = sp(c).getInt("exp_w", -1)
-    fun setExpandedWidthDp(c: Context, v: Int) = sp(c).edit().putInt("exp_w", v).apply()
-    fun sideMarginDp(c: Context): Int = sp(c).getInt("side_m", 12)
-    fun setSideMarginDp(c: Context, v: Int) = sp(c).edit().putInt("side_m", v).apply()
 
     // ---- Puente de notificaciones ----
     /** Quitar de la isla lo que ya leíste (abriste la app o se canceló la notificación). */
@@ -221,8 +217,22 @@ object Prefs {
                     sp(c).edit().putString("hist2", old.toString()).apply()
                     return@synchronized
                 } else {
-                    if (prev != img) java.io.File(histDir(c), img).delete()
-                    if (changed) sp(c).edit().putString("hist2", old.toString()).apply()
+                    val oldKind = o.optString("k")
+                    val oldAnimated = oldKind.contains("GIF", true) || oldKind.contains("Sticker", true) ||
+                        oldKind.contains("Animación", true)
+                    val newAnimated = kind.contains("GIF", true) || kind.contains("Sticker", true) ||
+                        kind.contains("Animación", true)
+                    // Si la primera publicación trajo un fotograma estático y la segunda el sticker/GIF
+                    // animado, se queda la copia animada. Si solo es el mismo aviso repetido, se descarta
+                    // el archivo nuevo para no duplicar espacio.
+                    if (!oldAnimated && newAnimated) {
+                        if (prev != img) java.io.File(histDir(c), prev).delete()
+                        o.put("i", img).put("k", kind).put("ts", now)
+                        sp(c).edit().putString("hist2", old.toString()).apply()
+                    } else {
+                        if (prev != img) java.io.File(histDir(c), img).delete()
+                        if (changed) sp(c).edit().putString("hist2", old.toString()).apply()
+                    }
                     return@synchronized
                 }
             }
@@ -245,9 +255,17 @@ object Prefs {
     fun histAll(c: Context): List<HistItem> = synchronized(histLock) {
         try {
             val a = org.json.JSONArray(sp(c).getString("hist2", "[]"))
-            (0 until a.length()).map { val o = a.getJSONObject(it)
-                HistItem(o.optString("p"), o.optString("t"), o.optString("x"), o.optLong("ts"),
-                    o.optString("i"), o.optString("k"), o.optString("b64"), o.optString("bin"), o.optString("b64f")) }
+            (0 until a.length()).mapNotNull {
+                val o = a.getJSONObject(it)
+                val p = o.optString("p")
+                val t = o.optString("t")
+                // Los eventos internos de batería que guardaban versiones anteriores no son
+                // notificaciones: se ocultan también mientras termina la limpieza en disco.
+                if (p == "android" && t == "Batería") return@mapNotNull null
+                HistItem(p, t, o.optString("x"), o.optLong("ts"),
+                    o.optString("i"), o.optString("k"), o.optString("b64"), o.optString("bin"),
+                    o.optString("b64f"))
+            }
         } catch (e: Exception) { emptyList() }
     }
 
@@ -258,20 +276,55 @@ object Prefs {
     @Suppress("ApplySharedPref")
     fun migrateCodes(c: Context, force: Boolean = false) {
         synchronized(histLock) {
-            if (!force && sp(c).getInt("code_v", 0) >= 1) return
-            val arr = try { org.json.JSONArray(sp(c).getString("hist2", "[]")) } catch (e: Exception) { org.json.JSONArray() }
+            if (!force && sp(c).getInt("code_v", 0) >= 2) return
+            val old = try { org.json.JSONArray(sp(c).getString("hist2", "[]")) } catch (e: Exception) { org.json.JSONArray() }
+            val arr = org.json.JSONArray()
             var changed = false
-            for (i in 0 until arr.length()) {
-                val o = arr.optJSONObject(i) ?: continue
-                if (o.optString("b64").isNotEmpty() || o.optString("bin").isNotEmpty() || o.optString("b64f").isNotEmpty()) continue
-                val text = o.optString("x")
-                if (text.isEmpty()) continue
-                val code = MsgBase.write(c, o.optLong("ts", System.currentTimeMillis()), text)
-                o.put("b64", code.b64).put("bin", code.bin).put("b64f", code.b64f)
-                changed = true
+            for (i in 0 until old.length()) {
+                val o = old.optJSONObject(i) ?: continue
+                val pkg = o.optString("p")
+                val oldTitle = o.optString("t")
+                val oldText = o.optString("x")
+                val oldKind = o.optString("k")
+                // 1) Fuera los eventos internos de batería: no eran notificaciones ni mensajes.
+                if (pkg == "android" && oldTitle == "Batería") {
+                    MsgBase.deleteFiles(c, o.optString("i"), o.optString("bin"), o.optString("b64f"))
+                    changed = true
+                    continue
+                }
+                // 2) Las capturas de pantalla antiguas se muestran como mensaje visto, no como un log:
+                //    sin «Chat en pantalla · », sin «(pantalla · app)» y sin el tipo «Pantalla».
+                var title = oldTitle
+                if (title.startsWith("Chat en pantalla · ")) {
+                    title = title.removePrefix("Chat en pantalla · ").trim()
+                    changed = true
+                }
+                val marker = Regex("""\s*\(pantalla\s*·[^)]*\)""")
+                var text = oldText.replace(marker, "").trim()
+                if (text != oldText) changed = true
+                var kind = oldKind
+                if (kind == "Pantalla") { kind = ""; changed = true }
+                // Si el texto cambió, los códigos binario/Base64 antiguos contenían la marca: se
+                // regeneran para que el detalle tampoco la vuelva a mostrar.
+                if (text != oldText) {
+                    MsgBase.deleteFiles(c, "", o.optString("bin"), o.optString("b64f"))
+                    val code = MsgBase.write(c, o.optLong("ts", System.currentTimeMillis()), text)
+                    o.put("b64", code.b64).put("bin", code.bin).put("b64f", code.b64f)
+                }
+                o.put("t", title).put("x", text).put("k", kind)
+                // 3) Completar códigos que falten en entradas antiguas.
+                if (text.isNotEmpty() && o.optString("b64").isEmpty() &&
+                    o.optString("bin").isEmpty() && o.optString("b64f").isEmpty()) {
+                    val code = MsgBase.write(c, o.optLong("ts", System.currentTimeMillis()), text)
+                    o.put("b64", code.b64).put("bin", code.bin).put("b64f", code.b64f)
+                    changed = true
+                }
+                arr.put(o)
             }
-            if (changed) sp(c).edit().putString("hist2", arr.toString()).apply()
-            sp(c).edit().putInt("code_v", 1).apply()
+            if (changed || arr.length() != old.length()) {
+                sp(c).edit().putString("hist2", arr.toString()).apply()
+            }
+            sp(c).edit().putInt("code_v", 2).apply()
         }
     }
 
@@ -385,10 +438,6 @@ object Prefs {
     fun chatPkgs(c: Context): Set<String> =
         (sp(c).getString("chat_pkgs", "") ?: "").split("\n").map { it.trim() }.filter { it.isNotEmpty() }.toSet()
     fun setChatPkgs(c: Context, v: Set<String>) = sp(c).edit().putString("chat_pkgs", v.joinToString("\n")).apply()
-
-    /** Avisar en el Historial de que una entrada se capturó LEYENDO LA PANTALLA (no era una notificación). */
-    fun chatMarkScreen(c: Context): Boolean = sp(c).getBoolean("chat_mark", true)
-    fun setChatMarkScreen(c: Context, v: Boolean) = sp(c).edit().putBoolean("chat_mark", v).apply()
 
     /**
      * Registrar también el TIPO de los adjuntos que se ven en el chat (Foto, Vídeo, Sticker, Ver una vez,

@@ -13,8 +13,8 @@ android {
         targetSdk = 36
         // Esquema de version: vMAYOR.MENOR.PARCHE.SUBPARCHE. El cuarto numero se usa para arreglos pequenos
         // sobre una version ya publicada (p. ej. v0.9.43.1); las actualizaciones grandes suben el tercero.
-        versionCode = 63
-        versionName = "0.9.52"
+        versionCode = 64
+        versionName = "0.9.53"
         // Número de la ejecución de GitHub Actions (el tag del release es v<número>); en local queda en 0
         buildConfigField("int", "BUILD_NUMBER", (project.findProperty("buildNumber") ?: "0").toString())
     }

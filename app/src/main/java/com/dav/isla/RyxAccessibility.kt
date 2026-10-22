@@ -157,23 +157,23 @@ class RyxAccessibility : AccessibilityService() {
             val ai = packageManager.getApplicationInfo(pkg, 0)
             packageManager.getApplicationLabel(ai).toString()
         } catch (e: Exception) { pkg }
-        // Se guarda como una entrada del Historial, marcando que vino de la PANTALLA (no de una notificación).
-        val mark = if (Prefs.chatMarkScreen(this)) "\n(pantalla · ${app})" else ""
+        // El Historial guarda LO QUE SE VIO, no una marca de que Ryx revisó la pantalla. Por eso el
+        // título es solo el nombre de la app, sin «Chat en pantalla», sin «(pantalla · app)» y sin
+        // usar «Pantalla» como tipo. Si no hay adjunto, el tipo queda vacío: es un mensaje, no un log.
         // MEDIA SIN CAPTURA: en el árbol de accesibilidad los adjuntos NO traen píxeles, pero SÍ traen su tipo y
         // descripción («Foto», «Vídeo», «Sticker», «Ver una vez», «GIF», «Audio»…) y a veces el remitente. Con eso
-        // se registra qué se envió y quién, sin hacer ninguna captura de pantalla: discreto, sin gasto de memoria
-        // ni de almacenamiento, y sin el aviso del sistema (que sí aparece con takeScreenshot en muchas ROMs).
+        // se registra qué se vio, sin hacer ninguna captura de pantalla.
         val kinds = ArrayList<String>()
         for (m in media) if (wantMedia && !kinds.contains(m)) kinds.add(m)
-        val kind = if (kinds.isEmpty()) "Pantalla" else kinds.joinToString(" · ")
-        val body = if (kinds.isEmpty()) text + mark
-                   else text + mark + "\n" + kinds.joinToString(" · ") { "📎 $it" }
+        val kind = kinds.joinToString(" · ")
+        val body = if (kinds.isEmpty()) text
+                   else text + "\n" + kinds.joinToString(" · ") { "📎 $it" }
         // Se reutiliza el mismo ejecutor: antes cada lectura creaba un Thread nuevo, y con árboles grandes
         // podían acumularse decenas. El guardado va detrás de la lectura, en orden y sin desbordar el sistema.
         try {
             chatWork.execute {
                 try {
-                    Prefs.addHist(this, pkg, "Chat en pantalla · $app", body, "", kind, 1_500L)
+                    Prefs.addHist(this, pkg, app, body, "", kind, 1_500L)
                     Backup.maybeUpload(this)
                     Backup.autoLocal(this)
                 } catch (e: Throwable) {}

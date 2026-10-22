@@ -124,9 +124,8 @@ class IslandPreview(c: Context) : View(c) {
         // Isla con los valores guardados
         val st = Styles.byId(Prefs.style(ctx))
         val screenWdp = screenW / dens
-        // El mismo margen mínimo que usa la isla real: 12 dp aunque el ajuste esté en 0.
-        val margin = maxOf(Prefs.sideMarginDp(ctx), 12)
-        val expDp = minOf(screenWdp - 2 * margin, IslandGeometry.expandedWidthDp(ctx).toFloat())
+        // La isla abierta mide 350 × 74 dp. Solo se limita si la pantalla física es más estrecha.
+        val expDp = minOf(screenWdp, IslandGeometry.expandedWidthDp(ctx).toFloat())
         val wdp = lerp(Prefs.idleWidthDp(ctx).toFloat(), expDp, progress)
         val hdp = lerp(Prefs.heightDp(ctx).toFloat(), IslandGeometry.EXPANDED_HEIGHT_DP.toFloat(), progress)
         val cx = w / 2f + u(Prefs.xOffsetDp(ctx).toFloat())

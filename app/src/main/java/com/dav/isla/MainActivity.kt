@@ -972,43 +972,13 @@ class MainActivity : Activity() {
 
     // ---------------- DISEÑO ----------------
 
-    /** Vista previa en vivo dentro de una tarjeta, para ver el efecto de cada ajuste sin salir de Diseño. */
-    private fun designPreview(): View {
-        val c = card()
-        val m = resources.displayMetrics
-        val wDp = (m.widthPixels / m.density).toInt()
-        val hDp = (maxOf(m.widthPixels, m.heightPixels) / m.density).toInt()
-        c.addView(label("Vista previa · ${Build.MANUFACTURER.replaceFirstChar { it.uppercase() }} ${Build.MODEL}", 15f, R.color.text, true))
-        c.addView(label("Pantalla $wDp × $hDp dp · Android ${Build.VERSION.RELEASE}", 12f, R.color.muted))
-        val pv = IslandPreview(this)
-        pv.landscape = landscapeView
-        val ins = window.decorView.rootWindowInsets
-        if (Build.VERSION.SDK_INT >= 28) {
-            ins?.displayCutout?.boundingRects?.firstOrNull { it.top <= 5 }?.let { pv.cutout = android.graphics.RectF(it) }
-        }
-        pv.statusBarPx = if (Build.VERSION.SDK_INT >= 30 && ins != null)
-            ins.getInsets(WindowInsets.Type.statusBars()).top.toFloat() else 0f
-        previewView = pv
-        if (previewOpen) pv.setExpanded(true)
-        c.addView(pv, LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = px(8) })
-        val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
-        row.addView(button(if (previewOpen) "Ver compacta" else "Ver expandida", false) {
-            previewOpen = !previewOpen; pv.setExpanded(previewOpen); render()
-        }, LinearLayout.LayoutParams(0, WRAP, 1f).apply { marginEnd = px(6) })
-        row.addView(button("▶ Animación", true) { previewOpen = false; pv.play() },
-            LinearLayout.LayoutParams(0, WRAP, 1f).apply { marginStart = px(6) })
-        c.addView(row, lp(8))
-        return c
-    }
-
     private fun buildLayout(p: LinearLayout) {
         designHandles.clear()
         pageHero(p, "palette", 0xFF7C89FF.toInt(), "Diseño", "Formas, colores, tamaños y movimiento; todo en tarjetas")
         heroStat(p, 0xFF7C89FF.toInt(), listOf(
             "Estilo" to Styles.byId(Prefs.style(this)).label,
             "Tema" to Glass.theme.label,
-            "Medidas" to "${Prefs.idleWidthDp(this)}×${Prefs.heightDp(this)} · ${IslandGeometry.expandedWidthDp(this)}×${IslandGeometry.EXPANDED_HEIGHT_DP} dp"))
-        p.addView(designPreview(), lp(8))
+            "Medidas" to "${Prefs.idleWidthDp(this)}×${Prefs.heightDp(this)} · ${IslandGeometry.EXPANDED_WIDTH_DP}×${IslandGeometry.EXPANDED_HEIGHT_DP} dp"))
 
         // Menú de la pestaña, como en Historial: las secciones se abren y cierran sin rehacer la pantalla.
         val menu = card()
@@ -1060,15 +1030,14 @@ class MainActivity : Activity() {
                 Prefs.idleBlur(this)) { v -> Prefs.setIdleBlur(this, v); applyAll(); svc()?.showTest() })
             seekRow(b, "Ancho en reposo", "dp", 60, 220, Prefs.idleWidthDp(this)) { Prefs.setIdleWidthDp(this, it); live() }
             seekRow(b, "Alto en reposo", "dp", 20, 60, Prefs.heightDp(this)) { Prefs.setHeightDp(this, it); live() }
-            seekRow(b, "Margen lateral mínimo", "dp", 0, 40, Prefs.sideMarginDp(this)) { Prefs.setSideMarginDp(this, it); live() }
             seekRow(b, "Posición vertical (margen superior)", "dp", 0, 80, Prefs.yOffsetDp(this)) { Prefs.setYOffsetDp(this, it); live() }
             seekRow(b, "Posición horizontal", "dp", -100, 100, Prefs.xOffsetDp(this)) { Prefs.setXOffsetDp(this, it); live() }
             b.addView(label("El ancho y el alto se aplican al instante. Si eliges una esquina manual, se respeta aunque no sea una pastilla.", 12f, R.color.muted), lp(8))
         }
 
         // ─────────────────────────── ISLA EXPANDIDA ───────────────────────────
-        designSection(p, "expanded", "Isla expandida", "350 × 74 dp, cuadrado redondeado y margen lateral mínimo", "expand", 0xFF6A62E8.toInt()) { b ->
-            b.addView(label("Tamaño base: 350 × 74 dp. La tarjeta abierta usa esquinas de cuadrado redondeado (no una pastilla completa) y nunca toca los bordes: respeta un margen mínimo de 12 dp.", 12f, R.color.muted), lp(2))
+        designSection(p, "expanded", "Isla expandida", "350 × 74 dp fijos, también con texto largo o imagen", "expand", 0xFF6A62E8.toInt()) { b ->
+            b.addView(label("Tamaño fijo: 350 × 74 dp. No crece con el texto ni con la imagen: el contenido se ajusta y se desplaza dentro de esa caja. En pantallas muy estrechas se centra con el margen que quede.", 12f, R.color.muted), lp(2))
             b.addView(rowWithSwitch("Efecto cristal (Liquid Glass)", "Translúcida, con brillo arriba y borde de luz", Prefs.cardGlass(this)) { v ->
                 Prefs.setCardGlass(this, v); applyAll(); svc()?.showTest(); previewView?.refresh() })
             b.addView(label("Color de la tarjeta", 13f, R.color.muted, true), lp(12))
@@ -1077,12 +1046,11 @@ class MainActivity : Activity() {
             shapeRow(b, Prefs.cornerDp(this)) { Prefs.setCornerDp(this, it); applyAll(); svc()?.showTest(); previewView?.refresh() }
             seekRow(b, "Radio de esquina fino", "dp", 0, 50, Prefs.cornerDp(this).coerceIn(0, 50)) { Prefs.setCornerDp(this, it); applyAll(); svc()?.showTest() }
             seekRow(b, "Transparencia", "%", 15, 100, Prefs.opacity(this)) { Prefs.setOpacity(this, it); live() }
-            seekRow(b, "Ancho expandido", "dp", 220, 420, IslandGeometry.expandedWidthDp(this)) { Prefs.setExpandedWidthDp(this, it); live() }
             b.addView(rowWithSwitch("Sombra bajo la isla", "Da profundidad a la tarjeta", Prefs.shadow(this)) { v ->
                 Prefs.setShadow(this, v); applyAll(); svc()?.showTest(); previewView?.refresh() })
             b.addView(button("Restablecer tamaño y posición", false) {
-                Prefs.setXOffsetDp(this, 0); Prefs.setYOffsetDp(this, 8); Prefs.setSideMarginDp(this, 12)
-                Prefs.setExpandedWidthDp(this, -1); Prefs.setCornerDp(this, -1)
+                Prefs.setXOffsetDp(this, 0); Prefs.setYOffsetDp(this, 8)
+                Prefs.setCornerDp(this, -1)
                 Prefs.setIdleWidthDp(this, IslandGeometry.COLLAPSED_WIDTH_DP); Prefs.setHeightDp(this, IslandGeometry.COLLAPSED_HEIGHT_DP)
                 applyAll(); svc()?.showTest(); render()
             }, lp(12))
@@ -2074,7 +2042,8 @@ class MainActivity : Activity() {
     private fun isMediaKind(kind: String): Boolean =
         kind.startsWith("Imagen") || kind.startsWith("Foto") || kind.startsWith("Vídeo") ||
             kind.startsWith("Video") || kind.startsWith("Sticker") || kind.startsWith("GIF") ||
-            kind.startsWith("Audio") || kind.startsWith("Documento") || kind.startsWith("Ver una vez")
+            kind.startsWith("Animación") || kind.startsWith("Audio") ||
+            kind.startsWith("Documento") || kind.startsWith("Ver una vez")
 
     /**
      * Acciones de copia de una entrada. El texto se toma de la base: se queda con la copia más larga
@@ -2156,17 +2125,30 @@ class MainActivity : Activity() {
         }
         try {
             imgWork.execute {
-                val bmp = decodeSampled(f.absolutePath, maxW, maxH)
-                if (bmp != null) runOnUiThread {
+                // ImageDecoder conserva los GIF/WebP animados; el bitmap de antes solo mostraba el
+                // primer fotograma y por eso los stickers animados parecían imágenes rotas.
+                val art = MediaArt.fromFile(this, f, maxOf(maxW, maxH).coerceAtMost(1800))
+                val bmp = if (art == null) decodeSampled(f.absolutePath, maxW, maxH) else null
+                runOnUiThread {
                     if (!isFinishing && !isDestroyed) {
-                        iv.setImageBitmap(bmp)
-                        if (!sticker) iv.background = null
+                        if (art != null) {
+                            iv.setImageDrawable(art)
+                            MediaArt.start(art)
+                            if (!sticker && !MediaArt.isAnimated(art)) iv.background = null
+                        } else if (bmp != null) {
+                            iv.setImageBitmap(bmp)
+                            if (!sticker) iv.background = null
+                        } else return@runOnUiThread
                         iv.alpha = 0f
                         iv.animate().alpha(1f).setDuration(180).start()
                     }
                 }
             }
         } catch (e: Throwable) {}
+        iv.addOnAttachStateChangeListener(object : View.OnAttachStateChangeListener {
+            override fun onViewAttachedToWindow(v: View) { MediaArt.start((v as ImageView).drawable) }
+            override fun onViewDetachedFromWindow(v: View) { MediaArt.stop((v as ImageView).drawable) }
+        })
         return iv.apply {
             layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT).apply { topMargin = px(8) }
@@ -2236,18 +2218,22 @@ class MainActivity : Activity() {
         val maxH = m.heightPixels.coerceAtMost(2000)
         try {
             imgWork.execute {
-                val bmp = decodeSampled(path, maxW, maxH)
+                val art = MediaArt.fromFile(this, java.io.File(path), maxOf(maxW, maxH))
+                val bmp = if (art == null) decodeSampled(path, maxW, maxH) else null
                 runOnUiThread {
-                    if (bmp == null || isFinishing || isDestroyed) return@runOnUiThread
+                    if ((art == null && bmp == null) || isFinishing || isDestroyed) return@runOnUiThread
                     // Visor a pantalla completa: la imagen ocupa todo el alto/ancho disponible y se cierra tocando.
                     val dlg = Dialog(this, android.R.style.Theme_Black_NoTitleBar_Fullscreen)
-                    dlg.setContentView(ImageView(this).apply {
-                        setImageBitmap(bmp)
+                    val viewer = ImageView(this).apply {
+                        if (art != null) { setImageDrawable(art); MediaArt.start(art) }
+                        else setImageBitmap(bmp)
                         scaleType = ImageView.ScaleType.FIT_CENTER
                         setBackgroundColor(0xFF000000.toInt())
                         contentDescription = "Imagen ampliada"
                         setOnClickListener { dlg.dismiss() }
-                    })
+                    }
+                    dlg.setContentView(viewer)
+                    dlg.setOnDismissListener { MediaArt.stop(viewer.drawable) }
                     dlg.window?.apply {
                         setBackgroundDrawable(ColorDrawable(0xFF000000.toInt()))
                         setLayout(android.view.WindowManager.LayoutParams.MATCH_PARENT,
@@ -2578,9 +2564,6 @@ class MainActivity : Activity() {
                 "Ryx lee el texto VISIBLE cuando abres WhatsApp, Telegram, Instagram, TikTok y demás. " +
                 "Así se guardan también los chats ARCHIVADOS o RESTRINGIDOS (esos no mandan notificación).",
                 Prefs.chatCapture(this)) { Prefs.setChatCapture(this, it); reload() }, lp(4))
-            b.addView(rowWithSwitch("Marcar en el Historial",
-                "Añade «(pantalla · App)» a las entradas capturadas leyendo la pantalla, para distinguirlas de las notificaciones",
-                Prefs.chatMarkScreen(this)) { Prefs.setChatMarkScreen(this, it) }, lp(4))
             b.addView(rowWithSwitch("Registrar también los adjuntos (sin captura)",
                 "Guarda en el Historial si en el chat se ve una Foto, Vídeo, Sticker, GIF, Audio, Documento o «Ver una vez». " +
                 "Se lee del propio texto/descripción de la pantalla: NO hace ninguna captura de pantalla, así que es discreto, " +
