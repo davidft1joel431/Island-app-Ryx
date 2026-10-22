@@ -32,6 +32,7 @@ import android.view.WindowInsets
 import android.widget.Button
 import android.widget.EditText
 import android.widget.FrameLayout
+import android.widget.HorizontalScrollView
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ScrollView
@@ -80,7 +81,8 @@ class MainActivity : Activity() {
     // siguen funcionando). La opción «Burbuja» se retiró: su hueco queda como «Nada (sin acción)».
     private val actionNames = listOf("Nada", "Abrir app", "Ventana en formato libre", "Descartar tarjeta",
         "Siguiente tarjeta", "Tarjeta anterior", "Contraer isla", "Ver detalle",
-        "Nada (sin acción)", "Formato libre", "Copiar texto", "Silenciar esta app")
+        "Nada (sin acción)", "Formato libre", "Copiar mensaje completo", "Silenciar esta app",
+        "Copiar Base64", "Copiar binario (hex)", "Copiar imagen/sticker", "Copiar Base64 de imagen")
     private val permListener = Shizuku.OnRequestPermissionResultListener { _, _ -> runOnUiThread { render() } }
     private val binderListener = Shizuku.OnBinderReceivedListener { runOnUiThread { render() } }
     private val deadListener = Shizuku.OnBinderDeadListener { runOnUiThread { render() } }
@@ -133,6 +135,7 @@ class MainActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         Prefs.migrateGeometry(this)
+        Thread { try { Prefs.migrateCodes(this) } catch (t: Throwable) {} }.start()
         Glass.applyTheme(this)
         window.setBackgroundDrawable(Glass.page(this))
         val rootView = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
@@ -491,6 +494,8 @@ class MainActivity : Activity() {
     override fun onRequestPermissionsResult(code: Int, perms: Array<out String>, res: IntArray) {
         super.onRequestPermissionsResult(code, perms, res)
         appListCache = null; iconCache.clear(); render()
+        // Tras conceder los permisos runtime, seguir con los accesos especiales del modo máximo.
+        if (code == 12 && !isFinishing) window.decorView.postDelayed({ openNextMaxAccess() }, 350L)
     }
 
     override fun onDestroy() {
@@ -906,7 +911,7 @@ class MainActivity : Activity() {
             "Avisos" to notifEnabled(),
             "Encima" to Settings.canDrawOverlays(this),
             "A11y" to RyxAccessibility.isEnabled(this),
-            "Shizuku" to Shell.shizukuGranted())
+            "Uso" to Foreground.hasAccess(this))
         chips.forEachIndexed { i, chip ->
             row.addView(TextView(this).apply {
                 text = (if (chip.second) "● " else "○ ") + chip.first
@@ -930,6 +935,7 @@ class MainActivity : Activity() {
         if (notifEnabled()) vias.add("Avisos")
         if (Settings.canDrawOverlays(this)) vias.add("Encima")
         if (RyxAccessibility.isEnabled(this)) vias.add("A11y")
+        if (Foreground.hasAccess(this)) vias.add("Uso")
         if (Shell.privileged(this)) vias.add(Shell.label(this))
         return if (vias.isEmpty()) "Ninguna" else vias.joinToString(" · ")
     }
@@ -1582,6 +1588,23 @@ class MainActivity : Activity() {
         }, lp(10))
         p.addView(top, lp(8))
 
+        // Base de códigos: cada mensaje tiene su texto, su archivo binario y su código Base64.
+        val coded = all.count { it.b64.isNotEmpty() || it.bin.isNotEmpty() || it.b64f.isNotEmpty() }
+        val base = card()
+        base.addView(label("Base de mensajes", 16f, R.color.text, true))
+        base.addView(label("Cada aviso guarda su texto completo, un archivo binario (.bin) y su código Base64 (.b64). " +
+            "Si el texto normal no carga, el Historial y la isla reconstruyen el mensaje desde la copia más larga. " +
+            "Las imágenes y stickers se guardan como archivo binario y su Base64 se genera al copiarlos.", 12f, R.color.muted), lp(4))
+        base.addView(label("$coded de ${all.size} avisos ya tienen código binario y Base64. " +
+            "Los antiguos se completan solos al abrir la app.", 12f, R.color.gold), lp(8))
+        base.addView(button("Completar códigos antiguos", false) {
+            Thread {
+                Prefs.migrateCodes(this, true)
+                runOnUiThread { histCache = null; render(); toast("Códigos completados") }
+            }.start()
+        }, lp(10))
+        p.addView(base, lp(8))
+
         // Solo dos secciones: los avisos de las apps y los grupos del sistema, sin «Todo» ni filtros múltiples.
         val menu = card()
         menu.addView(label("Menú del historial", 16f, R.color.text, true))
@@ -1823,7 +1846,9 @@ class MainActivity : Activity() {
     private fun htmlItem(h: Prefs.HistItem): String {
         val sb = StringBuilder("<div class=\"it\">")
         if (h.title.isNotEmpty()) sb.append("<div class=\"t\">").append(esc(h.title)).append("</div>")
-        if (h.text.isNotEmpty()) sb.append("<div class=\"x\">").append(esc(h.text)).append("</div>")
+        // La exportación también usa la base: si el texto visible venía cortado, se escribe el completo.
+        val full = MsgBase.fullText(this, h)
+        if (full.isNotEmpty()) sb.append("<div class=\"x\">").append(esc(full)).append("</div>")
         if (h.img.isNotEmpty()) {
             val f = java.io.File(Prefs.histDir(this), h.img)
             if (f.exists() && f.length() < 600_000) try {
@@ -2020,8 +2045,11 @@ class MainActivity : Activity() {
     /** Una entrada del historial: título, texto COMPLETO, imagen (si hay), tipo y hora. */
     private fun historyItemRow(h2: Prefs.HistItem, indent: Int): View {
         val r = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(indent, px(10), 0, 0) }
+        // Siempre se usa la copia más larga: el texto visible pudo llegar cortado, pero el .bin o el .b64
+        // conservan el mensaje completo.
+        val shownText = MsgBase.fullText(this, h2)
         if (h2.title.isNotEmpty()) r.addView(label(h2.title, 14f, R.color.text, true).apply { maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END })
-        if (h2.text.isNotEmpty()) r.addView(label(h2.text, 13f, R.color.muted).apply {
+        if (shownText.isNotEmpty()) r.addView(label(shownText, 13f, R.color.muted).apply {
             // El historial guardaba el texto completo pero la vista lo cortaba a 2 líneas. Ahora se ve
             // entero; el grupo se puede cerrar y las filas se crean solo al abrirlo.
             setLineSpacing(0f, 1.08f)
@@ -2033,6 +2061,7 @@ class MainActivity : Activity() {
             r.addView(label("📎 ${h2.kind} · el aviso no trajo la vista previa",
                 11f, R.color.gold).apply { setPadding(0, px(4), 0, 0) })
         }
+        historyCopyRow(h2, Glass.ACCENT)?.let { r.addView(it, lp(6)) }
         val foot = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(0, px(2), 0, 0) }
         if (h2.kind.isNotEmpty()) {
             foot.addView(label(h2.kind, 11f, R.color.gold, true))
@@ -2044,13 +2073,91 @@ class MainActivity : Activity() {
     }
 
     /** ¿El texto es un «testamento»? Se le da tarjeta propia y altura libre. */
-    private fun isLongHistory(h: Prefs.HistItem): Boolean =
-        h.text.length > 320 || h.text.count { it == '\n' } >= 6
+    private fun isLongHistory(h: Prefs.HistItem): Boolean {
+        val text = MsgBase.fullText(this, h)
+        return text.length > 320 || text.count { it == '\n' } >= 6 ||
+            (text.isBlank() && (h.b64.isNotEmpty() || h.bin.isNotEmpty() || h.b64f.isNotEmpty()))
+    }
 
     private fun isMediaKind(kind: String): Boolean =
         kind.startsWith("Imagen") || kind.startsWith("Foto") || kind.startsWith("Vídeo") ||
             kind.startsWith("Video") || kind.startsWith("Sticker") || kind.startsWith("GIF") ||
             kind.startsWith("Audio") || kind.startsWith("Documento") || kind.startsWith("Ver una vez")
+
+    /**
+     * Acciones de copia de una entrada. El texto se toma de la base: se queda con la copia más larga
+     * entre el texto visible, el archivo binario y el Base64. Las imágenes/stickers se publican como
+     * imagen normal para poder pegarlas en WhatsApp, Telegram o cualquier app.
+     */
+    private fun historyCopyRow(h2: Prefs.HistItem, color: Int): View? {
+        val hasText = h2.text.isNotEmpty() || h2.b64.isNotEmpty() || h2.bin.isNotEmpty() || h2.b64f.isNotEmpty()
+        val hasMedia = MsgBase.mediaFile(this, h2) != null
+        if (!hasText && !hasMedia) return null
+        val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+        fun chip(label: String, mode: Int) {
+            val v = copyChip(label, color) { copyHist(h2, mode) }
+            row.addView(v, LinearLayout.LayoutParams(WRAP, WRAP).apply { marginEnd = px(6) })
+        }
+        if (hasText) {
+            chip("Copiar mensaje", 0)
+            chip("Base64", 1)
+            chip("Binario (hex)", 2)
+        }
+        if (hasMedia) {
+            chip(if (h2.kind.contains("Sticker", ignoreCase = true)) "Copiar sticker" else "Copiar imagen", 3)
+            chip("Base64 imagen", 4)
+        }
+        return HorizontalScrollView(this).apply {
+            isHorizontalScrollBarEnabled = false
+            addView(row)
+        }
+    }
+
+    private fun copyChip(text: String, color: Int, onClick: () -> Unit) = TextView(this).apply {
+        this.text = text
+        textSize = 11.5f
+        setTextColor(color)
+        typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+        setPadding(px(12), px(8), px(12), px(8))
+        background = Glass.ripple(this@MainActivity,
+            Glass.pill(this@MainActivity, Glass.withA(color, 0x18), Glass.withA(color, 0x3A), 14f), 14f)
+        setOnClickListener { onClick() }
+    }
+
+    private fun copyHist(h2: Prefs.HistItem, mode: Int) {
+        when (mode) {
+            0 -> {
+                val text = MsgBase.fullText(this, h2)
+                if (text.isEmpty()) { toast("No hay texto que copiar"); return }
+                if (Clip.text(this, "Ryx", text)) toast("Mensaje completo copiado (${text.length} caracteres)")
+                else toast("No se pudo copiar el mensaje")
+            }
+            1 -> {
+                val code = MsgBase.base64(this, h2)
+                if (code.isEmpty()) { toast("No hay Base64 que copiar"); return }
+                if (Clip.text(this, "Ryx Base64", code)) toast("Base64 copiado (${code.length} caracteres)")
+                else toast("No se pudo copiar Base64")
+            }
+            2 -> {
+                val bytes = MsgBase.binary(this, h2)
+                if (bytes.isEmpty()) { toast("No hay binario que copiar"); return }
+                if (Clip.binary(this, "Ryx binario", bytes)) toast("Binario (hex) copiado (${bytes.size} bytes)")
+                else toast("No se pudo copiar el binario")
+            }
+            3 -> {
+                val f = MsgBase.mediaFile(this, h2)
+                if (f == null) { toast("Esta entrada no tiene imagen ni sticker"); return }
+                if (Clip.image(this, f, h2.kind)) toast("Imagen copiada: pégala en el chat")
+                else toast("No se pudo copiar la imagen")
+            }
+            4 -> {
+                val code = MsgBase.mediaBase64(this, h2)
+                if (code.isNullOrEmpty()) { toast("Esta entrada no tiene imagen ni sticker"); return }
+                if (Clip.text(this, "Ryx imagen Base64", code)) toast("Base64 de la imagen copiado (${code.length} caracteres)")
+                else toast("No se pudo copiar el Base64 de la imagen")
+            }
+        }
+    }
 
     /** Imagen grande de una entrada del historial, descodificada fuera del hilo principal. */
     private fun historyImage(h2: Prefs.HistItem, indent: Int, maxHeightPx: Int): View? {
@@ -2076,6 +2183,7 @@ class MainActivity : Activity() {
             clipToOutline = true
             contentDescription = if (sticker) "Sticker" else "Imagen"
             setOnClickListener { showImage(f.absolutePath) }
+            setOnLongClickListener { copyHist(h2, 3); true }
         }
         try {
             imgWork.execute {
@@ -2124,7 +2232,9 @@ class MainActivity : Activity() {
         if (h2.title.isNotEmpty()) c.addView(label(h2.title, 15f, R.color.text, true).apply {
             setPadding(0, px(9), 0, 0)
         })
-        if (h2.text.isNotEmpty()) c.addView(label(h2.text, 13.5f, R.color.text).apply {
+        // La tarjeta larga muestra la versión más larga disponible, no el texto truncado del aviso.
+        val shownText = MsgBase.fullText(this, h2)
+        if (shownText.isNotEmpty()) c.addView(label(shownText, 13.5f, R.color.text).apply {
             setTextIsSelectable(true)
             setLineSpacing(px(2).toFloat(), 1.08f)
             setPadding(0, px(8), 0, px(4))
@@ -2134,12 +2244,13 @@ class MainActivity : Activity() {
             c.addView(label("📎 ${h2.kind} · el aviso no trajo la vista previa", 11f, R.color.gold)
                 .apply { setPadding(0, px(4), 0, 0) })
         }
+        historyCopyRow(h2, color)?.let { c.addView(it, lp(6)) }
         val foot = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
         if (h2.kind.isNotEmpty()) {
             foot.addView(label(h2.kind, 11f, R.color.gold, true))
             foot.addView(View(this), LinearLayout.LayoutParams(px(8), px(1)))
         }
-        foot.addView(label("Texto completo · ${h2.text.length} caracteres", 11f, R.color.muted))
+        foot.addView(label("Texto completo · ${shownText.length} caracteres", 11f, R.color.muted))
         c.addView(foot, lp(8))
         outer.addView(c)
         return outer
@@ -2180,9 +2291,146 @@ class MainActivity : Activity() {
     }
 
     private fun buildPerms(p: LinearLayout) {
+        p.addView(maxAccessCard(), lp(8))
         val c = card()
         permsContent(c)
         p.addView(c, lp(8))
+    }
+
+    /**
+     * Poder máximo real de una app normal: notificaciones + accesibilidad + superposición + uso +
+     * batería + permisos runtime. Sin root y sin Shizuku no existe poder absoluto: Android siempre
+     * exige que el usuario confirme los accesos especiales. Esta tarjeta los reúne y guía uno a uno.
+     */
+    private fun maxAccessCard(): View {
+        val c = card()
+        c.addView(label("Poder máximo", 18f, R.color.text, true))
+        c.addView(label("Sin root y sin Shizuku. Ryx usa todo lo que Android permite a una app normal: " +
+            "avisos, accesibilidad, superposición, uso, batería y permisos de llamadas, contactos y fotos.", 12f, R.color.muted), lp(4))
+        val states = listOf(
+            "Avisos" to notifEnabled(),
+            "Encima" to Settings.canDrawOverlays(this),
+            "A11y" to RyxAccessibility.isEnabled(this),
+            "Uso" to Foreground.hasAccess(this),
+            "Batería" to batteryFree(),
+            "Permisos" to runtimeMissing().isEmpty())
+        val grid = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        for (r in 0 until 2) {
+            val line = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+            for (i in 0 until 3) {
+                val (name, ok) = states[r * 3 + i]
+                line.addView(accessChip(name, ok), LinearLayout.LayoutParams(0, WRAP, 1f).apply {
+                    marginEnd = px(4)
+                    topMargin = px(4)
+                })
+            }
+            grid.addView(line)
+        }
+        c.addView(grid, lp(6))
+        val granted = states.count { it.second }
+        c.addView(label("$granted de ${states.size} accesos concedidos", 12f,
+            if (granted == states.size) R.color.green else R.color.gold, true), lp(8))
+        c.addView(button(if (granted == states.size) "Revisar accesos" else "Activar todo lo posible",
+            granted != states.size) { requestMaxAccess() }, lp(10))
+        c.addView(rowWithSwitch("Modo máximo de Ryx",
+            "Historial completo, lectura de chats, fotos de la carpeta, isla permanente y sin restricciones de batería",
+            Prefs.maxMode(this)) { v -> applyMaxMode(v) }, lp(4))
+        c.addView(label("Límite honesto: sin root no se puede tener poder absoluto. Android obliga a confirmar " +
+            "cada acceso especial en sus Ajustes; Ryx no puede saltarse esa confirmación. Esto es el máximo real.", 11f,
+            R.color.muted), lp(8))
+        return c
+    }
+
+    private fun accessChip(name: String, ok: Boolean) = TextView(this).apply {
+        text = (if (ok) "✓ " else "• ") + name
+        textSize = 11f
+        gravity = Gravity.CENTER
+        setTextColor(if (ok) 0xFF3DDC84.toInt() else 0xFFF2A01F.toInt())
+        typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+        setPadding(px(6), px(9), px(6), px(9))
+        background = Glass.pill(this@MainActivity,
+            if (ok) 0x243DDC84 else 0x24F2A01F,
+            if (ok) 0x663DDC84 else 0x66F2A01F, 13f)
+    }
+
+    private fun batteryFree(): Boolean = try {
+        (getSystemService(POWER_SERVICE) as PowerManager).isIgnoringBatteryOptimizations(packageName)
+    } catch (t: Throwable) { false }
+
+    /** Permisos runtime que faltan para el modo máximo. No incluye los especiales de Ajustes. */
+    private fun runtimeMissing(): List<String> {
+        val out = ArrayList<String>()
+        fun need(p: String) {
+            if (checkSelfPermission(p) != PackageManager.PERMISSION_GRANTED) out.add(p)
+        }
+        if (Build.VERSION.SDK_INT >= 33) need("android.permission.POST_NOTIFICATIONS")
+        need(android.Manifest.permission.READ_CONTACTS)
+        need(android.Manifest.permission.READ_CALL_LOG)
+        need(android.Manifest.permission.ANSWER_PHONE_CALLS)
+        need(android.Manifest.permission.CALL_PHONE)
+        need(android.Manifest.permission.READ_PHONE_STATE)
+        if (Build.VERSION.SDK_INT >= 31) need("android.permission.BLUETOOTH_CONNECT")
+        if (!imagePermOk()) imagePerms().forEach { need(it) }
+        return out.distinct()
+    }
+
+    private fun requestMaxAccess() {
+        val missing = runtimeMissing()
+        if (missing.isNotEmpty()) {
+            try {
+                requestPermissions(missing.toTypedArray(), 12)
+                toast("Concede los permisos que Android muestra; después seguimos con los accesos especiales")
+                return
+            } catch (t: Throwable) {}
+        }
+        openNextMaxAccess()
+    }
+
+    /** Abre el siguiente acceso especial que falte. Todos se confirman a mano en Ajustes. */
+    private fun openNextMaxAccess() {
+        when {
+            !notifEnabled() -> {
+                toast("Activa Ryx en «Acceso a notificaciones»")
+                startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS))
+            }
+            !Settings.canDrawOverlays(this) -> {
+                toast("Permite «Mostrar sobre otras apps»")
+                startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:$packageName")))
+            }
+            !RyxAccessibility.isEnabled(this) -> askAccessibility()
+            !Foreground.hasAccess(this) -> {
+                toast("Activa Ryx en «Acceso de uso»")
+                askUsageAccess()
+            }
+            !batteryFree() -> {
+                toast("Quita la optimización de batería")
+                try {
+                    startActivity(Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, Uri.parse("package:$packageName")))
+                } catch (e: Exception) {
+                    try { startActivity(Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)) } catch (e2: Exception) {}
+                }
+            }
+            else -> {
+                applyMaxMode(true)
+                toast("Poder máximo activado: ya están todos los accesos que Android permite")
+                render()
+            }
+        }
+    }
+
+    /** Enciende las funciones que dependen de esos accesos. Al apagarlo no se revierte lo ya concedido. */
+    private fun applyMaxMode(v: Boolean) {
+        Prefs.setMaxMode(this, v)
+        if (!v) return
+        Prefs.setKeepHistory(this, true)
+        Prefs.setAutoRead(this, true)
+        Prefs.setIslandOn(this, true)
+        Prefs.setPermanent(this, true)
+        Prefs.setChatCapture(this, true)
+        Prefs.setChatMedia(this, true)
+        Prefs.setMediaFolder(this, true)
+        if (!imagePermOk()) askImagePermission()
+        applyAll()
     }
 
     private fun permsContent(b: LinearLayout) {

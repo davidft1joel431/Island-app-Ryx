@@ -25,7 +25,6 @@
     <uses-permission android:name="android.permission.ANSWER_PHONE_CALLS" />
     <uses-permission android:name="android.permission.CALL_PHONE" />
     <uses-permission android:name="android.permission.READ_PHONE_STATE" />
-    <uses-permission android:name="android.permission.READ_PHONE_NUMBERS" />
 
     <!-- Último recurso para completar fotos de WhatsApp cuando el aviso no trae la imagen.
          Se piden desde Diseño → Fotos y media; sin permiso la app usa solo lo que venga en la notificación. -->

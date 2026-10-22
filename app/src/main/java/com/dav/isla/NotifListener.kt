@@ -232,6 +232,7 @@ class NotifListener : NotificationListenerService() {
         checkUpdatesInBackground()          // aviso de versión nueva aunque la app no esté abierta
         main.removeCallbacks(updWatch); main.postDelayed(updWatch, Prefs.updEverySec(this).coerceIn(15, 3600) * 1000L)
         Backup.autoLocal(this)              // copia propia al arrancar el servicio
+        histExec.execute { try { Prefs.migrateCodes(this) } catch (t: Throwable) {} }
         main.removeCallbacks(backWatch); main.postDelayed(backWatch, 30_000L)   // respaldo propio cada 30 s
     }
 
@@ -422,19 +423,10 @@ class NotifListener : NotificationListenerService() {
             if (words.any { all.contains(it) }) { title = appLabel(sbn.packageName, sbn.user, uid); text = "Contenido oculto" }
         }
 
-        // Texto COMPLETO para el historial y la vista de detalle: texto largo, o los últimos mensajes de la conversación.
-        // La app lo recorta al mostrarlo, pero se guarda entero para que el .html descargado salga con todo.
-        var full: CharSequence? = n.extras.getCharSequence(Notification.EXTRA_BIG_TEXT)
-        if (full == null) {
-            // Se guardan TODOS los mensajes disponibles (hasta 60) para que un «testamento» no se corte.
-            // Antes solo se conservaban los últimos 5: los mensajes largos se perdían en el historial.
-            val lines = messageBundles(n).takeLast(60).mapNotNull { m ->
-                val t = m.getCharSequence("text") ?: return@mapNotNull null
-                val who = m.getCharSequence("sender")
-                if (who != null) "$who: $t" else t.toString()
-            }
-            if (lines.isNotEmpty()) full = lines.joinToString("\n")
-        }
+        // Texto COMPLETO para el historial y la vista de detalle. Ya no se acepta el primer EXTRA_BIG_TEXT
+        // a ciegas: se comparan todas las fuentes y se guarda la versión MÁS LARGA. Si la app recortó el
+        // texto normal, MessagingStyle o EXTRA_BIG_TEXT suelen conservar el mensaje entero.
+        var full: CharSequence? = fullTextOf(n, text)
         if (words.isNotEmpty() && text == "Contenido oculto") full = text
         if (full == null) full = text
 
@@ -1884,20 +1876,138 @@ class NotifListener : NotificationListenerService() {
             9 -> openCurrent(true, 0)       // formato libre
             10 -> copyCurrent()
             11 -> muteCurrent()
+            12 -> copyCurrentBase64()
+            13 -> copyCurrentBinary()
+            14 -> copyCurrentImage()
+            15 -> copyCurrentImageBase64()
         }
     }
 
-    /** Copia el texto de la tarjeta al portapapeles. */
+    /**
+     * Copia el texto COMPLETO de la tarjeta. Si la isla recibió el mensaje cortado, se busca la entrada
+     * del Historial y se reconstruye desde su texto, su binario o su Base64.
+     */
     private fun copyCurrent() {
         val c = cards.getOrNull(cardIndex) ?: return
-        val txt = (c.detail ?: c.body ?: c.title)?.toString() ?: return
-        try {
-            (getSystemService(CLIPBOARD_SERVICE) as android.content.ClipboardManager)
-                .setPrimaryClip(android.content.ClipData.newPlainText("Ryx", txt))
-            android.widget.Toast.makeText(this, "Texto copiado", android.widget.Toast.LENGTH_SHORT).show()
-        } catch (e: Exception) {}
+        val hint = (c.detail ?: c.body ?: c.title)?.toString() ?: ""
+        val txt = MsgBase.fullTextFor(this, c.pkg, c.title?.toString() ?: "", hint, c.userId)
+        if (txt.isEmpty()) {
+            // Una tarjeta solo de imagen/sticker: el mismo gesto copia la imagen.
+            copyCurrentImage()
+            return
+        }
+        if (Clip.text(this, "Ryx", txt)) toast("Mensaje completo copiado (${txt.length} caracteres)")
+        else toast("No se pudo copiar el mensaje")
         pulse()
     }
+
+    /** Copia el código Base64 del mensaje completo. */
+    private fun copyCurrentBase64() {
+        val c = cards.getOrNull(cardIndex) ?: return
+        val hint = (c.detail ?: c.body ?: c.title)?.toString() ?: return
+        val h = MsgBase.findHist(this, c.pkg, c.title?.toString() ?: "", hint, c.userId)
+        val code = if (h != null) MsgBase.base64(this, h)
+        else android.util.Base64.encodeToString(hint.toByteArray(Charsets.UTF_8), android.util.Base64.NO_WRAP)
+        if (code.isEmpty()) return
+        if (Clip.text(this, "Ryx Base64", code)) toast("Base64 copiado (${code.length} caracteres)")
+        else toast("No se pudo copiar Base64")
+        pulse()
+    }
+
+    /** Copia el código binario (hexadecimal) del mensaje completo. */
+    private fun copyCurrentBinary() {
+        val c = cards.getOrNull(cardIndex) ?: return
+        val hint = (c.detail ?: c.body ?: c.title)?.toString() ?: return
+        val h = MsgBase.findHist(this, c.pkg, c.title?.toString() ?: "", hint, c.userId)
+        val bytes = if (h != null) MsgBase.binary(this, h) else hint.toByteArray(Charsets.UTF_8)
+        if (Clip.binary(this, "Ryx binario", bytes)) toast("Binario (hex) copiado (${bytes.size} bytes)")
+        else toast("No se pudo copiar el binario")
+        pulse()
+    }
+
+    /** Copia la imagen o el sticker de la tarjeta como imagen normal en el portapapeles. */
+    private fun copyCurrentImage() {
+        val c = cards.getOrNull(cardIndex) ?: return
+        val hint = (c.detail ?: c.body ?: c.title)?.toString() ?: ""
+        val h = MsgBase.findHist(this, c.pkg, c.title?.toString() ?: "", hint, c.userId)
+        val kind = c.mediaKind.ifEmpty { h?.kind ?: "" }
+        val file = h?.let { MsgBase.mediaFile(this, it) }
+        if (file != null && Clip.image(this, file, kind)) {
+            toast("Imagen copiada: pégala en el chat")
+            pulse()
+            return
+        }
+        val bmp = c.media
+        if (bmp != null && Clip.image(this, bmp, kind)) {
+            toast("Imagen copiada: pégala en el chat")
+            pulse()
+            return
+        }
+        val uri = c.mediaUri
+        if (uri != null) {
+            histExec.execute {
+                val loaded = loadUriMedia(uri)
+                main.post {
+                    if (loaded != null && Clip.image(this, loaded, kind)) {
+                        toast("Imagen copiada: pégala en el chat")
+                        pulse()
+                    } else toast("No pude copiar la imagen")
+                }
+            }
+            return
+        }
+        toast("Esta tarjeta no tiene imagen ni sticker")
+    }
+
+    /** Copia el código Base64 de la imagen o sticker. */
+    private fun copyCurrentImageBase64() {
+        val c = cards.getOrNull(cardIndex) ?: return
+        val hint = (c.detail ?: c.body ?: c.title)?.toString() ?: ""
+        val h = MsgBase.findHist(this, c.pkg, c.title?.toString() ?: "", hint, c.userId)
+        val saved = h?.let { MsgBase.mediaBase64(this, it) }
+        if (!saved.isNullOrEmpty()) {
+            Clip.text(this, "Ryx imagen Base64", saved)
+            toast("Base64 de la imagen copiado (${saved.length} caracteres)")
+            pulse()
+            return
+        }
+        val bmp = c.media
+        if (bmp != null) {
+            val bytes = java.io.ByteArrayOutputStream()
+            val sticker = c.mediaKind.contains("Sticker", ignoreCase = true)
+            bmp.compress(if (sticker) Bitmap.CompressFormat.PNG else Bitmap.CompressFormat.JPEG,
+                if (sticker) 100 else 92, bytes)
+            Clip.base64(this, "Ryx imagen Base64", bytes.toByteArray())
+            toast("Base64 de la imagen copiado")
+            pulse()
+            return
+        }
+        // La imagen puede existir solo como URI del aviso; se carga y se convierte fuera del hilo principal.
+        val uri = c.mediaUri
+        if (uri != null) {
+            histExec.execute {
+                val loaded = loadUriMedia(uri)
+                if (loaded == null) {
+                    main.post { toast("No pude leer la imagen para Base64") }
+                    return@execute
+                }
+                val bytes = java.io.ByteArrayOutputStream()
+                val sticker = c.mediaKind.contains("Sticker", ignoreCase = true)
+                loaded.compress(if (sticker) Bitmap.CompressFormat.PNG else Bitmap.CompressFormat.JPEG,
+                    if (sticker) 100 else 92, bytes)
+                main.post {
+                    Clip.base64(this, "Ryx imagen Base64", bytes.toByteArray())
+                    toast("Base64 de la imagen copiado")
+                    pulse()
+                }
+            }
+            return
+        }
+        toast("Esta tarjeta no tiene imagen ni sticker")
+    }
+
+    private fun toast(t: String) =
+        android.widget.Toast.makeText(this, t, android.widget.Toast.LENGTH_SHORT).show()
 
     /** La isla deja de mostrar ESA copia de la app (queda en «Apps bloqueadas» de los ajustes). */
     private fun muteCurrent() {
@@ -2195,6 +2305,28 @@ class NotifListener : NotificationListenerService() {
      * ambos sin tocar el remitente, que es donde suele venir el avatar.
      */
     @Suppress("DEPRECATION")
+    /**
+     * Reúne todas las versiones del texto que trae el aviso y devuelve la más larga. Las apps suelen
+     * recortar EXTRA_TEXT pero dejar el mensaje entero en EXTRA_BIG_TEXT o en MessagingStyle; elegir la
+     * más larga evita perder justo los «testamentos».
+     */
+    private fun fullTextOf(n: Notification, fallback: CharSequence?): CharSequence? {
+        val candidates = ArrayList<CharSequence>(8)
+        fun add(v: CharSequence?) { if (v != null && v.isNotBlank()) candidates.add(v) }
+        add(n.extras.getCharSequence(Notification.EXTRA_BIG_TEXT))
+        add(n.extras.getCharSequence(Notification.EXTRA_TEXT))
+        val lines = messageBundles(n).takeLast(120).mapNotNull { m ->
+            val t = m.getCharSequence("text") ?: return@mapNotNull null
+            val who = m.getCharSequence("sender")
+            if (who != null) "$who: $t" else t.toString()
+        }
+        if (lines.isNotEmpty()) add(lines.joinToString("\n"))
+        add(n.extras.getCharSequence(Notification.EXTRA_SUMMARY_TEXT))
+        add(n.extras.getCharSequence(Notification.EXTRA_SUB_TEXT))
+        add(fallback)
+        return candidates.maxByOrNull { it.length } ?: fallback
+    }
+
     private fun messageBundles(n: Notification): List<android.os.Bundle> {
         val out = ArrayList<android.os.Bundle>()
         fun add(key: String) {
@@ -2621,15 +2753,7 @@ class NotifListener : NotificationListenerService() {
         var text = n.extras.getCharSequence(Notification.EXTRA_TEXT)
             ?: n.extras.getCharSequence(Notification.EXTRA_SUB_TEXT)
             ?: n.extras.getCharSequence(Notification.EXTRA_INFO_TEXT) ?: ""
-        var full: CharSequence? = n.extras.getCharSequence(Notification.EXTRA_BIG_TEXT)
-        if (full == null) {
-            val lines = messageBundles(n).takeLast(60).mapNotNull { m ->
-                val t = m.getCharSequence("text") ?: return@mapNotNull null
-                val who = m.getCharSequence("sender")
-                if (who != null) "$who: $t" else t.toString()
-            }
-            if (lines.isNotEmpty()) full = lines.joinToString("\n")
-        }
+        var full: CharSequence? = fullTextOf(n, text)
         // Privacidad: un aviso borrado no debe saltarse las palabras ocultas configuradas.
         val words = Prefs.hiddenWords(this)
         if (words.isNotEmpty() && words.any { "${title ?: ""} ${text ?: ""}".lowercase().contains(it) }) {
