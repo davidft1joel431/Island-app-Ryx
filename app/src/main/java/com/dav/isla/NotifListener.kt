@@ -98,6 +98,8 @@ class NotifListener : NotificationListenerService() {
     private val historySaved = java.util.concurrent.ConcurrentHashMap<String, Long>()
     /** Evita repetir la búsqueda de último recurso para el mismo aviso y el mismo texto. */
     private val mediaFallbackTried = java.util.Collections.newSetFromMap(java.util.concurrent.ConcurrentHashMap<String, Boolean>())
+    /** Protege accesos concurrentes a mediaCache y mediaArtCache (LruCache NO es thread-safe). */
+    private val mediaLock = Any()
     /** Imágenes de la carpeta ya usadas por un aviso, para no asignar la misma foto a dos mensajes. */
     private val folderImagesUsed = java.util.Collections.newSetFromMap(java.util.concurrent.ConcurrentHashMap<Long, Boolean>())
     private var actionsRow: LinearLayout? = null
@@ -1234,7 +1236,7 @@ class NotifListener : NotificationListenerService() {
     }
 
     fun showTest() {
-        show(packageName, "Ryx Island", "Funciona. Toca para abrir en ventana flotante.", null, true, true)
+        show(packageName, "Ryx Island", "Funciona. Toca para abrir en formato libre.", null, true, true)
     }
 
     // ---------- Construccion de la isla ----------
@@ -2128,8 +2130,17 @@ class NotifListener : NotificationListenerService() {
         iv.tag = tag
         if (!same) {
             iv.alpha = 0f
-            iv.animate().alpha(1f).setDuration(180).start()
-        } else iv.alpha = 1f
+            iv.scaleX = 0.97f
+            iv.scaleY = 0.97f
+            iv.animate().alpha(1f).scaleX(1f).scaleY(1f)
+                .setDuration(180)
+                .setInterpolator(android.view.animation.DecelerateInterpolator())
+                .start()
+        } else {
+            iv.alpha = 1f
+            iv.scaleX = 1f
+            iv.scaleY = 1f
+        }
     }
 
     /** Pinta un dibujo (puede ser GIF/WebP animado) y arranca la animación si existe. */
@@ -2142,8 +2153,17 @@ class NotifListener : NotificationListenerService() {
         MediaArt.start(fresh)
         if (!same) {
             iv.alpha = 0f
-            iv.animate().alpha(1f).setDuration(180).start()
-        } else iv.alpha = 1f
+            iv.scaleX = 0.97f
+            iv.scaleY = 0.97f
+            iv.animate().alpha(1f).scaleX(1f).scaleY(1f)
+                .setDuration(180)
+                .setInterpolator(android.view.animation.DecelerateInterpolator())
+                .start()
+        } else {
+            iv.alpha = 1f
+            iv.scaleX = 1f
+            iv.scaleY = 1f
+        }
     }
 
     private fun stopAnimated(iv: ImageView?) = MediaArt.stop(iv?.drawable)
@@ -2168,10 +2188,10 @@ class NotifListener : NotificationListenerService() {
             kind.contains("GIF", ignoreCase = true) ||
             kind.contains("Animación", ignoreCase = true)
         val histKey = if (canUseHistory) mediaHistKey(c) else ""
-        val art = uri?.let { mediaArtCache.get(it) }
-            ?: histKey.takeIf { it.isNotEmpty() }?.let { mediaArtCache.get(it) }
-        val bmp = c.media ?: uri?.let { mediaCache.get(it) }
-            ?: histKey.takeIf { it.isNotEmpty() }?.let { mediaCache.get(it) }
+        val art = synchronized(mediaLock) { uri?.let { mediaArtCache.get(it) } }
+            ?: histKey.takeIf { it.isNotEmpty() }?.let { synchronized(mediaLock) { mediaArtCache.get(it) } }
+        val bmp = c.media ?: synchronized(mediaLock) { uri?.let { mediaCache.get(it) } }
+            ?: histKey.takeIf { it.isNotEmpty() }?.let { synchronized(mediaLock) { mediaCache.get(it) } }
         // Aunque ya haya un bitmap de respaldo, se intenta la URI: puede ser el GIF/WebP animado real
         // y el bitmap solo su primer fotograma. Se carga una sola vez por clave.
         if (uri != null && art == null && !mediaFailed.contains(uri)) loadMedia(uri)
@@ -2213,7 +2233,7 @@ class NotifListener : NotificationListenerService() {
      */
     private fun loadHistoryMedia(c: Card, key: String) {
         // Un bitmap en caché no impide buscar el dibujo animado: puede ser solo el primer fotograma.
-        if (key.isEmpty() || mediaArtCache.get(key) != null || mediaFailed.contains(key)) return
+        if (key.isEmpty() || synchronized(mediaLock) { mediaArtCache.get(key) } != null || mediaFailed.contains(key)) return
         if (!mediaTried.add(key)) return
         histExec.execute {
             var foundArt: Drawable? = null
@@ -2233,8 +2253,8 @@ class NotifListener : NotificationListenerService() {
             } catch (t: Throwable) {}
             val art = foundArt
             val bmp = found
-            if (art != null) mediaArtCache.put(key, art)
-            if (bmp != null) mediaCache.put(key, bmp)
+            if (art != null) synchronized(mediaLock) { mediaArtCache.put(key, art) }
+            if (bmp != null) synchronized(mediaLock) { mediaCache.put(key, bmp) }
             if (art == null && bmp == null) mediaFailed.add(key)
             main.post {
                 val i = cards.indexOfFirst { mediaHistKey(it) == key }
@@ -2259,14 +2279,14 @@ class NotifListener : NotificationListenerService() {
 
     /** Descarga una imagen por URI una sola vez y refresca la tarjeta que la esté mostrando. */
     private fun loadMedia(uri: String) {
-        if (mediaArtCache.get(uri) != null || mediaFailed.contains(uri)) return
+        if (synchronized(mediaLock) { mediaArtCache.get(uri) } != null || mediaFailed.contains(uri)) return
         if (!mediaTried.add(uri)) return
         Thread {
             val art = MediaArt.fromUri(this, uri, 512)
             val bm = if (art == null) loadUriMedia(uri)
             else (art as? android.graphics.drawable.BitmapDrawable)?.bitmap
-            if (art != null) mediaArtCache.put(uri, art)
-            if (bm != null) mediaCache.put(uri, bm)
+            if (art != null) synchronized(mediaLock) { mediaArtCache.put(uri, art) }
+            if (bm != null) synchronized(mediaLock) { mediaCache.put(uri, bm) }
             if (art == null && bm == null) mediaFailed.add(uri)
             main.post {
                 val cur = cards.getOrNull(cardIndex)
@@ -3299,7 +3319,7 @@ class NotifListener : NotificationListenerService() {
         if (hasClone(pkg) && openClone(pkg, android.os.Process.myUserHandle(), myUser, quiet = true)) return
         val launch = packageManager.getLaunchIntentForPackage(pkg) ?: return
         launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        try { startActivity(launch) } catch (e: Exception) {}
+        main.post { try { startActivity(launch) } catch (e: Exception) {} }
     }
 
     /** Abre la copia (clon) de la app en su propio espacio. Si no se puede, avisa; jamás abre la original en su lugar. Fuera del hilo principal. */

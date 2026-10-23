@@ -58,6 +58,9 @@ class RyxAccessibility : AccessibilityService() {
     override fun onServiceConnected() { instance = this }
     override fun onUnbind(intent: Intent?): Boolean { hideCurtain(); instance = null; return super.onUnbind(intent) }
 
+    /** Handler del hilo principal para lanzar actividades sin romper desde hilos de fondo. */
+    private val mainHandler = Handler(Looper.getMainLooper())
+
     override fun onDestroy() {
         instance = null
         // Sin esto, el hilo de lectura de chats seguía vivo tras desactivar el servicio.
@@ -65,10 +68,8 @@ class RyxAccessibility : AccessibilityService() {
         hideCurtain()
         super.onDestroy()
     }
-    /** Cambios de ventanas (mover, redimensionar, cerrar): la barra de Ryx se entera al instante y se pega a la ventana real. */
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         when (event?.eventType) {
-            AccessibilityEvent.TYPE_WINDOWS_CHANGED -> FloatFrame.onWindowsChanged()
             // Una app abrió una ventana: sus avisos pendientes en la isla ya se leyeron
             AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED -> event?.packageName?.toString()?.let {
                 NotifListener.instance?.onAppOpened(it)
@@ -476,7 +477,9 @@ class RyxAccessibility : AccessibilityService() {
             if (v != 3) bundle.putInt("android.activity.windowingMode", 5)
             val flags = Intent.FLAG_ACTIVITY_NEW_TASK or (if (v == 2 || reuse) 0 else Intent.FLAG_ACTIVITY_MULTIPLE_TASK)
             if (pi != null) {
-                pi.send(this, 0, Intent().addFlags(flags), null, null, null, bundle)
+                mainHandler.post {
+                    try { pi.send(this, 0, Intent().addFlags(flags), null, null, null, bundle) } catch (e: Throwable) {}
+                }
             } else if (pkg.isNotEmpty() && (user != null || hasOtherSpace(pkg))) {
                 // Clon (app dual): se lanza SU copia en su espacio; el intent normal abriría la original.
                 // Y si la app TIENE clon, la ORIGINAL también se lanza indicando su espacio (el principal): con un startActivity normal
@@ -488,11 +491,15 @@ class RyxAccessibility : AccessibilityService() {
                 val comp = acts?.firstOrNull { want != null && it.componentName == want }?.componentName
                     ?: acts?.firstOrNull()?.componentName
                 // Espacio oculto (clon de MIUI/OPPO…): la API pública no lo ve → se lanza con Shizuku/root
-                if (comp != null) la.startMainActivity(comp, target, null, bundle)
+                if (comp != null) mainHandler.post {
+                    try { la.startMainActivity(comp, target, null, bundle) } catch (e: Throwable) {}
+                }
                 else if (!fireShell(userId, pkg, b, reuse)) return false
             } else {
                 launch.flags = flags
-                startActivity(launch, bundle)
+                mainHandler.post {
+                    try { startActivity(launch, bundle) } catch (e: Throwable) {}
+                }
             }
             true
         } catch (e: Throwable) { false }
@@ -616,7 +623,7 @@ class RyxAccessibility : AccessibilityService() {
         return best
     }
 
-    /** ¿Sigue visible alguna ventana de [pkg]? (para quitar la barra de Ryx cuando la ventana se cierra) */
+    /** ¿Sigue visible alguna ventana de [pkg]? (diagnóstico de ventanas) */
     fun windowAlive(pkg: String): Boolean = floatingState(pkg) != null
 
     /**

@@ -46,6 +46,8 @@ class MainActivity : Activity() {
 
     private val MATCH = LinearLayout.LayoutParams.MATCH_PARENT
     private val WRAP = LinearLayout.LayoutParams.WRAP_CONTENT
+    /** Líneas visibles antes de pulsar «Leer más» en un mensaje largo del Historial. */
+    private val HISTORY_PREVIEW_LINES = 7
     private lateinit var content: FrameLayout
     private lateinit var tabBar: LinearLayout
     private lateinit var activePill: TextView
@@ -820,9 +822,9 @@ class MainActivity : Activity() {
                         })
                         setOnClickListener { Prefs.setEventOnFor(this@MainActivity, ev.id, landscapeView, !isOn); render() }
                     }
-                    row!!.addView(chip, LinearLayout.LayoutParams(0, WRAP, 1f).apply { marginStart = px(5); marginEnd = px(5) })
+                    row?.let { it.addView(chip, LinearLayout.LayoutParams(0, WRAP, 1f).apply { marginStart = px(5); marginEnd = px(5) }) }
                 }
-                if (g.events.size % 2 == 1) row!!.addView(View(this), LinearLayout.LayoutParams(0, 1, 1f))
+                if (g.events.size % 2 == 1) row?.let { it.addView(View(this), LinearLayout.LayoutParams(0, 1, 1f)) }
                 b.addView(label("Toca para activar o desactivar · la flecha ⤢ elige si se abre expandida",
                     12f, R.color.muted), lp(10))
             })
@@ -1172,7 +1174,7 @@ class MainActivity : Activity() {
         }
 
         // ─────────────────────────── VENTANA FLOTANTE ───────────────────────────
-        designSection(p, "window", "Ventana flotante", "Formato libre, tamaño y apps no redimensionables", "window", 0xFF40C8E0.toInt()) { b ->
+        designSection(p, "window", "Formato libre del sistema", "Ventanas del launcher, tamaño y apps no redimensionables", "window", 0xFF40C8E0.toInt()) { b ->
             buildWindow(b)
         }
 
@@ -1432,22 +1434,23 @@ class MainActivity : Activity() {
     // ---------------- VENTANA FLOTANTE (parte de Diseño) ----------------
 
     private fun buildWindow(p: LinearLayout) {
-        val so = titled(p, "Formato libre", "Se abre encima de la app en la que estás, sin sacarte de ella")
-        // La «Burbuja» (Android 17) se retiró del diseño: queda solo el formato libre.
+        val so = titled(p, "Formato libre del sistema", "La ventana la abre y la controla tu launcher o el sistema")
+        // La «Burbuja» (Android 17) y la barra flotante propia se retiraron: la barra lateral de la ROM
+        // ya mueve y redimensiona la ventana, y una barra encima tapaba sus gestos.
         so.addView(label(
-            "«Formato libre»: Ryx pide la ventana al sistema con tu tamaño desde accesibilidad. Se abre al instante encima de tu app, " +
-            "sin inicio, sin Recientes y sin cortina. Con la ventana de la notificación abre el chat exacto. Ryx dibuja su propia barra para moverla. " +
-            "Con Shizuku/root, además, puede lanzarla con `am start --windowingMode 5` y colocarla al píxel: funciona incluso si tu ROM ignora las opciones de Android.",
+            "Ryx le pide al sistema que abra la app en ventana libre con el tamaño y la posición que elijas. " +
+            "La ventana se abre encima de la app en la que estás, sin pasar por Recientes, y con la notificación abre el chat exacto. " +
+            "Los botones para mover, redimensionar y cerrar son los de tu ROM o tu barra lateral: Ryx no dibuja ninguna barra encima.",
             12f, R.color.muted), lp(6))
+        so.addView(infoNote("window", 0xFF40C8E0.toInt(),
+            "Sin barra propia: así no se tapan los gestos laterales de tu barra lateral ni los botones de la ventana del sistema."), lp(8))
         so.addView(label(if (RyxAccessibility.isEnabled(this)) "Servicio de accesibilidad: activo ✔" else
             "Servicio de accesibilidad: apagado. Actívalo para usar este método.", 12f, R.color.text), lp(8))
         so.addView(button(if (RyxAccessibility.isEnabled(this)) "Ajustes de accesibilidad" else "Activar accesibilidad", !RyxAccessibility.isEnabled(this)) {
             if (RyxAccessibility.isEnabled(this)) openAccessibility() else askAccessibility()
         }, lp(8))
-        so.addView(rowWithSwitch("Barra de Ryx sobre la ventana", "Mover, cambiar tamaño y cerrar la ventana",
-            Prefs.fwFrame(this)) { Prefs.setFwFrame(this, it) })
 
-        // Formato libre es el único modo (la burbuja se retiró): estas opciones van siempre.
+        // Formato libre es el único modo: estas opciones van siempre.
         run {
             val un = titled(p, "Apps no redimensionables", "ROM: ${Build.DISPLAY} · Android ${Build.VERSION.RELEASE}")
             un.addView(label("Algunas apps dicen que no se pueden redimensionar y Android no las deja flotar. «Forzar que las actividades sean redimensionables» " +
@@ -1591,7 +1594,7 @@ class MainActivity : Activity() {
         sum.addView(summaryChipCompact("settings", 0xFF2DAA55.toInt(), "$nSys", "Sistema"),
             LinearLayout.LayoutParams(0, WRAP, 1f).apply { marginStart = px(3) })
         top.addView(sum)
-        top.addView(label("El historial conserva el aviso aunque la app elimine el mensaje después. Los mensajes largos se archivan completos y se muestran en su propia tarjeta, sin límite de altura.", 12f, R.color.muted), lp(8))
+        top.addView(label("El historial conserva el aviso aunque la app elimine el mensaje después. Los mensajes largos se archivan completos y se muestran plegados en su propia tarjeta: pulsa «Leer más» para verlos enteros.", 12f, R.color.muted), lp(8))
         top.addView(label("En pantalla guarda lo que viste en WhatsApp, Telegram, Instagram, TikTok, TikTok Lite, Whee y otras apps de chat, con el texto completo y los recortes de fotos, stickers y GIF.", 12f, R.color.muted), lp(6))
         top.addView(button("Borrar historial", false) {
             Prefs.clearHist(this)
@@ -1632,7 +1635,7 @@ class MainActivity : Activity() {
                 if (token == histSearchToken && histBox?.isAttachedToWindow == true) fillHist()
             }, 220)
         }, lp(8))
-        search.addView(label("La búsqueda mira dentro de la sección elegida. Los mensajes largos se abren completos en su propia tarjeta, sin altura máxima.", 12f, R.color.muted), lp(8))
+        search.addView(label("La búsqueda mira dentro de la sección elegida. Los mensajes largos se abren completos con el botón «Leer más».", 12f, R.color.muted), lp(8))
         search.addView(button("Descargar como .html", true) { exportHtml() }, lp(12))
         search.addView(label("Se descarga el texto completo y las imágenes en un archivo que abre cualquier navegador.",
             12f, R.color.muted), lp(6))
@@ -2079,7 +2082,7 @@ class MainActivity : Activity() {
             val end = minOf(shown + 12, items.size)
             for (i in shown until end) {
                 val item = items[i]
-                // Un «testamento» no cabe en una fila normal: se dibuja como tarjeta propia y sin límite de altura.
+                // Un «testamento» no cabe en una fila normal: se dibuja como tarjeta propia, plegada y con «Leer más».
                 if (isLongHistory(item)) rows.addView(historyLongCard(item, indent, color))
                 else rows.addView(historyItemRow(item, indent))
             }
@@ -2214,27 +2217,31 @@ class MainActivity : Activity() {
         return box
     }
 
-    /** Una imagen grande, descodificada fuera del hilo principal. */
+    /**
+     * Una imagen grande, descodificada fuera del hilo principal.
+     *
+     * La vista se crea al instante con un marcador; la imagen entra con un fundido/zoom suave. Los GIF y
+     * WebP animados se arrancan solo mientras la vista está en pantalla, y llevan una etiqueta visible.
+     * Los stickers conservan su transparencia y se muestran enteros, sin recortes.
+     */
     private fun historySingleImage(h2: Prefs.HistItem, f: java.io.File, indent: Int, maxHeightPx: Int): View? {
         if (!f.exists()) return null
         val sticker = h2.kind.contains("Sticker", ignoreCase = true)
+        val gif = h2.kind.contains("GIF", ignoreCase = true) ||
+            h2.kind.contains("Animación", ignoreCase = true) ||
+            h2.kind.contains("Animacion", ignoreCase = true)
         // Se ve GRANDE (todo el ancho de la fila), no como miniatura: así se mira sin abrirla.
         val maxW = (resources.displayMetrics.widthPixels - indent - px(16)).coerceAtLeast(px(160))
         val maxH = maxHeightPx
-        val iv = ImageView(this).apply {
-            scaleType = ImageView.ScaleType.FIT_CENTER
-            adjustViewBounds = true
-            minimumHeight = px(96)
-            maxHeight = maxH
-            setPadding(if (sticker) px(12) else 0, if (sticker) px(12) else 0,
-                if (sticker) px(12) else 0, if (sticker) px(12) else 0)
-            // Marcador mientras se descodifica: la fila aparece al instante y la imagen llega después.
+        val frame = FrameLayout(this).apply {
             background = Glass.tile(this@MainActivity, Glass.SURFACE_TOP, 16f)
             outlineProvider = object : ViewOutlineProvider() {
                 override fun getOutline(view: View, o: Outline) { o.setRoundRect(0, 0, view.width, view.height, px(16).toFloat()) }
             }
             clipToOutline = true
-            contentDescription = if (sticker) "Sticker" else "Imagen"
+            isClickable = true
+            isFocusable = true
+            contentDescription = if (sticker) "Sticker; toca para ampliar" else "Imagen; toca para ampliar"
             setOnClickListener { showImage(f.absolutePath) }
             setOnLongClickListener {
                 if (Clip.image(this@MainActivity, f, h2.kind)) toast("Imagen copiada: pégala en el chat")
@@ -2242,24 +2249,74 @@ class MainActivity : Activity() {
                 true
             }
         }
+        val iv = ImageView(this).apply {
+            scaleType = ImageView.ScaleType.FIT_CENTER
+            adjustViewBounds = true
+            minimumHeight = px(96)
+            maxHeight = maxH
+            setPadding(if (sticker) px(12) else 0, if (sticker) px(12) else 0,
+                if (sticker) px(12) else 0, if (sticker) px(12) else 0)
+            alpha = 0f
+            contentDescription = if (sticker) "Sticker" else "Imagen"
+        }
+        frame.addView(iv, FrameLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
+        val tone = if (sticker) 0xFFFFC857.toInt() else 0xFF35B6C8.toInt()
+        val badge = TextView(this).apply {
+            textSize = 9.5f; letterSpacing = 0.06f
+            typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+            setTextColor(tone)
+            setPadding(px(8), px(3), px(8), px(3))
+            background = Glass.pill(this@MainActivity, 0xCC10141C.toInt(), Glass.withA(tone, 0x66), 10f)
+            visibility = when {
+                sticker -> View.VISIBLE
+                gif -> View.VISIBLE
+                else -> View.GONE
+            }
+            text = when {
+                sticker -> "STICKER"
+                gif -> "GIF"
+                else -> ""
+            }
+        }
+        frame.addView(badge, FrameLayout.LayoutParams(
+            LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT,
+            Gravity.TOP or Gravity.END).apply {
+            topMargin = px(8); marginEnd = px(8)
+        })
         try {
             imgWork.execute {
                 // ImageDecoder conserva los GIF/WebP animados; el bitmap de antes solo mostraba el
                 // primer fotograma y por eso los stickers animados parecían imágenes rotas.
-                val art = MediaArt.fromFile(this, f, maxOf(maxW, maxH).coerceAtMost(1800))
+                val art = MediaArt.fromFile(this, f, maxOf(maxW, maxH).coerceAtMost(1400))
                 val bmp = if (art == null) decodeSampled(f.absolutePath, maxW, maxH) else null
+                val animatedFile = MediaArt.isAnimatedFile(f)
                 runOnUiThread {
                     if (!isFinishing && !isDestroyed) {
                         if (art != null) {
                             iv.setImageDrawable(art)
-                            MediaArt.start(art)
-                            if (!sticker && !MediaArt.isAnimated(art)) iv.background = null
+                            if (iv.isAttachedToWindow) MediaArt.start(art)
+                            if (!sticker && !MediaArt.isAnimated(art)) frame.background = null
                         } else if (bmp != null) {
                             iv.setImageBitmap(bmp)
-                            if (!sticker) iv.background = null
-                        } else return@runOnUiThread
+                            if (!sticker) frame.background = null
+                        } else {
+                            badge.text = "NO SE PUDO CARGAR"
+                            badge.visibility = View.VISIBLE
+                            badge.setTextColor(0xFFFFB26B.toInt())
+                            return@runOnUiThread
+                        }
+                        if ((animatedFile || MediaArt.isAnimated(art)) && !sticker) {
+                            badge.text = "ANIM"
+                            badge.visibility = View.VISIBLE
+                        }
                         iv.alpha = 0f
-                        iv.animate().alpha(1f).setDuration(180).start()
+                        iv.scaleX = 0.985f
+                        iv.scaleY = 0.985f
+                        iv.animate().alpha(1f).scaleX(1f).scaleY(1f)
+                            .setDuration(220)
+                            .setInterpolator(android.view.animation.DecelerateInterpolator())
+                            .start()
                     }
                 }
             }
@@ -2268,15 +2325,15 @@ class MainActivity : Activity() {
             override fun onViewAttachedToWindow(v: View) { MediaArt.start((v as ImageView).drawable) }
             override fun onViewDetachedFromWindow(v: View) { MediaArt.stop((v as ImageView).drawable) }
         })
-        return iv.apply {
+        return frame.apply {
             layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT).apply { topMargin = px(8) }
         }
     }
 
     /**
-     * Mensaje largo en su propia tarjeta. El texto NO tiene maxLines ni maxHeight: se guarda y se muestra
-     * completo, aunque ocupe media pantalla o más. La imagen sí conserva un tope aparte para no agotar memoria.
+     * Mensaje largo en su propia tarjeta. Se guarda completo y se muestra plegado a [HISTORY_PREVIEW_LINES]
+     * líneas; «Leer más» lo despliega entero. La imagen conserva un tope aparte para no agotar memoria.
      */
     private fun historyLongCard(h2: Prefs.HistItem, indent: Int, color: Int): View {
         val outer = LinearLayout(this).apply {
@@ -2303,12 +2360,30 @@ class MainActivity : Activity() {
             setPadding(0, px(9), 0, 0)
         })
         // La tarjeta larga muestra la versión más larga disponible, no el texto truncado del aviso.
+        // Se abre plegada para que un «testamento» no ocupe media pantalla; «Leer más» la despliega.
         val shownText = MsgBase.fullText(this, h2)
-        if (shownText.isNotEmpty()) c.addView(label(shownText, 13.5f, R.color.text).apply {
-            setTextIsSelectable(true)
-            setLineSpacing(px(2).toFloat(), 1.08f)
-            setPadding(0, px(8), 0, px(4))
-        })
+        if (shownText.isNotEmpty()) {
+            val textView = label(shownText, 13.5f, R.color.text).apply {
+                setTextIsSelectable(true)
+                setLineSpacing(px(2).toFloat(), 1.08f)
+                setPadding(0, px(8), 0, px(4))
+                maxLines = HISTORY_PREVIEW_LINES
+                ellipsize = android.text.TextUtils.TruncateAt.END
+            }
+            c.addView(textView)
+            if (shownText.length > 280 || shownText.count { it == '\n' } >= HISTORY_PREVIEW_LINES) {
+                var expanded = false
+                val more = copyChip("Leer más · ${shownText.length} caracteres", color) {}
+                more.setOnClickListener {
+                    expanded = !expanded
+                    textView.maxLines = if (expanded) Int.MAX_VALUE else HISTORY_PREVIEW_LINES
+                    textView.ellipsize = if (expanded) null else android.text.TextUtils.TruncateAt.END
+                    more.text = if (expanded) "Leer menos" else "Leer más · ${shownText.length} caracteres"
+                    if (!expanded) textView.scrollTo(0, 0)
+                }
+                c.addView(more, lp(6))
+            }
+        }
         historyImage(h2, indent, px(420))?.let { c.addView(it) }
         if (MsgBase.mediaFiles(this, h2).isEmpty() && isMediaKind(h2.kind)) {
             c.addView(label("📎 ${h2.kind} · el aviso no trajo la vista previa", 11f, R.color.gold)
@@ -2345,24 +2420,47 @@ class MainActivity : Activity() {
                 val bmp = if (art == null) decodeSampled(path, maxW, maxH) else null
                 runOnUiThread {
                     if ((art == null && bmp == null) || isFinishing || isDestroyed) return@runOnUiThread
-                    // Visor a pantalla completa: la imagen ocupa todo el alto/ancho disponible y se cierra tocando.
+                    // Visor a pantalla completa con zoom: pellizco, doble toque y arrastre. Los GIF/WebP
+                    // siguen animándose; la imagen se cierra con el botón ✕ o tocándola sin zoom.
                     val dlg = Dialog(this, android.R.style.Theme_Black_NoTitleBar_Fullscreen)
-                    val viewer = ImageView(this).apply {
+                    val root = FrameLayout(this).apply { setBackgroundColor(0xFF000000.toInt()) }
+                    val viewer = ZoomImageView(this).apply {
                         if (art != null) { setImageDrawable(art); MediaArt.start(art) }
                         else setImageBitmap(bmp)
-                        scaleType = ImageView.ScaleType.FIT_CENTER
                         setBackgroundColor(0xFF000000.toInt())
-                        contentDescription = "Imagen ampliada"
+                        contentDescription = "Imagen ampliada; pellizca para acercar"
+                        alpha = 0f
                         setOnClickListener { dlg.dismiss() }
                     }
-                    dlg.setContentView(viewer)
+                    root.addView(viewer, FrameLayout.LayoutParams(
+                        LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.MATCH_PARENT))
+                    val close = TextView(this).apply {
+                        text = "✕"; textSize = 18f; gravity = Gravity.CENTER
+                        setTextColor(0xFFFFFFFF.toInt())
+                        background = Glass.pill(this@MainActivity, 0x99000000.toInt(), 0x55FFFFFF, 22f)
+                        contentDescription = "Cerrar imagen"
+                        setOnClickListener { dlg.dismiss() }
+                    }
+                    root.addView(close, FrameLayout.LayoutParams(px(44), px(44), Gravity.TOP or Gravity.END).apply {
+                        topMargin = px(24); marginEnd = px(16)
+                    })
+                    val copy = copyChip("Copiar imagen", 0xFF35B6C8.toInt()) {
+                        if (Clip.image(this, java.io.File(path), "")) toast("Imagen copiada: pégala en el chat")
+                        else toast("No se pudo copiar la imagen")
+                    }
+                    root.addView(copy, FrameLayout.LayoutParams(
+                        LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT,
+                        Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL).apply { bottomMargin = px(28) })
+                    dlg.setContentView(root)
                     dlg.setOnDismissListener { MediaArt.stop(viewer.drawable) }
                     dlg.window?.apply {
                         setBackgroundDrawable(ColorDrawable(0xFF000000.toInt()))
+                        setDimAmount(0f)
                         setLayout(android.view.WindowManager.LayoutParams.MATCH_PARENT,
                             android.view.WindowManager.LayoutParams.MATCH_PARENT)
                     }
                     dlg.show()
+                    viewer.animate().alpha(1f).setDuration(200).start()
                 }
             }
         } catch (e: Throwable) {}
@@ -2513,7 +2611,7 @@ class MainActivity : Activity() {
     }
 
     private fun permsContent(b: LinearLayout) {
-        permRow(b, "Shizuku (solo para ocultar avisos emergentes)", "Opcional. Estado: ${Shell.shizukuStatus(this)}. El formato libre y las burbujas no lo necesitan.",
+        permRow(b, "Shizuku (solo para ocultar avisos emergentes)", "Opcional. Estado: ${Shell.shizukuStatus(this)}. El formato libre del sistema no lo necesita.",
             Shell.shizukuGranted()) {
             when {
                 !Shell.shizukuInstalled(this) -> startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://shizuku.rikka.app/download/")))
@@ -2565,7 +2663,7 @@ class MainActivity : Activity() {
             Build.VERSION.SDK_INT < 31 || checkSelfPermission("android.permission.BLUETOOTH_CONNECT") == 0) {
             if (Build.VERSION.SDK_INT >= 31) requestPermissions(arrayOf("android.permission.BLUETOOTH_CONNECT"), 1)
         }
-        permRow(b, "Accesibilidad (Formato libre del launcher)", "Para pulsar «Formato libre» en tu launcher al abrir una ventana flotante",
+        permRow(b, "Accesibilidad (Formato libre del launcher)", "Para abrir la app en formato libre desde la isla o tu launcher",
             RyxAccessibility.isEnabled(this)) {
             if (RyxAccessibility.isEnabled(this)) openAccessibility() else askAccessibility()
         }
@@ -2898,7 +2996,7 @@ class MainActivity : Activity() {
     }
 
     private fun devDialog() = sheet("Opciones de desarrollador") { b ->
-        b.addView(label("Registro de la última apertura en ventana flotante:", 13f, R.color.muted))
+        b.addView(label("Registro de la última apertura en formato libre:", 13f, R.color.muted))
         b.addView(logBlock(Prefs.lastLog(this).ifEmpty { "Todavía no hay registro. Haz una prueba en la pestaña Ventana." }), lp(8))
         b.addView(button("Copiar registro", false) {
             (getSystemService(CLIPBOARD_SERVICE) as ClipboardManager).setPrimaryClip(ClipData.newPlainText("ryx", Prefs.lastLog(this))); toast("Registro copiado")
