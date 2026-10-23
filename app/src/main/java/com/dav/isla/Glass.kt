@@ -4,8 +4,10 @@ import android.content.Context
 import android.content.res.ColorStateList
 import android.graphics.Canvas
 import android.graphics.Color
+import android.graphics.LinearGradient
 import android.graphics.Paint
 import android.graphics.RectF
+import android.graphics.Shader
 import android.graphics.drawable.Drawable
 import android.graphics.drawable.GradientDrawable
 import android.graphics.drawable.LayerDrawable
@@ -146,12 +148,32 @@ object Glass {
         GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM,
             intArrayOf(lighten(color, 0.06f), color, darken(color, 0.04f))).apply {
             cornerRadius = dp(c, radiusDp)
+            setStroke(maxOf(1, dp(c, 1f).toInt()), 0x16FFFFFF)
         }
 
     fun pill(c: Context, fill: Int, stroke: Int = 0, radiusDp: Float = 16f): Drawable =
         GradientDrawable().apply {
             cornerRadius = dp(c, radiusDp); setColor(fill)
             if (stroke != 0) setStroke(maxOf(1, dp(c, 1f).toInt()), stroke)
+        }
+
+    /**
+     * Superficie de control tipo pastilla: degradado vertical corto (luz arriba, sombra abajo)
+     * y borde fino. Da volumen sin sombras ni desenfoques del sistema.
+     */
+    fun control(c: Context, fill: Int, stroke: Int = HAIR, radiusDp: Float = 16f): Drawable =
+        GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM,
+            intArrayOf(lighten(fill, 0.07f), fill, darken(fill, 0.05f))).apply {
+            cornerRadius = dp(c, radiusDp)
+            if (stroke != 0) setStroke(maxOf(1, dp(c, 1f).toInt()), stroke)
+        }
+
+    /** Fila de ajuste: una pastilla casi transparente, con apenas un velo y un borde de 1 dp. */
+    fun row(c: Context, radiusDp: Float = 16f): Drawable =
+        GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM,
+            intArrayOf(0x14FFFFFF, 0x0CFFFFFF, 0x08FFFFFF)).apply {
+            cornerRadius = dp(c, radiusDp)
+            setStroke(maxOf(1, dp(c, 1f).toInt()), 0x1AFFFFFF)
         }
 
     /** Botón lleno: degradado del acento (más claro arriba) y sin borde. Da volumen sin sombra. */
@@ -195,6 +217,7 @@ object Glass {
     // Se guardan por (relleno, borde, radio) y por (nombre, color). Se comparte el dibujo, cuya matriz sigue siendo
     // la misma para todas las filas (nada se deforma), y se devuelve una copia solo cuando la vista necesita una.
     private val pillCache = HashMap<String, Drawable>()
+    private val controlCache = HashMap<String, Drawable>()
     private val iconCache = HashMap<String, Drawable?>()
 
     /**
@@ -207,13 +230,20 @@ object Glass {
         return base.constantState?.newDrawable() ?: pill(c, fill, stroke, radiusDp)
     }
 
+    /** Igual que [control] pero reutilizando el molde; para listas largas de pastillas. */
+    fun controlCached(c: Context, fill: Int, stroke: Int = HAIR, radiusDp: Float = 16f): Drawable {
+        val key = "$fill|$stroke|$radiusDp"
+        val base = controlCache.getOrPut(key) { control(c, fill, stroke, radiusDp) }
+        return base.constantState?.newDrawable() ?: control(c, fill, stroke, radiusDp)
+    }
+
     /** Igual que [chip] pero reutilizando el molde: úsalo en listas largas (eventos, temas, formas…). */
     fun chipCached(c: Context, on: Boolean, radiusDp: Float = 16f): Drawable =
-        pillCached(c, if (on) accentA(0x24) else SURFACE_HI, if (on) accentA(0x99) else HAIR, radiusDp)
+        controlCached(c, if (on) accentA(0x2A) else SURFACE_HI, if (on) accentA(0xAA) else HAIR, radiusDp)
 
     /** Casilla seleccionable (estilos, temas, formas…): con el acento si está elegida y neutra si no. */
     fun chip(c: Context, on: Boolean, radiusDp: Float = 16f): Drawable =
-        pill(c, if (on) accentA(0x24) else SURFACE_HI, if (on) accentA(0x99) else HAIR, radiusDp)
+        control(c, if (on) accentA(0x2A) else SURFACE_HI, if (on) accentA(0xAA) else HAIR, radiusDp)
 
     /** Añade el destello al tocar (ondulación) sobre [base]. */
     fun ripple(c: Context, base: Drawable, radiusDp: Float): Drawable {
@@ -291,39 +321,38 @@ class GlassSwitch(c: Context) : View(c) {
         }
     }
 
-    override fun onMeasure(w: Int, h: Int) = setMeasuredDimension((52 * d).toInt(), (32 * d).toInt())
+    override fun onMeasure(w: Int, h: Int) = setMeasuredDimension((50 * d).toInt(), (30 * d).toInt())
 
     override fun onDraw(cv: Canvas) {
         val w = width.toFloat(); val h = height.toFloat()
         val r = h / 2
-        // Halo suave del acento cuando está encendido: da profundidad sin sombras costosas.
-        if (t > 0.01f) {
-            rect.set(-2 * d, -2 * d, w + 2 * d, h + 2 * d)
-            p.style = Paint.Style.FILL
-            p.color = Glass.accentA((0x1C * t).toInt())
-            cv.drawRoundRect(rect, r + 2 * d, r + 2 * d, p)
-        }
-        // Pista
-        rect.set(0f, 0f, w, h)
+        // Pista con degradado: neutra apagada y del acento encendida. Nada de sombras externas:
+        // el interruptor vive dentro de tarjetas y debe verse limpio en cualquier ROM.
         p.style = Paint.Style.FILL
-        p.color = blend(0xFF2C323E.toInt(), Glass.ACCENT, t)
-        cv.drawRoundRect(rect, r, r, p)
-        // Brillo interior en la mitad superior (efecto de cristal).
-        p.color = ((0x1E * (1f - 0.35f * t)).toInt() shl 24) or 0x00FFFFFF
-        cv.drawRoundRect(1.5f * d, 1.5f * d, w - 1.5f * d, h / 2, r, r, p)
-        // Borde fino, se desvanece al encender.
+        p.shader = LinearGradient(
+            0f, 0f, 0f, h,
+            blend(0xFF333B48.toInt(), Glass.lighten(Glass.ACCENT, 0.10f), t),
+            blend(0xFF1C212A.toInt(), Glass.darken(Glass.ACCENT, 0.12f), t),
+            Shader.TileMode.CLAMP
+        )
+        cv.drawRoundRect(0f, 0f, w, h, r, r, p)
+        p.shader = null
+        // Brillo interior en la mitad superior: el cristal se lee sin desenfocar nada.
+        p.color = ((0x1E * (1f - 0.30f * t)).toInt() shl 24) or 0x00FFFFFF
+        cv.drawRoundRect(1.2f * d, 1.2f * d, w - 1.2f * d, h * 0.52f, r, r, p)
+        // Borde fino, algo más marcado al encender para separar la pista del fondo.
         val sw = maxOf(1f, d)
         p.style = Paint.Style.STROKE; p.strokeWidth = sw
-        p.color = ((((1f - t) * 0x3A).toInt()) shl 24) or 0x00FFFFFF
+        p.color = (((0x33 + 0x33 * t).toInt()) shl 24) or 0x00FFFFFF
         rect.set(sw / 2, sw / 2, w - sw / 2, h - sw / 2)
         cv.drawRoundRect(rect, r, r, p)
         p.style = Paint.Style.FILL
         // Perilla: pequeña y gris apagada; grande y blanca encendida, con una sombra mínima debajo.
-        val rOff = 8 * d; val rOn = 12.5f * d
+        val rOff = 8.5f * d; val rOn = 11.5f * d
         val kr = rOff + (rOn - rOff) * t
         val cx = r + (w - h) * t
-        p.color = 0x48000000
-        cv.drawCircle(cx, h / 2 + 1.2f * d, kr, p)
+        p.color = 0x50000000
+        cv.drawCircle(cx, h / 2 + 1.1f * d, kr, p)
         p.color = blend(0xFFA7B0C0.toInt(), 0xFFFFFFFF.toInt(), t)
         cv.drawCircle(cx, h / 2, kr, p)
         // Punto de luz en la perilla encendida.

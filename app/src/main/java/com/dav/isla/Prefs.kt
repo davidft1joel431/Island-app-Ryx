@@ -445,8 +445,14 @@ object Prefs {
     fun setIdleOpacity(c: Context, v: Int) = sp(c).edit().putInt("idle_op", v).apply()
     fun idleBorder(c: Context): Int = sp(c).getInt("idle_border", -1)   // -1 = según el modo
     fun setIdleBorder(c: Context, v: Int) = sp(c).edit().putInt("idle_border", v).apply()
-    fun idleBlur(c: Context): Boolean = sp(c).getBoolean("idle_blur", false)
-    fun setIdleBlur(c: Context, v: Boolean) = sp(c).edit().putBoolean("idle_blur", v).apply()
+    /**
+     * El desenfoque de sistema se retiró en 0.9.55: FLAG_BLUR_BEHIND sobre la ventana de la isla
+     * bloqueaba Android 12+/HyperOS. Se limpia el ajuste antiguo para que ninguna copia lo reactive.
+     */
+    fun clearLegacyBlur(c: Context) {
+        val p = sp(c)
+        if (p.contains("idle_blur")) p.edit().remove("idle_blur").apply()
+    }
     fun cardGlass(c: Context): Boolean = sp(c).getBoolean("card_glass", false)
     fun setCardGlass(c: Context, v: Boolean) = sp(c).edit().putBoolean("card_glass", v).apply()
     fun cardColor(c: Context): Int = sp(c).getInt("card_color", 0)     // 0 = el del estilo

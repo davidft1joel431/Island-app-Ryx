@@ -230,6 +230,7 @@ class NotifListener : NotificationListenerService() {
     override fun onListenerConnected() {
         instance = this
         Glass.applyTheme(this)
+        Prefs.clearLegacyBlur(this)   // el desenfoque de sistema se retiró: no debe quedar activo tras actualizar
         wm = getSystemService(WINDOW_SERVICE) as WindowManager
         main.post { if (Prefs.islandOn(this) && Prefs.permanent(this)) showIdle() }
         registerSystemReceivers()
@@ -1497,10 +1498,9 @@ class NotifListener : NotificationListenerService() {
             y = yPx
             x = px(Prefs.xOffsetDp(this@NotifListener))
             if (Prefs.lockScreen(this@NotifListener)) flags = flags or WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED
-            if (Build.VERSION.SDK_INT >= 31 && Prefs.idleBlur(this@NotifListener)) {
-                flags = flags or WindowManager.LayoutParams.FLAG_BLUR_BEHIND
-                blurBehindRadius = px(22)
-            }
+            // NUNCA usar FLAG_BLUR_BEHIND en esta ventana. En Android 12+ y ROMs HyperOS/MIUI el
+            // desenfoque de una TYPE_APPLICATION_OVERLAY puede descontrolarse y desenfocar toda la
+            // pantalla, dejando el teléfono bloqueado. El cristal se simula dentro de la isla.
             if (Build.VERSION.SDK_INT >= 30) {
                 layoutInDisplayCutoutMode =
                     WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS
@@ -1518,15 +1518,25 @@ class NotifListener : NotificationListenerService() {
         setTypeface(typeface, Typeface.BOLD)
         val base = if (color != 0) color else Glass.ACCENT
         setTextColor(if (filled) 0xFF10131A.toInt() else if (color != 0) base else s.textColor)
-        setPadding(px(6), px(9), px(6), px(9))
-        background = GradientDrawable().apply {
-            cornerRadius = px(16).toFloat()
-            setColor(when {
-                filled -> base
-                color != 0 -> (base and 0x00FFFFFF) or 0x33000000
-                s.textColor == 0xFFFFFFFF.toInt() -> 0x30FFFFFF
-                else -> 0x22000000
-            })
+        setPadding(px(7), px(9), px(7), px(9))
+        val fill = when {
+            filled -> base
+            color != 0 -> (base and 0x00FFFFFF) or 0x33000000
+            s.textColor == 0xFFFFFFFF.toInt() -> 0x30FFFFFF
+            else -> 0x22000000
+        }
+        val border = when {
+            filled -> 0x2EFFFFFF
+            color != 0 -> (base and 0x00FFFFFF) or 0x66000000
+            s.textColor == 0xFFFFFFFF.toInt() -> 0x3AFFFFFF
+            else -> 0x2A000000
+        }
+        // Pastilla con un degradado muy corto y borde de 1 dp: se ve intencionada, no un rectángulo plano.
+        background = GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, intArrayOf(
+            IslandLook.lighter(fill, 0.08f), fill, IslandLook.darker(fill, 0.06f)
+        )).apply {
+            cornerRadius = px(15).toFloat()
+            setStroke(maxOf(1, px(1f)), border)
         }
         setOnClickListener { onClick() }
     }
@@ -1537,9 +1547,12 @@ class NotifListener : NotificationListenerService() {
      */
     private fun actionIcon(res: Int, tint: Int, primary: Boolean, s: IslandStyle, onClick: () -> Unit) = FrameLayout(this).apply {
         setPadding(px(6), px(5), px(6), px(5))
-        background = GradientDrawable().apply {
+        val fill = if (primary) Glass.ACCENT else if (s.textColor == 0xFFFFFFFF.toInt()) 0x30FFFFFF else 0x22000000
+        background = GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, intArrayOf(
+            IslandLook.lighter(fill, 0.08f), fill, IslandLook.darker(fill, 0.06f)
+        )).apply {
             cornerRadius = px(14).toFloat()
-            setColor(if (primary) Glass.ACCENT else if (s.textColor == 0xFFFFFFFF.toInt()) 0x30FFFFFF else 0x22000000)
+            setStroke(maxOf(1, px(1f)), if (primary) 0x2EFFFFFF else if (s.textColor == 0xFFFFFFFF.toInt()) 0x3AFFFFFF else 0x2A000000)
         }
         // getDrawable puede devolver null si el recurso no está en esta densidad/versión: nunca debe tumbar la isla.
         val d = getDrawable(res)?.mutate()

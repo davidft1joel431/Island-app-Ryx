@@ -27,12 +27,12 @@ object IslandLook {
         val op = Prefs.idleOpacity(ctx) / 100f
         val tint = Prefs.idleColor(ctx)
         val bd = Prefs.idleBorder(ctx).let { if (it >= 0) it.toFloat() else if (mode == 1) 1.2f else 0f }
-        val rim = if (mode == 1) 0x99FFFFFF.toInt() else withAlpha(Glass.ACCENT, 0.7f)
+        val rim = if (mode == 1) 0xB3FFFFFF.toInt() else withAlpha(Glass.ACCENT, 0.7f)
         return when (mode) {
             1 -> {                                   // cristal líquido: translúcido, con brillo y borde de luz
                 val t = if (tint == 0) 0xFFFFFFFF.toInt() else tint
                 val a = 0.10f + 0.62f * op
-                Spec(withAlpha(t, a), withAlpha(t, a * 0.55f), rim, bd, 0x55FFFFFF)
+                Spec(withAlpha(lighter(t, 0.08f), a), withAlpha(darker(t, 0.12f), a * 0.58f), rim, bd, 0x66FFFFFF)
             }
             2 -> {                                   // color liso
                 val t = if (tint == 0) 0xFF1C1C1E.toInt() else tint
@@ -58,8 +58,11 @@ object IslandLook {
         var rimDp = s.strokeDp
         var shine = s.highlight
         if (Prefs.cardGlass(ctx)) {                  // cristal: mantiene el brillo, pero sin dejar pasar el fondo
-            top = mulAlpha(top, 0.96f); bottom = mulAlpha(bottom, 0.92f)
-            rim = 0x99FFFFFF.toInt(); rimDp = maxOf(rimDp, 1.2f); shine = 0x55FFFFFF
+            // Un poco de luz arriba y sombra abajo: el cristal se lee por contraste interno,
+            // sin desenfoque del sistema ni riesgo para el resto de la pantalla.
+            top = mulAlpha(lighter(top, 0.06f), 0.96f)
+            bottom = mulAlpha(darker(bottom, 0.10f), 0.92f)
+            rim = 0xB3FFFFFF.toInt(); rimDp = maxOf(rimDp, 1.4f); shine = 0x66FFFFFF
         }
         return Spec(mulAlpha(top, op), mulAlpha(bottom, op), rim, rimDp, shine)
     }
