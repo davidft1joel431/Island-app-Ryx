@@ -96,11 +96,18 @@ class RyxAccessibility : AccessibilityService() {
     private var lastReadHash = 0
     private var lastReadAt = 0L
     private var lastReadTry = 0L
+    // La captura de pantalla es cara: se limita a una cada pocos segundos y solo si hay un adjunto visible.
+    private var lastShotAt = 0L
+
+    /** Un adjunto visible: su tipo, dónde está en pantalla y la pista que lo delató. */
+    private data class SeenMedia(val kind: String, val bounds: Rect, val cue: String)
+
+    private fun dpx(dp: Int): Int = (dp * resources.displayMetrics.density).toInt().coerceAtLeast(1)
 
     /** ¿Esta app es de chat Y el usuario activó la lectura por pantalla (y, si eligió apps, es una de ellas)? */
     private fun chatWanted(pkg: String): Boolean {
         if (pkg == packageName) return false
-        if (!Prefs.chatCapture(this)) return false
+        if (!Prefs.chatCapture(this) || !Prefs.keepHistory(this)) return false
         if (!Sys.isChatApp(pkg)) return false
         val pick = Prefs.chatPkgs(this)
         return pick.isEmpty() || pkg in pick
@@ -132,9 +139,10 @@ class RyxAccessibility : AccessibilityService() {
         if (root.packageName?.toString() != pkg) return
         val parts = ArrayList<String>()
         val media = ArrayList<String>()
+        val seen = ArrayList<SeenMedia>()
         // Se lee una sola vez por recorrido: antes se consultaba SharedPreferences en CADA nodo del árbol.
         val wantMedia = Prefs.chatMedia(this)
-        collectText(root, parts, media, 0, wantMedia)
+        collectText(root, parts, media, seen, 0, wantMedia)
         // Une y limpia líneas repetidas seguidas
         val lines = ArrayList<String>()
         for (p in parts) {
@@ -143,12 +151,14 @@ class RyxAccessibility : AccessibilityService() {
             if (lines.isNotEmpty() && lines.last() == t) continue
             lines.add(t)
         }
-        if (lines.isEmpty() && media.isEmpty()) return
+        if (lines.isEmpty() && media.isEmpty() && seen.isEmpty()) return
         // Se queda con lo más reciente (hasta 40 líneas): el final de la conversación es lo que interesa.
         val slice = if (lines.size > 40) lines.subList(lines.size - 40, lines.size) else lines
         val text = slice.joinToString("\n")
-        // ¿Es distinto de lo último leído? (mismo texto no se vuelve a guardar)
-        val h = text.hashCode()
+        // La clave incluye los adjuntos: si aparece un sticker o una foto nueva con el mismo texto,
+        // también cuenta como cambio y se guarda.
+        val mediaKey = seen.joinToString("|") { "${it.kind}@${it.bounds.left},${it.bounds.top},${it.bounds.right},${it.bounds.bottom}" }
+        val h = (text + "\n#" + mediaKey).hashCode()
         val now = System.currentTimeMillis()
         if (h == lastReadHash && now - lastReadAt < 60_000L) return
         lastReadHash = h; lastReadAt = now
@@ -158,22 +168,31 @@ class RyxAccessibility : AccessibilityService() {
             packageManager.getApplicationLabel(ai).toString()
         } catch (e: Exception) { pkg }
         // El Historial guarda LO QUE SE VIO, no una marca de que Ryx revisó la pantalla. Por eso el
-        // título es solo el nombre de la app, sin «Chat en pantalla», sin «(pantalla · app)» y sin
-        // usar «Pantalla» como tipo. Si no hay adjunto, el tipo queda vacío: es un mensaje, no un log.
-        // MEDIA SIN CAPTURA: en el árbol de accesibilidad los adjuntos NO traen píxeles, pero SÍ traen su tipo y
-        // descripción («Foto», «Vídeo», «Sticker», «Ver una vez», «GIF», «Audio»…) y a veces el remitente. Con eso
-        // se registra qué se vio, sin hacer ninguna captura de pantalla.
+        // título es solo el nombre de la app, sin «Chat en pantalla», sin «(pantalla · app)».
+        // En el árbol de accesibilidad los adjuntos no traen píxeles, pero sí su tipo y descripción
+        // («Foto», «Sticker», «GIF»…). Con eso se registra qué se vio; además se copia el recorte
+        // visible si el usuario activó «Copiar también la imagen visible».
         val kinds = ArrayList<String>()
         for (m in media) if (wantMedia && !kinds.contains(m)) kinds.add(m)
         val kind = kinds.joinToString(" · ")
-        val body = if (kinds.isEmpty()) text
-                   else text + "\n" + kinds.joinToString(" · ") { "📎 $it" }
+        val body = buildString {
+            if (text.isNotEmpty()) append(text)
+            if (kinds.isNotEmpty()) {
+                if (isNotEmpty()) append('\n')
+                append(kinds.joinToString(" · ") { "📎 $it" })
+            }
+        }
+        // Recortes de los adjuntos visibles. Fuera del hilo principal (ya estamos en chatWork) y
+        // limitado a una captura cada pocos segundos para no castigar la batería.
+        val shots: List<java.io.File> =
+            if (wantMedia && Prefs.chatShots(this) && seen.isNotEmpty()) captureShots(seen) else emptyList()
         // Se reutiliza el mismo ejecutor: antes cada lectura creaba un Thread nuevo, y con árboles grandes
         // podían acumularse decenas. El guardado va detrás de la lectura, en orden y sin desbordar el sistema.
         try {
             chatWork.execute {
                 try {
-                    Prefs.addHist(this, pkg, app, body, "", kind, 1_500L)
+                    Prefs.addHist(this, pkg, app, body, shots.firstOrNull()?.name ?: "", kind, 1_500L,
+                        Prefs.SRC_SCREEN, shots.drop(1).map { it.name })
                     Backup.maybeUpload(this)
                     Backup.autoLocal(this)
                 } catch (e: Throwable) {}
@@ -181,16 +200,22 @@ class RyxAccessibility : AccessibilityService() {
         } catch (e: Throwable) {}
     }
 
-    /** Recoge el texto de todos los nodos con texto (en orden de aparición en pantalla). */
+    /**
+     * Recoge el texto y los adjuntos de todos los nodos (en orden de aparición en pantalla).
+     * Los adjuntos visuales guardan además sus límites exactos para poder recortarlos de la captura.
+     */
     private fun collectText(node: AccessibilityNodeInfo?, out: ArrayList<String>,
-                            media: ArrayList<String>, depth: Int, wantMedia: Boolean) {
+                            media: ArrayList<String>, seen: ArrayList<SeenMedia>,
+                            depth: Int, wantMedia: Boolean) {
         if (node == null || depth > 40) return
         val t = node.text?.toString()
         val d = node.contentDescription?.toString()
+        val cls = node.className?.toString() ?: ""
         // MEDIA: solo se miran los campos "caros" (viewId/hint/tooltip) si el nodo tiene algo de texto, y se
         // descarta al instante si la cadena no contiene ninguna pista de adjunto. Mirarlos en TODOS los nodos
         // (miles) era lo que ponía el sistema lento.
-        val cheap = ((d ?: "") + " " + (t ?: "")).lowercase()
+        val cheap = ((d ?: "") + " " + (t ?: "") + " " + cls).lowercase()
+        var seenKind: String? = null
         if (wantMedia && cheap.isNotEmpty()) {
             if (cheap.contains("sticker") || cheap.contains("foto") || cheap.contains("photo") ||
                 cheap.contains("image") || cheap.contains("imagen") || cheap.contains("video") ||
@@ -201,8 +226,27 @@ class RyxAccessibility : AccessibilityService() {
                 val hint = try { node.hintText?.toString() } catch (e: Throwable) { null }
                 val tool = try { node.tooltipText?.toString() } catch (e: Throwable) { null }
                 val vid = try { node.viewIdResourceName } catch (e: Throwable) { null }
-                val kind = mediaKind(d, hint, tool, vid, node.className?.toString())
-                if (kind != null && !media.contains(kind)) media.add(kind)
+                val kind = mediaKind(d, hint, tool, vid, cls)
+                // Una foto de perfil o un avatar no son un adjunto del mensaje: se ignoran.
+                val avatar = cheap.contains("foto de perfil") || cheap.contains("profile photo") ||
+                    cheap.contains("avatar")
+                if (kind != null && !avatar) {
+                    seenKind = kind
+                    if (!media.contains(kind)) media.add(kind)
+                    // Solo se recortan los tipos que de verdad se ven. «Ver una vez», audio, documentos,
+                    // ubicaciones y contactos se registran por tipo, sin guardar píxeles.
+                    val visual = kind == "Foto" || kind == "Sticker" || kind == "GIF" || kind == "Vídeo"
+                    if (visual && node.isVisibleToUser) {
+                        val r = Rect()
+                        try { node.getBoundsInScreen(r) } catch (e: Throwable) { r.setEmpty() }
+                        val visualNode = node.isClickable || cls.contains("image", true) ||
+                            cls.contains("video", true) || cls.contains("photo", true) ||
+                            (vid?.contains("image", true) == true) || (vid?.contains("photo", true) == true)
+                        if (visualNode && r.width() > 0 && r.height() > 0) {
+                            seen.add(SeenMedia(kind, Rect(r), (d ?: t ?: "").take(80)))
+                        }
+                    }
+                }
             }
         }
 
@@ -212,12 +256,107 @@ class RyxAccessibility : AccessibilityService() {
                 (node.isClickable || node.isFocusable) -> d
             else -> null
         }
-        if (label != null) out.add(label)
+        val editable = try { node.isEditable } catch (e: Throwable) { false }
+        // La descripción de una imagen («Foto», «Sticker»…) no es un mensaje: no se repite como línea
+        // de texto si ya se guardó como adjunto. El tipo se muestra una sola vez con 📎.
+        val mediaLabel = seenKind != null && d != null && t == null &&
+            d.trim().equals(seenKind, ignoreCase = true)
+        // Las palabras de la interfaz se descartan solo en controles (botones, pestañas, campos):
+        // un mensaje real que diga «Llamadas» o «Estados» no debe perderse.
+        val uiNode = node.isClickable || node.isFocusable || cls.contains("Button", true) ||
+            cls.contains("Tab", true) || cls.contains("EditText", true)
+        if (label != null && !editable && !mediaLabel && !(uiNode && chromeLine(label))) out.add(label)
 
         val n = node.childCount
         for (i in 0 until n) {
             val ch = try { node.getChild(i) } catch (e: Throwable) { null }
-            collectText(ch, out, media, depth + 1, wantMedia)
+            collectText(ch, out, media, seen, depth + 1, wantMedia)
+        }
+    }
+
+    /** Líneas de la interfaz (barras, botones de la app) que no son parte de la conversación. */
+    private fun chromeLine(raw: String): Boolean {
+        val s = raw.trim().lowercase()
+        if (s.length > 60) return false
+        val chrome = setOf(
+            "buscar", "search", "chats", "canales", "canales de whatsapp", "comunidades",
+            "llamadas", "estados", "ajustes", "settings", "nuevo chat", "nuevo mensaje",
+            "escribe un mensaje", "type a message", "mensaje", "message", "volver", "back",
+            "más opciones", "more options", "cámara", "camera", "adjuntar", "attach",
+            "grabar", "record", "enviar", "send", "seleccionar", "select", "cerrar", "close",
+            "sticker", "stickers", "emoji", "emojis", "gif", "gifs", "fotos", "photos",
+            "documentos", "documents", "contactos", "contacts", "ubicación", "location",
+            "audio", "videollamada", "llamada de voz", "videollamadas", "llamadas de voz"
+        )
+        if (s in chrome) return true
+        return s.startsWith("toca para ") && s.length < 80
+    }
+
+    /**
+     * Recorta de la pantalla cada adjunto visible y guarda un PNG. Si algo falla, devuelve lo que
+     * haya podido guardar: la entrada del historial conserva igualmente el TIPO del adjunto.
+     */
+    private fun captureShots(seen: List<SeenMedia>): List<java.io.File> {
+        if (Build.VERSION.SDK_INT < 30) return emptyList()
+        val now = System.currentTimeMillis()
+        // La captura completa es costosa: una vez cada 2,5 s como máximo.
+        if (now - lastShotAt < 2_500L) return emptyList()
+        lastShotAt = now
+        val shot = grabScreen() ?: return emptyList()
+        val out = ArrayList<java.io.File>()
+        try {
+            val minW = dpx(44)
+            val minH = dpx(44)
+            val chosen = ArrayList<SeenMedia>()
+            val sorted = seen.filter { it.bounds.width() >= minW && it.bounds.height() >= minH }
+                .sortedByDescending { it.bounds.width().toLong() * it.bounds.height() }
+            for (m in sorted) {
+                if (chosen.size >= 4) break
+                val r = m.bounds
+                // Un nodo padre y su hijo pueden describir el mismo sticker: se descarta el solapado.
+                val dup = chosen.any { o ->
+                    val x = maxOf(0, minOf(r.right, o.bounds.right) - maxOf(r.left, o.bounds.left))
+                    val y = maxOf(0, minOf(r.bottom, o.bounds.bottom) - maxOf(r.top, o.bounds.top))
+                    val inter = x.toLong() * y
+                    inter >= 0.55f * minOf(r.width().toLong() * r.height(), o.bounds.width().toLong() * o.bounds.height())
+                }
+                if (!dup) chosen.add(m)
+            }
+            chosen.forEachIndexed { i, m ->
+                saveCrop(shot, m, now, i)?.let { out.add(it) }
+            }
+        } catch (t: Throwable) {
+            // Sin píxeles se guarda solo el tipo.
+        } finally {
+            try { shot.recycle() } catch (t: Throwable) {}
+        }
+        return out
+    }
+
+    /** Guarda un recorte de la captura como PNG, reducido si la pantalla es muy grande. */
+    private fun saveCrop(shot: Bitmap, m: SeenMedia, stamp: Long, index: Int): java.io.File? {
+        val l = m.bounds.left.coerceIn(0, shot.width - 1)
+        val t = m.bounds.top.coerceIn(0, shot.height - 1)
+        val r = m.bounds.right.coerceIn(l + 1, shot.width)
+        val b = m.bounds.bottom.coerceIn(t + 1, shot.height)
+        if (r - l < dpx(24) || b - t < dpx(24)) return null
+        var crop: Bitmap? = null
+        return try {
+            crop = Bitmap.createBitmap(shot, l, t, r - l, b - t)
+            val max = 1600
+            if (maxOf(crop.width, crop.height) > max) {
+                val f = max.toFloat() / maxOf(crop.width, crop.height)
+                val scaled = Bitmap.createScaledBitmap(crop, (crop.width * f).toInt().coerceAtLeast(1),
+                    (crop.height * f).toInt().coerceAtLeast(1), true)
+                if (scaled !== crop) { crop.recycle(); crop = scaled }
+            }
+            val f = java.io.File(Prefs.histDir(this), "s_${stamp}_$index.png")
+            java.io.FileOutputStream(f).use { fs -> crop!!.compress(Bitmap.CompressFormat.PNG, 100, fs) }
+            f
+        } catch (e: Throwable) {
+            null
+        } finally {
+            try { crop?.recycle() } catch (e: Throwable) {}
         }
     }
 
@@ -576,22 +715,27 @@ class RyxAccessibility : AccessibilityService() {
 
     private fun grabScreen(): Bitmap? {
         if (Build.VERSION.SDK_INT < 30) return null
+        // Nunca bloquear el hilo principal esperando una captura: el callback también llega al main.
+        if (Looper.myLooper() == Looper.getMainLooper()) return null
         var out: Bitmap? = null
         val latch = CountDownLatch(1)
-        try {
-            takeScreenshot(android.view.Display.DEFAULT_DISPLAY, mainExecutor, object : TakeScreenshotCallback {
-                override fun onSuccess(r: ScreenshotResult) {
-                    try {
-                        val hb = r.hardwareBuffer
-                        val hw = Bitmap.wrapHardwareBuffer(hb, r.colorSpace)
-                        out = hw?.copy(Bitmap.Config.ARGB_8888, false)
-                        hw?.recycle(); hb.close()
-                    } catch (e: Throwable) {}
-                    latch.countDown()
-                }
-                override fun onFailure(errorCode: Int) { latch.countDown() }
-            })
-        } catch (e: Throwable) { return null }
+        // takeScreenshot es una API del servicio: se pide en el hilo principal y se espera fuera de él.
+        ui.post {
+            try {
+                takeScreenshot(android.view.Display.DEFAULT_DISPLAY, mainExecutor, object : TakeScreenshotCallback {
+                    override fun onSuccess(r: ScreenshotResult) {
+                        try {
+                            val hb = r.hardwareBuffer
+                            val hw = Bitmap.wrapHardwareBuffer(hb, r.colorSpace)
+                            out = hw?.copy(Bitmap.Config.ARGB_8888, false)
+                            hw?.recycle(); hb.close()
+                        } catch (e: Throwable) {}
+                        latch.countDown()
+                    }
+                    override fun onFailure(errorCode: Int) { latch.countDown() }
+                })
+            } catch (e: Throwable) { latch.countDown() }
+        }
         try { latch.await(900, TimeUnit.MILLISECONDS) } catch (e: InterruptedException) {}
         return out
     }
