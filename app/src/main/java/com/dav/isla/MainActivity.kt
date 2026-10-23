@@ -139,6 +139,7 @@ class MainActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         Prefs.migrateGeometry(this)
+        Prefs.clearLegacyBlur(this)
         Thread { try { Prefs.migrateCodes(this) } catch (t: Throwable) {} }.start()
         Glass.applyTheme(this)
         window.setBackgroundDrawable(Glass.page(this))
@@ -1026,8 +1027,8 @@ class MainActivity : Activity() {
             seekRow(b, "Radio de esquina fino", "dp", 0, 50, Prefs.idleCornerDp(this).coerceIn(0, 50)) { Prefs.setIdleCornerDp(this, it); applyAll(); svc()?.showTest() }
             seekRow(b, if (mode == 1) "Transparencia del cristal" else "Opacidad", "%", 15, 100, Prefs.idleOpacity(this)) { Prefs.setIdleOpacity(this, it) }
             seekRow(b, "Borde", "dp", 0, 4, Prefs.idleBorder(this).let { if (it >= 0) it else if (mode == 1) 1 else 0 }) { Prefs.setIdleBorder(this, it) }
-            b.addView(rowWithSwitch("Desenfoque del fondo (experimental)", "Android 12+. Puede verse un rectángulo desenfocado detrás de la isla.",
-                Prefs.idleBlur(this)) { v -> Prefs.setIdleBlur(this, v); applyAll(); svc()?.showTest() })
+            b.addView(infoNote("shield", 0xFF3DDC84.toInt(),
+                "Cristal seguro: el brillo y la transparencia se dibujan dentro de la isla. El desenfoque del sistema se retiró porque en Android 12+ y HyperOS podía bloquear la pantalla."), lp(12))
             seekRow(b, "Ancho en reposo", "dp", 60, 220, Prefs.idleWidthDp(this)) { Prefs.setIdleWidthDp(this, it); live() }
             seekRow(b, "Alto en reposo", "dp", 20, 60, Prefs.heightDp(this)) { Prefs.setHeightDp(this, it); live() }
             seekRow(b, "Posición vertical (margen superior)", "dp", 0, 80, Prefs.yOffsetDp(this)) { Prefs.setYOffsetDp(this, it); live() }
@@ -1038,7 +1039,7 @@ class MainActivity : Activity() {
         // ─────────────────────────── ISLA EXPANDIDA ───────────────────────────
         designSection(p, "expanded", "Isla expandida", "350 × 74 dp fijos, también con texto largo o imagen", "expand", 0xFF6A62E8.toInt()) { b ->
             b.addView(label("Tamaño fijo: 350 × 74 dp. No crece con el texto ni con la imagen: el contenido se ajusta y se desplaza dentro de esa caja. En pantallas muy estrechas se centra con el margen que quede.", 12f, R.color.muted), lp(2))
-            b.addView(rowWithSwitch("Efecto cristal (Liquid Glass)", "Translúcida, con brillo arriba y borde de luz", Prefs.cardGlass(this)) { v ->
+            b.addView(rowWithSwitch("Efecto cristal (Liquid Glass)", "Brillo y borde de luz dentro de la isla. No desenfoca el resto de la pantalla.", Prefs.cardGlass(this)) { v ->
                 Prefs.setCardGlass(this, v); applyAll(); svc()?.showTest(); previewView?.refresh() })
             b.addView(label("Color de la tarjeta", 13f, R.color.muted, true), lp(12))
             colorRow(b, Prefs.cardColor(this)) { Prefs.setCardColor(this, it); applyAll(); svc()?.showTest(); previewView?.refresh() }
@@ -1212,6 +1213,19 @@ class MainActivity : Activity() {
         designHandles.add(handle)
     }
 
+    /** Nota informativa compacta: icono tonal y texto, con fondo de pastilla suave. */
+    private fun infoNote(iconName: String, tone: Int, text: String): View {
+        val box = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
+            background = Glass.control(this@MainActivity, 0x0DFFFFFF, Glass.HAIR, 14f)
+            setPadding(px(11), px(10), px(12), px(10))
+        }
+        box.addView(tileIcon(iconName, Glass.withA(tone, 0x26), tone),
+            LinearLayout.LayoutParams(px(32), px(32)).apply { marginEnd = px(10) })
+        box.addView(label(text, 12f, R.color.muted), LinearLayout.LayoutParams(0, WRAP, 1f))
+        return box
+    }
+
     private val swatchColors = listOf(0xFFFFFFFF.toInt(), 0xFF000000.toInt(), 0xFF2A2E38.toInt(), 0xFFFF8A4C.toInt(),
         0xFFFF5A5F.toInt(), 0xFFFF6B9A.toInt(), 0xFFB388FF.toInt(), 0xFF4DA3FF.toInt(), 0xFF22E5FF.toInt(),
         0xFF4ADE80.toInt(), 0xFFFFC857.toInt(), 0xFF2EE6C5.toInt(), 0xFFFF7A59.toInt(), 0xFF7C89FF.toInt(),
@@ -1222,23 +1236,30 @@ class MainActivity : Activity() {
         val sv = android.widget.HorizontalScrollView(this).apply { isHorizontalScrollBarEnabled = false }
         val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(0, px(4), 0, px(4)) }
         val views = ArrayList<TextView>()
-        // Se re-ilumina sola al tocar: el anillo del color elegido cambia al instante, sin rehacer la pantalla.
+        // El color elegido muestra una marca de verificación legible sobre cualquier fondo;
+        // «Auto» conserva su texto. El anillo del acento sigue marcando la selección.
         fun paint(sel: Int) {
             views.forEachIndexed { i, tv ->
                 val c = if (i == 0) 0 else swatchColors[i - 1]
                 val on = c == sel
-                (tv.background as? android.graphics.drawable.GradientDrawable)?.setStroke(px(if (on) 3 else 1), if (on) Glass.ACCENT else 0x55FFFFFF)
+                (tv.background as? android.graphics.drawable.GradientDrawable)?.setStroke(px(if (on) 2 else 1), if (on) Glass.ACCENT else 0x55FFFFFF)
+                tv.text = when { c == 0 -> "Auto"; on -> "✓"; else -> "" }
+                tv.setTextColor(if (c == 0) Glass.TEXT else if (on) Glass.onAccent(c) else Color.TRANSPARENT)
+                tv.textSize = if (c == 0) 10.5f else 16f
             }
         }
         (listOf(0) + swatchColors).forEach { c ->
             val on = current == c
             val tv = TextView(this).apply {
-                gravity = Gravity.CENTER; textSize = 11f; setTextColor(Glass.TEXT)
-                if (c == 0) text = "Auto"
+                gravity = Gravity.CENTER; textSize = if (c == 0) 10.5f else 16f
+                includeFontPadding = false
+                setTextColor(if (c == 0) Glass.TEXT else if (on) Glass.onAccent(c) else Color.TRANSPARENT)
+                text = when { c == 0 -> "Auto"; on -> "✓"; else -> "" }
+                typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
                 background = android.graphics.drawable.GradientDrawable().apply {
                     shape = android.graphics.drawable.GradientDrawable.OVAL
                     setColor(if (c == 0) 0x22FFFFFF else c)
-                    setStroke(px(if (on) 3 else 1), if (on) Glass.ACCENT else 0x55FFFFFF)
+                    setStroke(px(if (on) 2 else 1), if (on) Glass.ACCENT else 0x55FFFFFF)
                 }
                 setOnClickListener { paint(c); onPick(c) }
             }
@@ -1274,12 +1295,25 @@ class MainActivity : Activity() {
                 if (sty.strokeDp > 0f) setStroke(px(1), sty.strokeColor)
             }
         }
-        cell.addView(sw, LinearLayout.LayoutParams(px(110), px(30)))
-        val nameRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER }
-        if (on) {
-            nameRow.addView(View(this).apply { background = Glass.pill(this@MainActivity, Glass.ACCENT, 0, 4f) },
-                LinearLayout.LayoutParams(px(7), px(7)).apply { marginEnd = px(5) })
+        // La miniatura lleva una insignia de verificación cuando el estilo está elegido: más claro
+        // que el punto diminuto anterior y sin depender del color del texto.
+        val preview = FrameLayout(this).apply {
+            addView(sw, FrameLayout.LayoutParams(px(110), px(30)))
+            if (on) {
+                val badge = FrameLayout(this@MainActivity).apply {
+                    background = Glass.pill(this@MainActivity, Glass.ACCENT, 0, 9f)
+                    addView(ImageView(this@MainActivity).apply {
+                        setImageDrawable(Glass.icon(this@MainActivity, "check", Glass.onAccent()))
+                        scaleType = ImageView.ScaleType.FIT_CENTER
+                    }, FrameLayout.LayoutParams(px(11), px(11), Gravity.CENTER))
+                }
+                addView(badge, FrameLayout.LayoutParams(px(18), px(18), Gravity.TOP or Gravity.END).apply {
+                    topMargin = px(2); marginEnd = px(2)
+                })
+            }
         }
+        cell.addView(preview, LinearLayout.LayoutParams(px(110), px(30)))
+        val nameRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER }
         nameRow.addView(label(sty.label, 12f, R.color.text, true).apply {
             gravity = Gravity.CENTER; setTextColor(if (on) Glass.ACCENT else Glass.TEXT)
         })
@@ -1387,7 +1421,7 @@ class MainActivity : Activity() {
     private fun editText(hint: String, value: String, onChange: (String) -> Unit) = EditText(this).apply {
         setText(value); this.hint = hint; setHintTextColor(Glass.MUTED); setTextColor(Glass.TEXT); textSize = 15f
         setSingleLine(true); setPadding(px(16), px(12), px(16), px(12))
-        background = Glass.pill(this@MainActivity, 0xFF0E1014.toInt(), Glass.HAIR, 14f)
+        background = Glass.control(this@MainActivity, 0xFF0E1014.toInt(), Glass.HAIR, 14f)
         addTextChangedListener(object : TextWatcher {
             override fun afterTextChanged(s: Editable?) { onChange(s?.toString() ?: "") }
             override fun beforeTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
@@ -2618,7 +2652,7 @@ class MainActivity : Activity() {
             val inOwn = EditText(this).apply {
                 hint = "Nombre o número"; setHintTextColor(Glass.MUTED); setTextColor(Glass.TEXT); textSize = 15f
                 setSingleLine(true); setPadding(px(16), px(12), px(16), px(12))
-                background = Glass.pill(this@MainActivity, 0xFF0E1014.toInt(), Glass.HAIR, 14f)
+                background = Glass.control(this@MainActivity, 0xFF0E1014.toInt(), Glass.HAIR, 14f)
             }
             b.addView(inOwn, lp(4))
             b.addView(button("Añadir a prioritarios", false) {
@@ -3206,8 +3240,9 @@ class MainActivity : Activity() {
     private fun segmented(opts: List<String>, selected: Int, green: Boolean = false, onPick: (Int) -> Unit): LinearLayout =
         LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
-            background = Glass.pill(this@MainActivity, Glass.SURFACE, Glass.HAIR, 18f)
-            setPadding(px(5), px(5), px(5), px(5))
+            // Pista con un degradado corto y borde de 1 dp: antes era un relleno plano y parecía un botón pegado.
+            background = Glass.control(this@MainActivity, 0xFF0F131A.toInt(), Glass.HAIR, 16f)
+            setPadding(px(4), px(4), px(4), px(4))
             val views = ArrayList<TextView>(opts.size)
             fun paint(sel: Int) {
                 views.forEachIndexed { i, tv ->
@@ -3215,15 +3250,15 @@ class MainActivity : Activity() {
                     tv.typeface = Typeface.create("sans-serif-medium", if (on) Typeface.BOLD else Typeface.NORMAL)
                     tv.setTextColor(if (on) (if (green) Glass.onAccent() else Glass.TEXT) else Glass.MUTED)
                     tv.background = if (on) Glass.ripple(this@MainActivity,
-                        if (green) Glass.accentFill(this@MainActivity, 13f)
-                        else Glass.pill(this@MainActivity, Glass.SURFACE_TOP, Glass.EDGE, 13f), 13f)
-                    else Glass.ripple(this@MainActivity, Glass.pill(this@MainActivity, 0, 0, 13f), 13f)
+                        if (green) Glass.control(this@MainActivity, Glass.ACCENT, 0x33FFFFFF, 12f)
+                        else Glass.control(this@MainActivity, Glass.SURFACE_TOP, Glass.EDGE, 12f), 12f)
+                    else Glass.ripple(this@MainActivity, Glass.pill(this@MainActivity, 0, 0, 12f), 12f)
                 }
             }
             opts.forEachIndexed { i, o ->
                 val tv = TextView(this@MainActivity).apply {
                     text = o; gravity = Gravity.CENTER; textSize = 13.5f
-                    setPadding(px(6), px(11), px(6), px(11))
+                    setPadding(px(6), px(10), px(6), px(10))
                     setOnClickListener {
                         // Se ilumina al instante (funciona igual dentro de una hoja) y luego avisa al ajuste.
                         performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
@@ -3231,7 +3266,9 @@ class MainActivity : Activity() {
                     }
                 }
                 views.add(tv)
-                addView(tv, LinearLayout.LayoutParams(0, WRAP, 1f))
+                addView(tv, LinearLayout.LayoutParams(0, WRAP, 1f).apply {
+                    if (i > 0) marginStart = px(2)
+                })
             }
             paint(selected)
         }
@@ -3306,8 +3343,9 @@ class MainActivity : Activity() {
     private fun rowWithSwitch(title: String, sub: String, checked: Boolean, onChange: (Boolean) -> Unit): LinearLayout {
         val row = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
-            setPadding(px(6), px(10), px(6), px(6))
-            background = Glass.ripple(this@MainActivity, Glass.pill(this@MainActivity, 0, 0, 14f), 14f)
+            // Cada ajuste es una pastilla de bajo contraste: separa las filas sin llenar la tarjeta de cajas.
+            setPadding(px(13), px(11), px(12), px(11))
+            background = Glass.ripple(this@MainActivity, Glass.row(this@MainActivity, 16f), 16f)
         }
         val col = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         col.addView(label(title, 16f, R.color.text, true))
@@ -3400,7 +3438,7 @@ class MainActivity : Activity() {
         setTextColor(if (filled) Glass.onAccent() else Glass.ACCENT)
         background = Glass.ripple(this@MainActivity,
             if (filled) Glass.accentFill(this@MainActivity, 16f)
-            else Glass.pill(this@MainActivity, Glass.accentA(0x20), Glass.accentA(0x3A), 16f), 16f)
+            else Glass.control(this@MainActivity, Glass.accentA(0x20), Glass.accentA(0x3A), 16f), 16f)
         Glass.press(this, 0.97f)
         setOnClickListener { onClick() }
     }
