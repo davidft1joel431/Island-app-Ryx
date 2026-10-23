@@ -1234,7 +1234,7 @@ class NotifListener : NotificationListenerService() {
     }
 
     fun showTest() {
-        show(packageName, "Ryx Island", "Funciona. Toca para abrir en ventana flotante.", null, true, true)
+        show(packageName, "Ryx Island", "Funciona. Toca para abrir en formato libre.", null, true, true)
     }
 
     // ---------- Construccion de la isla ----------
@@ -2128,8 +2128,17 @@ class NotifListener : NotificationListenerService() {
         iv.tag = tag
         if (!same) {
             iv.alpha = 0f
-            iv.animate().alpha(1f).setDuration(180).start()
-        } else iv.alpha = 1f
+            iv.scaleX = 0.97f
+            iv.scaleY = 0.97f
+            iv.animate().alpha(1f).scaleX(1f).scaleY(1f)
+                .setDuration(180)
+                .setInterpolator(android.view.animation.DecelerateInterpolator())
+                .start()
+        } else {
+            iv.alpha = 1f
+            iv.scaleX = 1f
+            iv.scaleY = 1f
+        }
     }
 
     /** Pinta un dibujo (puede ser GIF/WebP animado) y arranca la animación si existe. */
@@ -2142,8 +2151,17 @@ class NotifListener : NotificationListenerService() {
         MediaArt.start(fresh)
         if (!same) {
             iv.alpha = 0f
-            iv.animate().alpha(1f).setDuration(180).start()
-        } else iv.alpha = 1f
+            iv.scaleX = 0.97f
+            iv.scaleY = 0.97f
+            iv.animate().alpha(1f).scaleX(1f).scaleY(1f)
+                .setDuration(180)
+                .setInterpolator(android.view.animation.DecelerateInterpolator())
+                .start()
+        } else {
+            iv.alpha = 1f
+            iv.scaleX = 1f
+            iv.scaleY = 1f
+        }
     }
 
     private fun stopAnimated(iv: ImageView?) = MediaArt.stop(iv?.drawable)

@@ -65,10 +65,8 @@ class RyxAccessibility : AccessibilityService() {
         hideCurtain()
         super.onDestroy()
     }
-    /** Cambios de ventanas (mover, redimensionar, cerrar): la barra de Ryx se entera al instante y se pega a la ventana real. */
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         when (event?.eventType) {
-            AccessibilityEvent.TYPE_WINDOWS_CHANGED -> FloatFrame.onWindowsChanged()
             // Una app abrió una ventana: sus avisos pendientes en la isla ya se leyeron
             AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED -> event?.packageName?.toString()?.let {
                 NotifListener.instance?.onAppOpened(it)
@@ -616,7 +614,7 @@ class RyxAccessibility : AccessibilityService() {
         return best
     }
 
-    /** ¿Sigue visible alguna ventana de [pkg]? (para quitar la barra de Ryx cuando la ventana se cierra) */
+    /** ¿Sigue visible alguna ventana de [pkg]? (diagnóstico de ventanas) */
     fun windowAlive(pkg: String): Boolean = floatingState(pkg) != null
 
     /**
