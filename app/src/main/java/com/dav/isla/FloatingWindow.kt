@@ -6,26 +6,45 @@ import android.content.Context
 import android.content.Intent
 import android.graphics.Rect
 import android.os.Build
-import android.provider.Settings
+import android.view.WindowManager
 
 /**
- * Abre una app en FORMATO LIBRE o en BURBUJA (Android 17), encima de la app en la que estás.
+ * Abre una app en FORMATO LIBRE del sistema, encima de la app en la que estás.
  * Todo pasa por el servicio de accesibilidad de Ryx; no hace falta Shizuku, root ni el modo escritorio.
+ * Ryx no dibuja una barra flotante propia: los controles son los de la ROM o la barra lateral del launcher.
  */
 object FloatingWindow {
 
-    /** Rectángulo de la ventana en píxeles reales de la pantalla (vertical). */
+    /**
+     * Rectángulo de la ventana en píxeles reales de la pantalla.
+     *
+     * Se usan las medidas actuales de la pantalla (no min/max), así también funciona en horizontal y en
+     * pantallas plegables. Se deja un margen para que la ventana no quede pegada a la barra lateral, al
+     * borde ni a la barra de navegación; los controles (mover/cerrar) los pone el sistema o el launcher.
+     */
     fun bounds(c: Context): Rect {
         val m = c.resources.displayMetrics
-        val sw = minOf(m.widthPixels, m.heightPixels); val sh = maxOf(m.widthPixels, m.heightPixels)
-        val w = sw * Prefs.fwWidthPct(c) / 100
-        val h = sh * Prefs.fwHeightPct(c) / 100
-        val left = (sw - w) / 2
+        val screen = if (Build.VERSION.SDK_INT >= 30) {
+            try {
+                (c.getSystemService(Context.WINDOW_SERVICE) as WindowManager).maximumWindowMetrics.bounds
+            } catch (t: Throwable) { Rect(0, 0, m.widthPixels, m.heightPixels) }
+        } else Rect(0, 0, m.widthPixels, m.heightPixels)
+        val sw = screen.width().coerceAtLeast(1)
+        val sh = screen.height().coerceAtLeast(1)
+        val density = c.resources.displayMetrics.density
+        val margin = (minOf(sw, sh) * 0.045f).toInt().coerceAtLeast((10 * density).toInt())
+        val minW = (220 * density).toInt().coerceAtMost(sw - margin * 2)
+        val minH = (240 * density).toInt().coerceAtMost(sh - margin * 2)
+        val maxW = (sw - margin * 2).coerceAtLeast(1)
+        val maxH = (sh - margin * 2).coerceAtLeast(1)
+        val w = (sw * Prefs.fwWidthPct(c) / 100).coerceIn(minW.coerceAtMost(maxW), maxW)
+        val h = (sh * Prefs.fwHeightPct(c) / 100).coerceIn(minH.coerceAtMost(maxH), maxH)
+        val left = ((sw - w) / 2).coerceIn(margin, (sw - w - margin).coerceAtLeast(margin))
         val top = when (Prefs.fwPos(c)) {
-            1 -> (sh * 0.07f).toInt()
-            2 -> sh - h - (sh * 0.08f).toInt()
+            1 -> margin + (sh * 0.04f).toInt()
+            2 -> sh - h - margin - (sh * 0.05f).toInt()
             else -> (sh - h) / 2
-        }
+        }.coerceIn(margin, (sh - h - margin).coerceAtLeast(margin))
         return Rect(left, top, left + w, top + h)
     }
 
@@ -51,8 +70,9 @@ object FloatingWindow {
     /** Abre [pkg] según el modo elegido. Devuelve el registro de lo ocurrido (también se guarda). Llamar fuera del hilo principal. */
     fun open(c: Context, pkg: String, pi: PendingIntent? = null, kind: Int? = null,
              user: android.os.UserHandle? = null, userId: Int = -1): String {
-        // [user] solo viene si la app es un CLON (app dual): se abre esa copia y no la original
-        val wantBubble = (kind ?: Prefs.fwKind(c)) == 1
+        // [user] solo viene si la app es un CLON (app dual): se abre esa copia y no la original.
+        // La burbuja se retiró del menú: solo se usa si un flujo antiguo la pide explícitamente.
+        val wantBubble = kind == 1
         // La burbuja se crea desde el menú del icono en el launcher, que no distingue entre original y clon: con un clon se usa formato libre
         val bubble = wantBubble && user == null
         val log = StringBuilder("Hora: ${java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.getDefault()).format(java.util.Date())}\n" +
@@ -74,12 +94,11 @@ object FloatingWindow {
         val b = bounds(c)
         log.append("Ventana pedida: ${b.left},${b.top} → ${b.right},${b.bottom}\n")
         val ok = svc.launchSmartIsland(pkg, pi, b, log, user, userId)
-        if (ok && Prefs.fwFrame(c)) {
-            FloatFrame.show(c, "", b, pkg, appLabel(c, pkg) + if (user != null) " · clon" else "", user, userId)
-            log.append("Barra de Ryx: mostrada sobre la ventana (mover, cambiar tamaño y cerrar).\n")
-        }
+        if (ok) log.append("\nLa ventana la controla el sistema: mueve, redimensiona o cierra con los botones de la ROM " +
+            "o con tu barra lateral. Ryx no añade ninguna barra encima.\n")
         if (!ok) log.append("\nLa ROM abrió la app a pantalla completa con todas las variantes. Revisa que «Apps no redimensionables» " +
-            "esté desbloqueado y que «Permitir ventanas de forma libre» esté activo en Opciones de desarrollador; si aun así no, usa el modo Burbuja.\n")
+            "esté desbloqueado y que «Permitir ventanas de forma libre» esté activo en Opciones de desarrollador. " +
+            "Si tu launcher tiene barra lateral, abre la app desde ahí para colocarla en formato libre.\n")
         return save(c, log)
     }
 

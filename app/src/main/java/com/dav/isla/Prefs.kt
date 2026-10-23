@@ -22,7 +22,7 @@ object Prefs {
 
 
 
-    fun permanent(c: Context): Boolean = sp(c).getBoolean("permanent", false)
+    fun permanent(c: Context): Boolean = sp(c).getBoolean("permanent", true)
     fun setPermanent(c: Context, v: Boolean) = sp(c).edit().putBoolean("permanent", v).apply()
 
     fun hideHeadsUp(c: Context): Boolean = sp(c).getBoolean("hide_headsup", false)
@@ -464,9 +464,7 @@ object Prefs {
     fun hideApps(c: Context): Set<String> = sp(c).getStringSet("hide_apps", emptySet()) ?: emptySet()
     fun setHideApps(c: Context, v: Set<String>) = sp(c).edit().putStringSet("hide_apps", v).apply()
 
-    // ---- Formato libre y burbujas ----
-    fun fwFrame(c: Context): Boolean = sp(c).getBoolean("fw_frame", true)
-    fun setFwFrame(c: Context, v: Boolean) = sp(c).edit().putBoolean("fw_frame", v).apply()
+    // ---- Formato libre del sistema ----
 
     // ---- Llamadas: contactos prioritarios y comportamiento ----
     /**
@@ -585,9 +583,7 @@ object Prefs {
     fun setFwKind(c: Context, v: Int) = sp(c).edit().putInt("fw_kind", v).apply()
     fun fwKeepApp(c: Context): Boolean = sp(c).getBoolean("fw_keep_app", true)
     fun setFwKeepApp(c: Context, v: Boolean) = sp(c).edit().putBoolean("fw_keep_app", v).apply()
-    /** La ROM ignora un movimiento que no cambia el tamaño: se pide con 1 px de diferencia (se aprende cuando funciona). */
-    fun fwMoveNudge(c: Context): Boolean = sp(c).getBoolean("fw_move_nudge", false)
-    fun setFwMoveNudge(c: Context, v: Boolean) = sp(c).edit().putBoolean("fw_move_nudge", v).apply()
+
     /** Últimas decisiones sobre los avisos del sistema (qué tomó la isla y por qué dejó otros), para diagnosticar. */
     fun notifDiag(c: Context): String = sp(c).getString("notif_diag", "") ?: ""
     fun setNotifDiag(c: Context, s: String) = sp(c).edit().putString("notif_diag", s.takeLast(1500)).apply()
