@@ -102,6 +102,11 @@ class NotifListener : NotificationListenerService() {
     private val folderImagesUsed = java.util.Collections.newSetFromMap(java.util.concurrent.ConcurrentHashMap<Long, Boolean>())
     private var actionsRow: LinearLayout? = null
     private var detail = false
+    /** Columna propia de las llamadas: contacto/estado arriba y botones ANCHOS abajo (sin ganar altura). */
+    private var callCol: LinearLayout? = null
+    private var callNameView: TextView? = null
+    private var callStateView: TextView? = null
+    private var callActionsRow: LinearLayout? = null
 
     /** Una tarjeta acumulada en la isla. */
     private data class Card(
@@ -512,7 +517,9 @@ class NotifListener : NotificationListenerService() {
         }
 
         // 2) Filtros de la isla
-        if (alreadyRead) return                       // ya la leíste: queda en el historial, no vuelve a la isla
+        // Una llamada nunca se descarta por «ya leída»: si sigue sonando o en curso, sus botones deben
+        // poder pulsarse aunque la app reenvíe la misma notificación.
+        if (alreadyRead && !isCall(n)) return        // ya la leíste: queda en el historial, no vuelve a la isla
         if (!Prefs.islandOn(this)) return
         if (!callPrio && appKey(sbn.packageName, uid) in Prefs.blocked(this)) return
         if (!callPrio && hiddenNow()) return          // la notificación del sistema se queda intacta
@@ -573,7 +580,7 @@ class NotifListener : NotificationListenerService() {
         captureRemoved(sbn)
         // Se colgó o se rechazó la llamada: la tarjeta unificada se retira
         val cn = sbn.notification
-        if (cn != null && (cn.category == "call" || cn.category == "missed_call")) main.post { dropKey("sys:call") }
+        if (cn != null && isCall(cn)) main.post { dropKey("sys:call") }
         val pk = sbn.packageName; val key = sbn.key; val ru = norm(sbn.userId)
         // Margen de 1,5 s: algunas apps quitan y vuelven a publicar la misma clave al actualizar. Sin este
         // margen, ese borrado llegaba después del alta y la tarjeta recién mostrada se marcaba como leída.
@@ -637,7 +644,7 @@ class NotifListener : NotificationListenerService() {
     private fun markRead(pkg: String, key: String? = null, minAge: Long = 0, user: Int? = null) {
         if (!Prefs.autoRead(this) || pkg == packageName) return
         val now = System.currentTimeMillis()
-        val gone = cards.filter { !it.ephemeral && it.pkg == pkg && now - it.time >= minAge && (key == null || it.sig.startsWith("$key|")) &&
+        val gone = cards.filter { !it.ephemeral && it.pkg == pkg && it.key != "sys:call" && now - it.time >= minAge && (key == null || it.sig.startsWith("$key|")) &&
             (user == null || norm(it.userId) == norm(user)) }
         if (gone.isEmpty()) return
         gone.forEach { if (it.sig.isNotEmpty()) readSigs[it.sig] = now }
@@ -766,8 +773,16 @@ class NotifListener : NotificationListenerService() {
         n.category in setOf("transport", "navigation", "alarm", "progress")
 
     /** ¿Es una llamada (entrante, en curso, en espera o perdida)? */
-    private fun isCall(n: Notification): Boolean =
-        n.category == "call" || n.category == "missed_call"
+    private fun isCall(n: Notification): Boolean {
+        if (n.category == "call" || n.category == "missed_call") return true
+        // Algunas apps no ponen categoría de llamada pero sí el tipo que añade Android.
+        val ct = try { n.extras.getInt("android.callType", 0) } catch (t: Throwable) { 0 }
+        if (ct != 0) return true
+        // Último recurso: pantalla completa con botones de contestar o colgar. Es lo que delata a
+        // las llamadas de apps que publican la suya sin categoría ni callType.
+        if (n.fullScreenIntent != null && n.actions?.any { isAnswerAction(it) || isEndAction(it) } == true) return true
+        return false
+    }
 
     /** Nombre del canal del aviso (respaldo cuando la notificación no trae texto). */
     private fun channelName(n: Notification): CharSequence? =
@@ -1181,10 +1196,14 @@ class NotifListener : NotificationListenerService() {
         val icon = large ?: eventIcon("phone", accent)
         val extra = if (prio) "$state · ★ contacto prioritario" else state
         val body = if (b.isNotEmpty() && b != extra) "$extra · $b" else extra
-        val sig = "sys:call|$t|$state|$b|$prio"
+        // La firma incluye los títulos de los botones: al pasar de entrante a en curso (o a perdida)
+        // cambian las acciones y la tarjeta debe actualizarse, no quedarse con los botones viejos.
+        val actSig = n.actions?.joinToString(",") { it.title?.toString().orEmpty() } ?: ""
+        val sig = "sys:call|$t|$state|$b|$prio|$actSig"
         // El sistema reenvía la llamada en curso muchas veces: si nada cambió, no se vuelve a animar
         if (cards.any { it.key == "sys:call" && it.sig == sig }) return
-        show(packageName, if (t.isNotEmpty()) t else "Llamada", body, icon, false, true, "sys:call", false,
+        // Una llamada activa se queda visible hasta contestar/colgar; una perdida sí se retira sola.
+        show(packageName, if (t.isNotEmpty()) t else "Llamada", body, icon, missed, true, "sys:call", false,
             sig = sig, target = if (missed) "calllog" else "dialer",
             label = label, accentOverride = accent, actions = acts)
     }
@@ -1370,6 +1389,47 @@ class NotifListener : NotificationListenerService() {
             addView(actionIcon(R.drawable.ic_close, 0xFFFF5A5F.toInt(), false, s) { dismissCurrent() }, chipLp(3, 0))
         }
         actionsRow = acts
+        // Llamadas: el contacto/estado va arriba y los botones de contestar/colgar ocupan TODO el ancho
+        // disponible en una fila propia. Comparte los 74 dp de la isla abierta: no gana altura.
+        val callName = TextView(this).apply {
+            setTextColor(s.textColor)
+            textSize = 14f
+            maxLines = 1
+            ellipsize = TextUtils.TruncateAt.END
+            setTypeface(typeface, Typeface.BOLD)
+            includeFontPadding = false
+        }
+        val callState = TextView(this).apply {
+            setTextColor(s.subColor)
+            textSize = 11.5f
+            maxLines = 1
+            ellipsize = TextUtils.TruncateAt.END
+            setPadding(px(8), 0, 0, 0)
+            includeFontPadding = false
+        }
+        val callActs = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            visibility = View.GONE
+        }
+        val callLine = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            addView(callName, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+            addView(callState, LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT))
+        }
+        val call = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            visibility = View.GONE
+            addView(callLine, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT))
+            addView(callActs, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT).apply { topMargin = px(4) })
+        }
+        callCol = call
+        callNameView = callName
+        callStateView = callState
+        callActionsRow = callActs
         val col = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             addView(app, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
@@ -1403,6 +1463,9 @@ class NotifListener : NotificationListenerService() {
             setPadding(px(s.padH), px(s.padV), px(s.padH + 4), px(s.padV))
             addView(iconBox, LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT))
             addView(col, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
+                marginStart = px(10)
+            })
+            addView(call, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
                 marginStart = px(10)
             })
             addView(pImg, LinearLayout.LayoutParams(px(46), px(46)).apply { marginStart = px(8) })
@@ -1490,7 +1553,23 @@ class NotifListener : NotificationListenerService() {
     private fun rebuildActions(c: Card) {
         val acts = actionsRow ?: return
         acts.removeAllViews()
+        val callActs = callActionsRow
+        callActs?.removeAllViews()
         val s = style
+        // Llamadas: botones anchos que se reparten la columna. Antes eran píldoras pequeñas a la
+        // derecha y costaba acertar en contestar/colgar con el teléfono sonando.
+        if (c.key == "sys:call") {
+            c.actions.forEachIndexed { i, a ->
+                val lp = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+                if (i > 0) lp.marginStart = px(6)
+                callActs?.addView(callChip(a.label, a.color, a.filled, s) {
+                    a.run()
+                    if (a.dismiss) dismissCurrent()
+                }, lp)
+            }
+            callActs?.visibility = if (c.actions.isEmpty()) View.GONE else View.VISIBLE
+            return
+        }
         // La fila va a la derecha de la tarjeta, no debajo: así el alto abierto sigue siendo 74 dp.
         val chipLp = { l: Int, r: Int -> LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT)
@@ -1510,6 +1589,33 @@ class NotifListener : NotificationListenerService() {
             acts.addView(actionIcon(R.drawable.ic_close, 0xFFFF5A5F.toInt(), false, s) { dismissCurrent() }, lpIcon(4))
         }
     }
+
+    /** Píldora de llamada: misma estética que [chip] pero más baja, para que las dos filas quepan en 74 dp. */
+    private fun callChip(text: String, color: Int, filled: Boolean, s: IslandStyle, onClick: () -> Unit) =
+        chip(text, color, filled, s, onClick).apply {
+            includeFontPadding = false
+            setPadding(px(8), px(4), px(8), px(4))
+        }
+
+    /** ¿La tarjeta actual es la de llamada unificada? */
+    private fun isCallCard(c: Card?): Boolean = c != null && c.key == "sys:call"
+
+    /**
+     * Decide qué contenido se ve según la tarjeta: la llamada usa su columna propia (contacto y
+     * botones anchos) y oculta el texto normal; las demás, al revés.
+     */
+    private fun applyCardMode(c: Card?) {
+        val call = isCallCard(c)
+        // Si la isla está contraída (solo posible con el modo permanente), el contenido queda oculto:
+        // al pasar de una tarjeta a otra no debe asomar texto en la píldora.
+        textCol?.visibility = if (call || !expanded) View.GONE else View.VISIBLE
+        callCol?.visibility = if (call && expanded) View.VISIBLE else View.GONE
+        actionsRow?.visibility = if (!call && expanded && (detail || (c != null && c.actions.isNotEmpty()))) View.VISIBLE else View.GONE
+        if (call) badgeView?.visibility = View.GONE
+    }
+
+    /** La fila que se anima al entrar y salir del detalle: botones normales o botones de llamada. */
+    private fun actionHost(): View? = if (isCallCard(cards.getOrNull(cardIndex))) callCol else actionsRow
 
     private fun idleWidth(): Int = px(Prefs.idleWidthDp(this))
 
@@ -1543,6 +1649,8 @@ class NotifListener : NotificationListenerService() {
         iconView?.alpha = a
         textCol?.alpha = a
         countView?.alpha = a
+        // La columna de llamada también entra y sale con el fundido; si no, quedaría invisible al abrir.
+        callCol?.alpha = a
     }
 
     /** La cantidad de notificaciones de la app aparece arriba, junto al icono. */
@@ -1561,6 +1669,8 @@ class NotifListener : NotificationListenerService() {
         iconView?.visibility = View.GONE
         textCol?.visibility = View.GONE
         previewImg?.visibility = View.GONE
+        actionsRow?.visibility = View.GONE
+        callCol?.visibility = View.GONE
         setContentAlpha(1f)
         island?.gravity = Gravity.END or Gravity.CENTER_VERTICAL
         setBlend(0f)
@@ -1694,10 +1804,10 @@ class NotifListener : NotificationListenerService() {
         island?.gravity = Gravity.CENTER_VERTICAL
         updateCount()
         iconView?.visibility = View.VISIBLE
-        textCol?.visibility = View.VISIBLE
         setContentAlpha(0f)
         updateBadge()
         cards.getOrNull(cardIndex)?.let { syncMedia(it) }
+        applyCardMode(cards.getOrNull(cardIndex))
         morph(true, null)
     }
 
@@ -1720,8 +1830,11 @@ class NotifListener : NotificationListenerService() {
         island?.background = buildBackground(style, c.accent)
         updateCount()
         rebuildActions(c)
-        // Las tarjetas con botones propios (llamada, Wi-Fi, punto de acceso) los muestran ya al abrirse
-        actionsRow?.visibility = if (detail || c.actions.isNotEmpty()) View.VISIBLE else View.GONE
+        callNameView?.text = c.title ?: ""
+        callStateView?.text = c.body ?: ""
+        // El estado de la llamada toma el color de la tarjeta (verde entrante/en curso, rojo perdida).
+        callStateView?.setTextColor(c.accent ?: style.subColor)
+        applyCardMode(c)
         if (detail) updateDetailText(c)
         syncMedia(c)
     }
@@ -1730,6 +1843,8 @@ class NotifListener : NotificationListenerService() {
     private fun updateBadge() {
         val b = badgeView ?: return
         b.removeAllViews()
+        // La llamada ya tiene sus propios botones: la pila de iconos solo le robaría ancho.
+        if (isCallCard(cards.getOrNull(cardIndex))) { b.visibility = View.GONE; return }
         // En el detalle manda el texto completo: la pila de iconos se retira para no dejar la
         // columna del mensaje en un par de letras.
         if (detail) { b.visibility = View.GONE; return }
@@ -1964,8 +2079,8 @@ class NotifListener : NotificationListenerService() {
             rebuildActions(cur)
             syncMedia(cur)      // vuelve la miniatura al tamaño compacto
         }
-        actionsRow?.visibility = if (cur != null && cur.actions.isNotEmpty()) View.VISIBLE else View.GONE
-        actionsRow?.alpha = 1f
+        applyCardMode(cur)
+        actionHost()?.alpha = 1f
         updateBadge()
         bodyView?.let { b ->
             b.maxLines = 1
@@ -2027,6 +2142,8 @@ class NotifListener : NotificationListenerService() {
      * congelaba toda la isla. La copia binaria del Historial es el respaldo interno.
      */
     private fun syncMedia(c: Card) {
+        // La llamada no tiene adjunto: su columna manda y la miniatura no debe ocupar sitio.
+        if (isCallCard(c)) { previewImg?.visibility = View.GONE; stopAnimated(previewImg); return }
         val uri = c.mediaUri
         val kind = c.mediaKind
         val fit = kind.contains("Sticker", ignoreCase = true) ||
@@ -2166,8 +2283,8 @@ class NotifListener : NotificationListenerService() {
         updateDetailText(c)
         syncMedia(c)
         rebuildActions(c)
-        actionsRow?.visibility = View.VISIBLE
-        actionsRow?.alpha = 0f
+        applyCardMode(c)
+        actionHost()?.alpha = 0f
         badgeView?.visibility = View.GONE
         // Si se entra en el detalle mientras la isla aún se está abriendo, se cancela esa animación:
         // el contenido debe quedar visible al 100 %, no a medio fundir.
@@ -2235,13 +2352,14 @@ class NotifListener : NotificationListenerService() {
         // mantiene en 74 dp aunque el mensaje sea larguísimo o incluya una imagen.
         row.measure(View.MeasureSpec.makeMeasureSpec(w, View.MeasureSpec.EXACTLY),
             View.MeasureSpec.makeMeasureSpec(compact, View.MeasureSpec.EXACTLY))
-        val from = if ((actionsRow?.alpha ?: 0f) > 0f) 1f else 0f
+        val host = actionHost()
+        val from = if ((host?.alpha ?: 0f) > 0f) 1f else 0f
         anim?.cancel()
         val a = ValueAnimator.ofFloat(from, if (open) 1f else 0f)
         a.duration = if (open) Motion.expandMs(this) else Motion.collapseMs(this)
         a.interpolator = if (open) Motion.spring() else Motion.smooth()
         a.addUpdateListener { va ->
-            actionsRow?.alpha = va.animatedValue as Float
+            host?.alpha = va.animatedValue as Float
             if (attached) upd(row, params)
         }
         a.addListener(object : AnimatorListenerAdapter() {
@@ -3001,7 +3119,9 @@ class NotifListener : NotificationListenerService() {
         cardIndex = 0
         expanded = false
         morph(false) {
-            if (Prefs.permanent(this) || cards.any { !it.ephemeral }) setIdleContent() else removeNow()
+            // Sin modo permanente la isla se retira del todo: antes quedaba una píldora en reposo con
+            // el contador de avisos pendientes y parecía que la isla se había quedado pegada.
+            if (Prefs.permanent(this)) setIdleContent() else removeNow()
         }
     }
 

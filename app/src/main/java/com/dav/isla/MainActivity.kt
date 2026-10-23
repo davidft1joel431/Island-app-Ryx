@@ -1536,26 +1536,29 @@ class MainActivity : Activity() {
         }
     }
 
-    /** Historial: dos secciones (Aplicaciones y Sistema), cada app/grupo cerrado hasta que se toca. */
+    /** Historial: tres secciones (Aplicaciones, En pantalla y Sistema), cada app/grupo cerrado hasta que se toca. */
     private fun buildHistory(p: LinearLayout) {
-        pageHero(p, "history", 0xFF6A62E8.toInt(), "Historial", "Avisos, mensajes, media y llamadas, organizados por aplicación y por grupo del sistema")
+        pageHero(p, "history", 0xFF6A62E8.toInt(), "Historial", "Avisos, mensajes vistos en pantalla, media y llamadas, organizados por aplicación y por grupo del sistema")
         // Una sola lectura del JSON para toda la pantalla. Antes se repetía al contar, filtrar y dibujar.
         histCache = Prefs.histAll(this)
         val all = histCache ?: emptyList()
-        val nApps = all.count { !Sys.isSystemPkg(it.pkg) }
+        val nScreen = all.count { !Sys.isSystemPkg(it.pkg) && it.src == Prefs.SRC_SCREEN }
+        val nApps = all.count { !Sys.isSystemPkg(it.pkg) && it.src != Prefs.SRC_SCREEN }
         val nSys = all.count { Sys.isSystemPkg(it.pkg) }
-        if (histFilter != "__sys__") histFilter = "__apps__"
+        if (histFilter !in setOf("__apps__", "__screen__", "__sys__")) histFilter = "__apps__"
 
         val top = card()
         top.addView(rowWithSwitch("Guardar historial", "Todo lo que pasa por la isla, con el texto completo", Prefs.keepHistory(this)) { Prefs.setKeepHistory(this, it) })
         val sum = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; setPadding(0, px(6), 0, 0) }
-        sum.addView(summaryChip("grid", 0xFF6A62E8.toInt(), "$nApps", "Aplicaciones"),
-            LinearLayout.LayoutParams(0, WRAP, 1f).apply { marginEnd = px(4) })
-        sum.addView(summaryChip("settings", 0xFF2DAA55.toInt(), "$nSys", "Sistema"),
-            LinearLayout.LayoutParams(0, WRAP, 1f).apply { marginStart = px(4) })
+        sum.addView(summaryChipCompact("grid", 0xFF6A62E8.toInt(), "$nApps", "Aplicaciones"),
+            LinearLayout.LayoutParams(0, WRAP, 1f).apply { marginEnd = px(3) })
+        sum.addView(summaryChipCompact("screen", 0xFF35B6C8.toInt(), "$nScreen", "En pantalla"),
+            LinearLayout.LayoutParams(0, WRAP, 1f).apply { marginStart = px(3); marginEnd = px(3) })
+        sum.addView(summaryChipCompact("settings", 0xFF2DAA55.toInt(), "$nSys", "Sistema"),
+            LinearLayout.LayoutParams(0, WRAP, 1f).apply { marginStart = px(3) })
         top.addView(sum)
         top.addView(label("El historial conserva el aviso aunque la app elimine el mensaje después. Los mensajes largos se archivan completos y se muestran en su propia tarjeta, sin límite de altura.", 12f, R.color.muted), lp(8))
-        top.addView(label("Si un mensaje largo, una imagen o un sticker no llega completo, Ryx lo reconstruye solo desde su copia interna.", 12f, R.color.muted), lp(6))
+        top.addView(label("En pantalla guarda lo que viste en WhatsApp, Telegram, Instagram, TikTok, TikTok Lite, Whee y otras apps de chat, con el texto completo y los recortes de fotos, stickers y GIF.", 12f, R.color.muted), lp(6))
         top.addView(button("Borrar historial", false) {
             Prefs.clearHist(this)
             histCache = null; histQuery = ""; histFilter = "__apps__"
@@ -1565,15 +1568,24 @@ class MainActivity : Activity() {
         }, lp(10))
         p.addView(top, lp(8))
 
-        // Solo dos secciones: los avisos de las apps y los grupos del sistema, sin «Todo» ni filtros múltiples.
+        // Tres secciones: avisos de apps, lo que se vio en pantalla y los grupos del sistema.
         val menu = card()
         menu.addView(label("Menú del historial", 16f, R.color.text, true))
-        menu.addView(segmented(listOf("Aplicaciones", "Sistema"), if (histFilter == "__sys__") 1 else 0) { i ->
-            histFilter = if (i == 1) "__sys__" else "__apps__"
+        val selected = when (histFilter) {
+            "__screen__" -> 1
+            "__sys__" -> 2
+            else -> 0
+        }
+        menu.addView(segmented(listOf("Aplicaciones", "En pantalla", "Sistema"), selected) { i ->
+            histFilter = when (i) {
+                1 -> "__screen__"
+                2 -> "__sys__"
+                else -> "__apps__"
+            }
             // Cambiar de sección solo vuelve a dibujar la lista; no reconstruye toda la pantalla.
             fillHist()
         }, lp(10))
-        menu.addView(label("En Aplicaciones cada app (y cada clon) tiene su propia tarjeta, cerrada hasta que la toques. En Sistema pasa lo mismo con Batería, Wi-Fi, Red, Bluetooth… «Ver todo» abre todas las tarjetas y «Ver más» carga el resto de avisos de cada una.", 12f, R.color.muted), lp(8))
+        menu.addView(label("En Aplicaciones cada app (y cada clon) tiene su propia tarjeta. En pantalla se agrupa lo que Ryx vio al abrir un chat, con sus mensajes y adjuntos. En Sistema pasa lo mismo con Batería, Wi-Fi, Red, Bluetooth… «Ver todo» abre todas las tarjetas y «Ver más» carga el resto de avisos de cada una.", 12f, R.color.muted), lp(8))
         p.addView(menu, lp(8))
 
         val search = card()
@@ -1618,22 +1630,34 @@ class MainActivity : Activity() {
             return
         }
         // Solo se dibuja la sección elegida. Cada grupo nace cerrado y sus filas se crean al abrirlo.
-        if (histFilter == "__sys__") {
-            val color = 0xFF2DAA55.toInt()
-            historyHeader(box, "settings", color, "Sistema", items.size)
-            val toggle = historyTools(box, color, "Toca un grupo para ver sus avisos")
-            items.groupBy { Sys.kind(it.pkg, it.title, it.text) }
-                .entries.sortedByDescending { e -> e.value.maxOf { it.ts } }
-                .forEach { (k, its) -> sysHistoryGroup(box, k, its) }
-            bindHistoryToggle(toggle)
-        } else {
-            val color = 0xFF6A62E8.toInt()
-            historyHeader(box, "grid", color, "Aplicaciones", items.size)
-            val toggle = historyTools(box, color, "Toca una aplicación para abrir su historial")
-            items.groupBy { it.pkg }
-                .entries.sortedByDescending { e -> e.value.maxOf { it.ts } }
-                .forEach { (pkg, its) -> appHistoryGroup(box, pkg, its) }
-            bindHistoryToggle(toggle)
+        when (histFilter) {
+            "__sys__" -> {
+                val color = 0xFF2DAA55.toInt()
+                historyHeader(box, "settings", color, "Sistema", items.size)
+                val toggle = historyTools(box, color, "Toca un grupo para ver sus avisos")
+                items.groupBy { Sys.kind(it.pkg, it.title, it.text) }
+                    .entries.sortedByDescending { e -> e.value.maxOf { it.ts } }
+                    .forEach { (k, its) -> sysHistoryGroup(box, k, its) }
+                bindHistoryToggle(toggle)
+            }
+            "__screen__" -> {
+                val color = 0xFF35B6C8.toInt()
+                historyHeader(box, "screen", color, "En pantalla", items.size)
+                val toggle = historyTools(box, color, "Toca una aplicación para ver lo que se vio en pantalla")
+                items.groupBy { it.pkg }
+                    .entries.sortedByDescending { e -> e.value.maxOf { it.ts } }
+                    .forEach { (pkg, its) -> appHistoryGroup(box, pkg, its, screen = true) }
+                bindHistoryToggle(toggle)
+            }
+            else -> {
+                val color = 0xFF6A62E8.toInt()
+                historyHeader(box, "grid", color, "Aplicaciones", items.size)
+                val toggle = historyTools(box, color, "Toca una aplicación para abrir su historial")
+                items.groupBy { it.pkg }
+                    .entries.sortedByDescending { e -> e.value.maxOf { it.ts } }
+                    .forEach { (pkg, its) -> appHistoryGroup(box, pkg, its) }
+                bindHistoryToggle(toggle)
+            }
         }
     }
 
@@ -1698,8 +1722,11 @@ class MainActivity : Activity() {
     private fun filteredHist(): List<Prefs.HistItem> {
         val q = histQuery.trim()
         var items = histItems()
-        items = if (histFilter == "__sys__") items.filter { Sys.isSystemPkg(it.pkg) }
-        else items.filter { !Sys.isSystemPkg(it.pkg) }
+        items = when (histFilter) {
+            "__sys__" -> items.filter { Sys.isSystemPkg(it.pkg) }
+            "__screen__" -> items.filter { !Sys.isSystemPkg(it.pkg) && it.src == Prefs.SRC_SCREEN }
+            else -> items.filter { !Sys.isSystemPkg(it.pkg) && it.src != Prefs.SRC_SCREEN }
+        }
         if (q.isNotEmpty()) items = items.filter {
             it.title.contains(q, ignoreCase = true) || it.text.contains(q, ignoreCase = true)
         }
@@ -1755,7 +1782,8 @@ class MainActivity : Activity() {
 
     /** Arma el HTML completo: todo el texto, agrupado por día y por app/sistema. */
     private fun buildHtml(items: List<Prefs.HistItem>): String {
-        val apps = items.filter { !Sys.isSystemPkg(it.pkg) }
+        val screen = items.filter { !Sys.isSystemPkg(it.pkg) && it.src == Prefs.SRC_SCREEN }
+        val apps = items.filter { !Sys.isSystemPkg(it.pkg) && it.src != Prefs.SRC_SCREEN }
         val sys = items.filter { Sys.isSystemPkg(it.pkg) }
         val sb = StringBuilder()
         sb.append("<!DOCTYPE html><html lang=\"es\"><head><meta charset=\"utf-8\">")
@@ -1764,7 +1792,7 @@ class MainActivity : Activity() {
         sb.append("*{box-sizing:border-box}body{margin:0;padding:24px;background:#0f1115;color:#e9edf5;font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;line-height:1.5}")
         sb.append("h1{font-size:22px;margin:0 0 4px}.sub{color:#94a0b4;font-size:13px;margin-bottom:18px}")
         sb.append("h2{font-size:16px;margin:28px 0 8px;padding-left:10px;border-left:4px solid #6a62e8}")
-        sb.append("h2.sysc{border-color:#2daa55;color:#7ee2a0}.app{color:#b9b3ff}")
+        sb.append("h2.sysc{border-color:#2daa55;color:#7ee2a0}.app{color:#b9b3ff}.screenc{border-color:#35b6c8;color:#8be4ef}")
         sb.append("h3{font-size:13px;text-transform:uppercase;letter-spacing:.06em;color:#94a0b4;margin:18px 0 6px}")
         sb.append(".day{font-weight:700;color:#ffb26b;font-size:14px;margin:16px 0 2px}")
         sb.append(".card{background:#181b22;border:1px solid #262b36;border-radius:14px;padding:10px 14px;margin:6px 0}")
@@ -1779,6 +1807,17 @@ class MainActivity : Activity() {
         if (apps.isNotEmpty()) {
             sb.append("<h2 class=\"app\">Aplicaciones (").append(apps.size).append(")</h2>")
             apps.groupBy { dayLabel(it.ts) }.forEach { (day, dl) ->
+                sb.append("<div class=\"day\">").append(esc(day)).append("</div>")
+                dl.groupBy { it.pkg }.entries.sortedByDescending { e -> e.value.maxOf { it.ts } }.forEach { (pkg, its) ->
+                    sb.append("<h3>").append(esc(appNameOf(pkg))).append("</h3><div class=\"card\">")
+                    its.sortedByDescending { it.ts }.forEach { h -> sb.append(htmlItem(h)) }
+                    sb.append("</div>")
+                }
+            }
+        }
+        if (screen.isNotEmpty()) {
+            sb.append("<h2 class=\"screenc\">En pantalla (").append(screen.size).append(")</h2>")
+            screen.groupBy { dayLabel(it.ts) }.forEach { (day, dl) ->
                 sb.append("<div class=\"day\">").append(esc(day)).append("</div>")
                 dl.groupBy { it.pkg }.entries.sortedByDescending { e -> e.value.maxOf { it.ts } }.forEach { (pkg, its) ->
                     sb.append("<h3>").append(esc(appNameOf(pkg))).append("</h3><div class=\"card\">")
@@ -1809,9 +1848,8 @@ class MainActivity : Activity() {
         // La exportación también usa la base: si el texto visible venía cortado, se escribe el completo.
         val full = MsgBase.fullText(this, h)
         if (full.isNotEmpty()) sb.append("<div class=\"x\">").append(esc(full)).append("</div>")
-        if (h.img.isNotEmpty()) {
-            val f = java.io.File(Prefs.histDir(this), h.img)
-            if (f.exists() && f.length() < 600_000) try {
+        MsgBase.mediaFiles(this, h).forEach { f ->
+            if (f.exists() && f.length() < 1_200_000) try {
                 val b64 = android.util.Base64.encodeToString(f.readBytes(), android.util.Base64.NO_WRAP)
                 // El tipo real del archivo (JPEG o PNG), no siempre PNG: los stickers se guardan en PNG y el
                 // resto en JPEG. Si se declara mal, el navegador no muestra la imagen.
@@ -1821,6 +1859,7 @@ class MainActivity : Activity() {
         }
         sb.append("<div class=\"meta\">")
         if (h.kind.isNotEmpty()) sb.append(esc(h.kind)).append(" · ")
+        if (h.src == Prefs.SRC_SCREEN) sb.append("En pantalla · ")
         sb.append(esc(java.text.SimpleDateFormat("dd/MM/yyyy HH:mm", java.util.Locale.getDefault()).format(java.util.Date(h.ts))))
         sb.append("</div></div>")
         return sb.toString()
@@ -1897,6 +1936,20 @@ class MainActivity : Activity() {
         addView(t)
     }
 
+    /** Versión compacta para que las tres secciones del historial quepan en una fila. */
+    private fun summaryChipCompact(iconName: String, color: Int, value: String, caption: String) = LinearLayout(this).apply {
+        orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
+        setPadding(px(8), px(9), px(8), px(9))
+        background = Glass.pill(this@MainActivity, Glass.SURFACE_HI, Glass.HAIR, 14f)
+        addView(tileIcon(iconName, Glass.withA(color, 0x2E), color), LinearLayout.LayoutParams(px(27), px(27)).apply { marginEnd = px(6) })
+        val t = LinearLayout(this@MainActivity).apply { orientation = LinearLayout.VERTICAL }
+        t.addView(label(value, 15f, R.color.text, true))
+        t.addView(label(caption, 9.5f, R.color.muted).apply {
+            maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END
+        })
+        addView(t, LinearLayout.LayoutParams(0, WRAP, 1f))
+    }
+
     /** Batería en tiempo real: nivel actual y estado de carga, leído del sistema. */
     private fun batteryStrip(p: LinearLayout) {
         val b = Battery.now(this)
@@ -1925,12 +1978,18 @@ class MainActivity : Activity() {
     }
 
     /** Grupo de historial de una aplicación (con su icono), cerrado hasta que se toca. */
-    private fun appHistoryGroup(p: LinearLayout, pkg: String, items: List<Prefs.HistItem>) {
+    private fun appHistoryGroup(p: LinearLayout, pkg: String, items: List<Prefs.HistItem>, screen: Boolean = false) {
         // pkg puede ser una clave de clon («com.whatsapp@999»): appIcon ya la entiende y el nombre
         // sale con la insignia de la ROM («WhatsApp · clon»).
         val appName = appNameOf(pkg)
         val sorted = items.sortedByDescending { it.ts }
-        val handle = collapsibleCard(p, "h_$pkg", false, head = { h ->
+        val color = if (screen) 0xFF35B6C8.toInt() else 0xFF6A62E8.toInt()
+        val what = if (screen) {
+            if (sorted.size == 1) "1 vista en pantalla" else "${sorted.size} vistas en pantalla"
+        } else {
+            if (sorted.size == 1) "1 notificación" else "${sorted.size} notificaciones"
+        }
+        val handle = collapsibleCard(p, (if (screen) "h_screen_" else "h_") + pkg, false, head = { h ->
             h.addView(ShapedImageView(this).apply {
                 shape = Prefs.iconShape(this@MainActivity); setImageDrawable(appIcon(pkg)); scaleType = ImageView.ScaleType.CENTER_CROP
             }, LinearLayout.LayoutParams(px(42), px(42)).apply { marginEnd = px(12) })
@@ -1938,10 +1997,10 @@ class MainActivity : Activity() {
             t.addView(label(appName, 17f, R.color.text, true).apply {
                 maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END
             })
-            t.addView(label(if (sorted.size == 1) "1 notificación" else "${sorted.size} notificaciones", 12f, R.color.muted))
+            t.addView(label(what, 12f, R.color.muted))
             h.addView(t, LinearLayout.LayoutParams(0, WRAP, 1f))
         }, body = { b ->
-            historyGroupBody(b, sorted, px(54), 0xFF6A62E8.toInt())
+            historyGroupBody(b, sorted, px(54), color)
         }, lazyBody = true)
         histGroupHandles.add(handle)
     }
@@ -2015,7 +2074,7 @@ class MainActivity : Activity() {
             setLineSpacing(0f, 1.08f)
         })
         historyImage(h2, indent, px(300))?.let { r.addView(it) }
-        if (h2.img.isEmpty() && isMediaKind(h2.kind)) {
+        if (MsgBase.mediaFiles(this, h2).isEmpty() && isMediaKind(h2.kind)) {
             // Se conoce el TIPO del adjunto pero no hay píxeles: la app no compartió la vista previa en el
             // aviso (o la entrada se capturó leyendo la pantalla). Se dice claro para que no parezca un fallo.
             r.addView(label("📎 ${h2.kind} · el aviso no trajo la vista previa",
@@ -2023,6 +2082,10 @@ class MainActivity : Activity() {
         }
         historyCopyRow(h2, Glass.ACCENT)?.let { r.addView(it, lp(6)) }
         val foot = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(0, px(2), 0, 0) }
+        if (h2.src == Prefs.SRC_SCREEN) {
+            foot.addView(label("En pantalla", 11f, 0xFF35B6C8.toInt(), true))
+            foot.addView(View(this), LinearLayout.LayoutParams(px(8), px(1)))
+        }
         if (h2.kind.isNotEmpty()) {
             foot.addView(label(h2.kind, 11f, R.color.gold, true))
             foot.addView(View(this), LinearLayout.LayoutParams(px(8), px(1)))
@@ -2097,10 +2160,28 @@ class MainActivity : Activity() {
         }
     }
 
-    /** Imagen grande de una entrada del historial, descodificada fuera del hilo principal. */
+    /**
+     * Imágenes de una entrada del historial. Una captura de «En pantalla» puede contener varias:
+     * se muestran en columna, conservando la animación de los GIF/WebP que sí llegaron completos.
+     */
     private fun historyImage(h2: Prefs.HistItem, indent: Int, maxHeightPx: Int): View? {
-        if (h2.img.isEmpty()) return null
-        val f = java.io.File(Prefs.histDir(this), h2.img)
+        val files = MsgBase.mediaFiles(this, h2)
+        if (files.isEmpty()) return null
+        if (files.size == 1) return historySingleImage(h2, files[0], indent, maxHeightPx)
+        val box = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT)
+        }
+        val eachH = minOf(maxHeightPx, px(220))
+        files.take(4).forEach { f ->
+            historySingleImage(h2, f, indent, eachH)?.let { box.addView(it) }
+        }
+        return box
+    }
+
+    /** Una imagen grande, descodificada fuera del hilo principal. */
+    private fun historySingleImage(h2: Prefs.HistItem, f: java.io.File, indent: Int, maxHeightPx: Int): View? {
         if (!f.exists()) return null
         val sticker = h2.kind.contains("Sticker", ignoreCase = true)
         // Se ve GRANDE (todo el ancho de la fila), no como miniatura: así se mira sin abrirla.
@@ -2109,7 +2190,7 @@ class MainActivity : Activity() {
         val iv = ImageView(this).apply {
             scaleType = ImageView.ScaleType.FIT_CENTER
             adjustViewBounds = true
-            minimumHeight = px(120)
+            minimumHeight = px(96)
             maxHeight = maxH
             setPadding(if (sticker) px(12) else 0, if (sticker) px(12) else 0,
                 if (sticker) px(12) else 0, if (sticker) px(12) else 0)
@@ -2121,7 +2202,11 @@ class MainActivity : Activity() {
             clipToOutline = true
             contentDescription = if (sticker) "Sticker" else "Imagen"
             setOnClickListener { showImage(f.absolutePath) }
-            setOnLongClickListener { copyHist(h2, 3); true }
+            setOnLongClickListener {
+                if (Clip.image(this@MainActivity, f, h2.kind)) toast("Imagen copiada: pégala en el chat")
+                else toast("No se pudo copiar la imagen")
+                true
+            }
         }
         try {
             imgWork.execute {
@@ -2191,12 +2276,16 @@ class MainActivity : Activity() {
             setPadding(0, px(8), 0, px(4))
         })
         historyImage(h2, indent, px(420))?.let { c.addView(it) }
-        if (h2.img.isEmpty() && isMediaKind(h2.kind)) {
+        if (MsgBase.mediaFiles(this, h2).isEmpty() && isMediaKind(h2.kind)) {
             c.addView(label("📎 ${h2.kind} · el aviso no trajo la vista previa", 11f, R.color.gold)
                 .apply { setPadding(0, px(4), 0, 0) })
         }
         historyCopyRow(h2, color)?.let { c.addView(it, lp(6)) }
         val foot = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
+        if (h2.src == Prefs.SRC_SCREEN) {
+            foot.addView(label("En pantalla", 11f, 0xFF35B6C8.toInt(), true))
+            foot.addView(View(this), LinearLayout.LayoutParams(px(8), px(1)))
+        }
         if (h2.kind.isNotEmpty()) {
             foot.addView(label(h2.kind, 11f, R.color.gold, true))
             foot.addView(View(this), LinearLayout.LayoutParams(px(8), px(1)))
@@ -2383,6 +2472,7 @@ class MainActivity : Activity() {
         Prefs.setPermanent(this, true)
         Prefs.setChatCapture(this, true)
         Prefs.setChatMedia(this, true)
+        Prefs.setChatShots(this, true)
         Prefs.setMediaFolder(this, true)
         if (!imagePermOk()) askImagePermission()
         applyAll()
@@ -2564,11 +2654,15 @@ class MainActivity : Activity() {
                 "Ryx lee el texto VISIBLE cuando abres WhatsApp, Telegram, Instagram, TikTok y demás. " +
                 "Así se guardan también los chats ARCHIVADOS o RESTRINGIDOS (esos no mandan notificación).",
                 Prefs.chatCapture(this)) { Prefs.setChatCapture(this, it); reload() }, lp(4))
-            b.addView(rowWithSwitch("Registrar también los adjuntos (sin captura)",
-                "Guarda en el Historial si en el chat se ve una Foto, Vídeo, Sticker, GIF, Audio, Documento o «Ver una vez». " +
-                "Se lee del propio texto/descripción de la pantalla: NO hace ninguna captura de pantalla, así que es discreto, " +
-                "no gasta memoria ni almacenamiento y no aparece el aviso del sistema.",
+            b.addView(rowWithSwitch("Registrar los adjuntos que se ven",
+                "Guarda en «En pantalla» si en el chat se ve una Foto, Vídeo, Sticker, GIF, Audio, Documento o «Ver una vez». " +
+                "El tipo se lee de la descripción de la pantalla; el recorte visual se controla abajo.",
                 Prefs.chatMedia(this)) { Prefs.setChatMedia(this, it); reload() }, lp(4))
+            b.addView(rowWithSwitch("Copiar también la imagen visible",
+                "Cuando hay una foto, sticker o GIF en pantalla, guarda un recorte del adjunto. La accesibilidad de Android " +
+                "solo entrega el fotograma visible, así que un GIF queda como imagen fija; las notificaciones sí conservan " +
+                "el GIF/WebP animado cuando la app comparte el archivo original. Android puede mostrar su indicador de captura.",
+                Prefs.chatShots(this)) { Prefs.setChatShots(this, it); reload() }, lp(4))
             if (!RyxAccessibility.isEnabled(this)) {
                 b.addView(label("Falta el servicio de accesibilidad: sin él, Ryx no puede leer la pantalla.",
                     12f, R.color.gold, true), lp(8))
@@ -3232,7 +3326,14 @@ class MainActivity : Activity() {
     private fun lp(top: Int) = LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = px(top) }
 
     private fun label(t: String, size: Float, color: Int, bold: Boolean = false) = TextView(this).apply {
-        text = t; textSize = size; setTextColor(if (color == R.color.gold) Glass.ACCENT else col(color))
+        text = t; textSize = size
+        // Casi siempre llega un recurso R.color.*; las etiquetas de sección usan un color directo.
+        val c = when {
+            color == R.color.gold -> Glass.ACCENT
+            (color ushr 24) == 0xFF -> color
+            else -> try { getColor(color) } catch (t: Throwable) { 0xFFE9EDF5.toInt() }
+        }
+        setTextColor(c)
         typeface = if (bold) Typeface.create("sans-serif-medium", Typeface.BOLD) else Typeface.create("sans-serif", Typeface.NORMAL)
     }
 

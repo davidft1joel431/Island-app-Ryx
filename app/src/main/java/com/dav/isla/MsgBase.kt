@@ -76,14 +76,16 @@ object MsgBase {
         return out
     }
 
-    /** Archivo de imagen o sticker de la entrada, o null si no existe. */
-    fun mediaFile(c: Context, h: Prefs.HistItem): File? {
-        if (h.img.isEmpty()) return null
-        return try {
-            val f = File(dir(c), h.img)
+    /** Archivos de imagen o sticker de la entrada, en orden. */
+    fun mediaFiles(c: Context, h: Prefs.HistItem): List<File> = h.mediaNames().mapNotNull { name ->
+        try {
+            val f = File(dir(c), name)
             if (f.isFile && f.length() > 0L) f else null
         } catch (t: Throwable) { null }
     }
+
+    /** Primera imagen o sticker de la entrada, o null si no existe. */
+    fun mediaFile(c: Context, h: Prefs.HistItem): File? = mediaFiles(c, h).firstOrNull()
 
     /** Base64 interno de la imagen o sticker (se calcula desde el archivo binario; no se muestra al usuario). */
     fun mediaBase64(c: Context, h: Prefs.HistItem): String? = try {

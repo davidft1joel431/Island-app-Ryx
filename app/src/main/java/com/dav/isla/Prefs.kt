@@ -12,6 +12,10 @@ object Prefs {
      */
     private val histLock = Any()
 
+    /** Origen interno de una entrada: una notificación normal o algo que se vio en pantalla. */
+    const val SRC_APP = "app"
+    const val SRC_SCREEN = "screen"
+
     fun durationSeconds(c: Context): Int = sp(c).getInt("duration_s", 5)
     fun durationMs(c: Context): Long = durationSeconds(c) * 1000L
     fun setDurationSeconds(c: Context, s: Int) = sp(c).edit().putInt("duration_s", s).apply()
@@ -182,12 +186,42 @@ object Prefs {
      */
     data class HistItem(val pkg: String, val title: String, val text: String, val ts: Long,
                         val img: String = "", val kind: String = "",
-                        val b64: String = "", val bin: String = "", val b64f: String = "")
+                        val b64: String = "", val bin: String = "", val b64f: String = "",
+                        val src: String = SRC_APP, val extraImgs: List<String> = emptyList()) {
+        /** Todas las imágenes de la entrada: la principal y los recortes adicionales de «En pantalla». */
+        fun mediaNames(): List<String> =
+            (if (img.isEmpty()) emptyList() else listOf(img)) +
+                extraImgs.filter { it.isNotEmpty() && it != img }
+    }
 
     fun histDir(c: Context): java.io.File = java.io.File(c.filesDir, "hist").also { it.mkdirs() }
 
+    private fun imgArray(names: List<String>): org.json.JSONArray =
+        org.json.JSONArray().apply { names.forEach { if (it.isNotEmpty()) put(it) } }
+
+    private fun imgList(a: org.json.JSONArray?): List<String> {
+        if (a == null) return emptyList()
+        val out = ArrayList<String>(a.length())
+        for (i in 0 until a.length()) a.optString(i).takeIf { it.isNotEmpty() }?.let { out.add(it) }
+        return out
+    }
+
+    private fun deleteEntryFiles(c: Context, o: org.json.JSONObject) {
+        MsgBase.deleteFiles(c, o.optString("i"), o.optString("bin"), o.optString("b64f"))
+        imgList(o.optJSONArray("ii")).forEach {
+            try { java.io.File(histDir(c), it).delete() } catch (t: Throwable) {}
+        }
+    }
+
+    /**
+     * [src] distingue una notificación normal de una captura de «En pantalla».
+     * [extraImgs] guarda varios recortes del mismo mensaje (una foto, un sticker y un GIF visibles a la vez).
+     */
     fun addHist(c: Context, pkg: String, title: String, text: String, img: String = "", kind: String = "",
-                windowMs: Long = 3000L) = synchronized(histLock) {
+                windowMs: Long = 3000L, src: String = SRC_APP,
+                extraImgs: List<String> = emptyList()) = synchronized(histLock) {
+        val source = if (src == SRC_SCREEN) SRC_SCREEN else SRC_APP
+        val extra = extraImgs.filter { it.isNotEmpty() && it != img }.distinct()
         val old = try { org.json.JSONArray(sp(c).getString("hist2", "[]")) } catch (e: Exception) { org.json.JSONArray() }
         val now = System.currentTimeMillis()
         // ¿Ya está registrado lo mismo hace poco? Se revisan las últimas entradas (no solo la primera):
@@ -195,12 +229,14 @@ object Prefs {
         val scan = minOf(old.length(), 40)
         for (i in 0 until scan) {
             val o = old.optJSONObject(i) ?: continue
+            // Notificación y captura de pantalla pueden tener el mismo texto: no se mezclan.
             if (o.optString("p") == pkg && o.optString("t") == title && o.optString("x") == text &&
-                now - o.optLong("ts") < windowMs) {
+                o.optString("s", SRC_APP) == source && now - o.optLong("ts") < windowMs) {
                 // Algunas apps publican primero el texto y después actualizan el aviso con la foto/sticker.
                 // Ese segundo aviso tiene el mismo título/texto; antes se descartaba y la imagen se perdía.
                 // Si la entrada guardada aún no tiene imagen, se completa con la nueva.
                 val prev = o.optString("i")
+                val prevExtra = imgList(o.optJSONArray("ii"))
                 // Las entradas antiguas (anteriores a esta versión) no tenían códigos: se completan ahora.
                 var changed = false
                 if (text.isNotEmpty() && o.optString("b64").isEmpty() &&
@@ -209,14 +245,14 @@ object Prefs {
                     o.put("b64", code.b64).put("bin", code.bin).put("b64f", code.b64f)
                     changed = true
                 }
-                if (img.isEmpty()) {
+                if (img.isEmpty() && extra.isEmpty()) {
                     if (changed) sp(c).edit().putString("hist2", old.toString()).apply()
                     return@synchronized
-                } else if (prev.isEmpty()) {
+                }
+                if (prev.isEmpty() && img.isNotEmpty()) {
                     o.put("i", img).put("k", kind).put("ts", now)
-                    sp(c).edit().putString("hist2", old.toString()).apply()
-                    return@synchronized
-                } else {
+                    changed = true
+                } else if (img.isNotEmpty() && prev != img) {
                     val oldKind = o.optString("k")
                     val oldAnimated = oldKind.contains("GIF", true) || oldKind.contains("Sticker", true) ||
                         oldKind.contains("Animación", true)
@@ -228,13 +264,25 @@ object Prefs {
                     if (!oldAnimated && newAnimated) {
                         if (prev != img) java.io.File(histDir(c), prev).delete()
                         o.put("i", img).put("k", kind).put("ts", now)
-                        sp(c).edit().putString("hist2", old.toString()).apply()
+                        changed = true
                     } else {
-                        if (prev != img) java.io.File(histDir(c), img).delete()
-                        if (changed) sp(c).edit().putString("hist2", old.toString()).apply()
+                        java.io.File(histDir(c), img).delete()
                     }
-                    return@synchronized
                 }
+                // Los recortes de una misma pantalla se acumulan; si el mensaje vuelve a aparecer, la
+                // misma imagen no se guarda dos veces.
+                val merged = LinkedHashSet<String>()
+                prevExtra.forEach { if (it != prev && it != img) merged.add(it) }
+                extra.forEach { if (it != prev && it != img) merged.add(it) }
+                if (merged.toList() != prevExtra) {
+                    o.put("ii", imgArray(merged.toList()))
+                    changed = true
+                }
+                if (changed) {
+                    o.put("s", source)
+                    sp(c).edit().putString("hist2", old.toString()).apply()
+                }
+                return@synchronized
             }
         }
         // Cada mensaje nuevo guarda también su binario y su Base64 como respaldo interno. Si el texto
@@ -242,13 +290,13 @@ object Prefs {
         val code = MsgBase.write(c, now, text)
         val out = org.json.JSONArray()
         out.put(org.json.JSONObject().put("p", pkg).put("t", title).put("x", text).put("ts", now)
-            .put("i", img).put("k", kind)
+            .put("i", img).put("k", kind).put("s", source).put("ii", imgArray(extra))
             .put("b64", code.b64).put("bin", code.bin).put("b64f", code.b64f))
         for (i in 0 until minOf(old.length(), 599)) out.put(old.get(i))
         // Las entradas que se caen de la lista se llevan su imagen y sus códigos.
         for (i in 599 until old.length()) {
             val o = old.optJSONObject(i) ?: continue
-            MsgBase.deleteFiles(c, o.optString("i"), o.optString("bin"), o.optString("b64f"))
+            deleteEntryFiles(c, o)
         }
         sp(c).edit().putString("hist2", out.toString()).apply()
     }
@@ -264,7 +312,7 @@ object Prefs {
                 if (p == "android" && t == "Batería") return@mapNotNull null
                 HistItem(p, t, o.optString("x"), o.optLong("ts"),
                     o.optString("i"), o.optString("k"), o.optString("b64"), o.optString("bin"),
-                    o.optString("b64f"))
+                    o.optString("b64f"), o.optString("s", SRC_APP), imgList(o.optJSONArray("ii")))
             }
         } catch (e: Exception) { emptyList() }
     }
@@ -276,7 +324,7 @@ object Prefs {
     @Suppress("ApplySharedPref")
     fun migrateCodes(c: Context, force: Boolean = false) {
         synchronized(histLock) {
-            if (!force && sp(c).getInt("code_v", 0) >= 2) return
+            if (!force && sp(c).getInt("code_v", 0) >= 3) return
             val old = try { org.json.JSONArray(sp(c).getString("hist2", "[]")) } catch (e: Exception) { org.json.JSONArray() }
             val arr = org.json.JSONArray()
             var changed = false
@@ -286,9 +334,10 @@ object Prefs {
                 val oldTitle = o.optString("t")
                 val oldText = o.optString("x")
                 val oldKind = o.optString("k")
+                val wasScreen = oldKind == "Pantalla" || oldTitle.startsWith("Chat en pantalla")
                 // 1) Fuera los eventos internos de batería: no eran notificaciones ni mensajes.
                 if (pkg == "android" && oldTitle == "Batería") {
-                    MsgBase.deleteFiles(c, o.optString("i"), o.optString("bin"), o.optString("b64f"))
+                    deleteEntryFiles(c, o)
                     changed = true
                     continue
                 }
@@ -312,7 +361,25 @@ object Prefs {
                     o.put("b64", code.b64).put("bin", code.bin).put("b64f", code.b64f)
                 }
                 o.put("t", title).put("x", text).put("k", kind)
-                // 3) Completar códigos que falten en entradas antiguas.
+                // 3) Origen de la entrada. Las capturas antiguas suelen llevar como título el nombre
+                // exacto de la app de chat y un texto de varias líneas; las notificaciones normales
+                // llevan el nombre del contacto o del grupo. Así se trasladan a «En pantalla» sin
+                // inventar contenido.
+                var source = o.optString("s", "")
+                if (source.isEmpty()) {
+                    val base = Clones.splitKey(pkg).first
+                    val appName = try {
+                        c.packageManager.getApplicationLabel(
+                            c.packageManager.getApplicationInfo(base, 0)).toString()
+                    } catch (t: Throwable) { "" }
+                    val inferred = !Sys.isSystemPkg(pkg) && Sys.isChatApp(base) &&
+                        text.contains('\n') && appName.isNotEmpty() &&
+                        title.trim().equals(appName, ignoreCase = true)
+                    source = if (wasScreen || inferred) SRC_SCREEN else SRC_APP
+                    changed = true
+                }
+                o.put("s", source)
+                // 4) Completar códigos que falten en entradas antiguas.
                 if (text.isNotEmpty() && o.optString("b64").isEmpty() &&
                     o.optString("bin").isEmpty() && o.optString("b64f").isEmpty()) {
                     val code = MsgBase.write(c, o.optLong("ts", System.currentTimeMillis()), text)
@@ -324,7 +391,7 @@ object Prefs {
             if (changed || arr.length() != old.length()) {
                 sp(c).edit().putString("hist2", arr.toString()).apply()
             }
-            sp(c).edit().putInt("code_v", 2).apply()
+            sp(c).edit().putInt("code_v", 3).apply()
         }
     }
 
@@ -440,13 +507,22 @@ object Prefs {
     fun setChatPkgs(c: Context, v: Set<String>) = sp(c).edit().putString("chat_pkgs", v.joinToString("\n")).apply()
 
     /**
-     * Registrar también el TIPO de los adjuntos que se ven en el chat (Foto, Vídeo, Sticker, Ver una vez,
-     * GIF, Audio, Documento…) SIN hacer ninguna captura de pantalla: se lee del árbol de accesibilidad, que
-     * expone la descripción del adjunto pero no sus píxeles. Discreto: no gasta memoria ni almacenamiento y no
-     * dispara el aviso del sistema. Por defecto: activado.
+     * Registrar el TIPO de los adjuntos que se ven en el chat (Foto, Vídeo, Sticker, GIF, Audio…).
+     * Se lee del árbol de accesibilidad, que expone la descripción pero no los píxeles.
+     * Por defecto: activado.
      */
     fun chatMedia(c: Context): Boolean = sp(c).getBoolean("chat_media", true)
     fun setChatMedia(c: Context, v: Boolean) = sp(c).edit().putBoolean("chat_media", v).apply()
+
+    /**
+     * Copiar también el recorte visible de las fotos, stickers y GIF de un chat. Se hace con la captura
+     * de accesibilidad (Android 11+) y solo cuando hay un adjunto en pantalla. La accesibilidad solo
+     * entrega el fotograma visible, así que un GIF queda como imagen fija; las notificaciones sí
+     * conservan el archivo animado cuando la app comparte su URI.
+     * Por defecto: activado, porque el usuario quiere poder volver a ver el adjunto en el Historial.
+     */
+    fun chatShots(c: Context): Boolean = sp(c).getBoolean("chat_shots", true)
+    fun setChatShots(c: Context, v: Boolean) = sp(c).edit().putBoolean("chat_shots", v).apply()
 
     /**
      * Último recurso para fotos de WhatsApp: si el aviso dice «Foto» pero la app no
