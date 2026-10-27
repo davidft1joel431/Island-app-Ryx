@@ -113,9 +113,13 @@ object Updater {
 
         // Versiones con punto (N.N…) mandan sobre las de un solo número (tags antiguos de número de compilación como v57)
         val dotted = rels.filter { (it.ver?.size ?: 0) >= 2 }
-        val pool = if (dotted.isNotEmpty()) dotted else rels.filter { it.ver != null }
+        val pool = (if (dotted.isNotEmpty()) dotted else rels).filter { it.ver != null }
+        if (pool.isEmpty()) return Res(null, "No se pudo determinar la versión de ningún release.")
         var best: Rel? = null
-        for (r in pool) { val b = best; if (b == null || cmp(r.ver!!, b.ver!!) > 0) best = r }
+        for (r in pool) {
+            val b = best
+            if (b == null || cmp(r.ver ?: emptyList(), b.ver ?: emptyList()) > 0) best = r
+        }
         val o = best ?: rels.first()
         val cur = parts(BuildConfig.VERSION_NAME)
         val v = o.ver

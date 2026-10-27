@@ -349,11 +349,13 @@ class RyxAccessibility : AccessibilityService() {
                 val f = max.toFloat() / maxOf(crop.width, crop.height)
                 val scaled = Bitmap.createScaledBitmap(crop, (crop.width * f).toInt().coerceAtLeast(1),
                     (crop.height * f).toInt().coerceAtLeast(1), true)
-                if (scaled !== crop) { crop.recycle(); crop = scaled }
+                if (scaled !== crop) { crop?.recycle(); crop = scaled }
             }
             val f = java.io.File(Prefs.histDir(this), "s_${stamp}_$index.png")
-            java.io.FileOutputStream(f).use { fs -> crop!!.compress(Bitmap.CompressFormat.PNG, 100, fs) }
-            f
+            crop?.let {
+                java.io.FileOutputStream(f).use { fs -> it.compress(Bitmap.CompressFormat.PNG, 100, fs) }
+                f
+            }
         } catch (e: Throwable) {
             null
         } finally {

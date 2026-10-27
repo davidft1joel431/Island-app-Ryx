@@ -27,6 +27,7 @@ object MsgBase {
     private const val MAX_INLINE_B64 = 4_000
 
     /** Evita releer los mismos .bin/.b64 al dibujar el Historial y al copiar desde la isla. */
+    private val fullCacheLock = Any()
     private val fullCache = android.util.LruCache<String, String>(48)
 
     data class Stored(val b64: String, val bin: String, val b64f: String)
@@ -62,7 +63,7 @@ object MsgBase {
     fun fullText(c: Context, h: Prefs.HistItem): String {
         val key = "${h.ts}|${h.pkg}|${h.text.length}:${h.text.hashCode()}|" +
             "${h.b64.length}:${h.b64.hashCode()}|${h.bin}|${h.b64f}"
-        fullCache.get(key)?.let { return it }
+        synchronized(fullCacheLock) { fullCache.get(key) }?.let { return it }
         val candidates = ArrayList<String>(4)
         if (h.text.isNotEmpty()) candidates.add(h.text)
         if (h.b64.isNotEmpty()) decode(h.b64)?.let { candidates.add(it) }
@@ -72,7 +73,7 @@ object MsgBase {
         if (h.bin.isNotEmpty()) readText(File(dir(c), h.bin))?.let { candidates.add(it) }
         val out = candidates.maxByOrNull { it.length } ?: ""
         // Los «testamentos» gigantes no se retienen en memoria; se releen solo cuando hacen falta.
-        if (out.length <= 32_000) fullCache.put(key, out)
+        if (out.length <= 32_000) synchronized(fullCacheLock) { fullCache.put(key, out) }
         return out
     }
 

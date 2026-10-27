@@ -3328,7 +3328,7 @@ class NotifListener : NotificationListenerService() {
         try {
             val la = getSystemService(LAUNCHER_APPS_SERVICE) as android.content.pm.LauncherApps
             val comp = la.getActivityList(pkg, user).firstOrNull()?.componentName
-            if (comp != null) { la.startMainActivity(comp, user, null, null); return true }
+            if (comp != null) { main.post { la.startMainActivity(comp, user, null, null) }; return true }
         } catch (e: Exception) {}
         // 2) Con Shizuku/root: mismo lanzamiento indicando el espacio del clon
         try {

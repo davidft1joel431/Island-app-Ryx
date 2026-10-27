@@ -6,6 +6,8 @@ import android.content.Context
 import android.content.Intent
 import android.graphics.Rect
 import android.os.Build
+import android.os.Handler
+import android.os.Looper
 import android.view.WindowManager
 
 /**
@@ -14,6 +16,7 @@ import android.view.WindowManager
  * Ryx no dibuja una barra flotante propia: los controles son los de la ROM o la barra lateral del launcher.
  */
 object FloatingWindow {
+    private val main = Handler(Looper.getMainLooper())
 
     /**
      * Rectángulo de la ventana en píxeles reales de la pantalla.
@@ -122,7 +125,7 @@ object FloatingWindow {
             } catch (e: Throwable) {}
             if (bounds != null) opts.setLaunchBounds(bounds)
         }
-        pi.send(c, 0, null, null, null, null, opts.toBundle())
+        main.post { pi.send(c, 0, null, null, null, null, opts.toBundle()) }
         true
     } catch (e: Exception) { false }
 
