@@ -554,6 +554,13 @@ object Prefs {
     fun updEverySec(c: Context): Int = sp(c).getInt("upd_every_s", 30)
     fun setUpdEverySec(c: Context, v: Int) = sp(c).edit().putInt("upd_every_s", v).apply()
 
+    // ---- Sincronización con el servidor (solo variante Ryx-Island-FB) ----
+    /** Última vez que se sincronizó historial y ajustes con el servidor (ms). */
+    fun fbSyncLast(c: Context): Long = sp(c).getLong("fb_sync_last", 0L)
+    fun setFbSyncLast(c: Context, v: Long) = sp(c).edit().putLong("fb_sync_last", v).apply()
+    /** Mínimo tiempo entre sincronizaciones al servidor, en ms (por defecto 5 minutos). */
+    internal const val FB_SYNC_MIN_INTERVAL_MS = 5 * 60_000L
+
     // ---- Carpeta propia de respaldos (dentro de la app): «ryx respaldo» ----
     /** Guardar respaldos solo, sin tocar nada (por defecto: sí). */
     fun backupAuto(c: Context): Boolean = sp(c).getBoolean("backup_auto", true)

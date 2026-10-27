@@ -213,6 +213,7 @@ class MainActivity : Activity() {
         } catch (e: Throwable) {}
         Backup.maybeUpload(this, 60 * 60_000L)
         Backup.autoLocal(this)
+        CloudSync.syncIfNeeded(this)
         offerRestore()
         if (!RyxAccessibility.isEnabled(this) && !Prefs.a11yAsked(this)) {
             Prefs.setA11yAsked(this, true); askAccessibility()
@@ -228,6 +229,7 @@ class MainActivity : Activity() {
         if (tab == 3 || tab == 4 || subPage == "perms") render()
         if (System.currentTimeMillis() - Prefs.updLast(this) > Prefs.updEverySec(this) * 1000L) checkUpdates(false)
         Backup.autoLocal(this)
+        CloudSync.syncIfNeeded(this)
     }
 
     /** Aperturas pedidas desde fuera: el aviso de «hay versión nueva» del panel del sistema. */

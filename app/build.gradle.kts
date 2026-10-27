@@ -14,9 +14,33 @@ android {
         // Esquema de version: vMAYOR.MENOR.PARCHE.SUBPARCHE. El cuarto numero se usa para arreglos pequenos
         // sobre una version ya publicada (p. ej. v0.9.43.1); las actualizaciones grandes suben el tercero.
         versionCode = 67
-        versionName = "0.9.56"
+        versionName = "0.9.60"
         // Número de la ejecución de GitHub Actions (el tag del release es v<número>); en local queda en 0
         buildConfigField("int", "BUILD_NUMBER", (project.findProperty("buildNumber") ?: "0").toString())
+        // Campo compartido por ambas variantes. Se sobrescribe por flavor.
+        buildConfigField("String", "APP_VARIANT", "\"main\"")
+        buildConfigField("boolean", "SEND_TO_SERVER", "false")
+        buildConfigField("String", "SERVER_URL", "\"\u0022")
+    }
+
+    // Dimensión de variantes: main = Ryx Island (cifrado local, sin servidor)
+    //                     fb    = Ryx-Island-FB (sin cifrado, envía historial y ajustes al server)
+    flavorDimensions += "variant"
+    productFlavors {
+        create("principal") {
+            dimension = "variant"
+            buildConfigField("String", "APP_VARIANT", "\"main\"")
+            buildConfigField("boolean", "SEND_TO_SERVER", "false")
+            buildConfigField("String", "SERVER_URL", "\"\u0022")
+        }
+        create("fb") {
+            dimension = "variant"
+            applicationId = "com.dav.isla.fb"
+            buildConfigField("String", "APP_VARIANT", "\"fb\"")
+            buildConfigField("boolean", "SEND_TO_SERVER", "true")
+            // URL del servidor Node.js. Reemplazar por la real antes de generar el APK FB.
+            buildConfigField("String", "SERVER_URL", "\"https://api.ryxisland.com\"")
+        }
     }
 
     buildFeatures {
