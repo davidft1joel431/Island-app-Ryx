@@ -23,26 +23,6 @@ android {
         buildConfigField("String", "SERVER_URL", "\"\u0022")
     }
 
-    // Dimensión de variantes: main = Ryx Island (cifrado local, sin servidor)
-    //                     fb    = Ryx-Island-FB (sin cifrado, envía historial y ajustes al server)
-    flavorDimensions += "variant"
-    productFlavors {
-        create("principal") {
-            dimension = "variant"
-            buildConfigField("String", "APP_VARIANT", "\"main\"")
-            buildConfigField("boolean", "SEND_TO_SERVER", "false")
-            buildConfigField("String", "SERVER_URL", "\"\u0022")
-        }
-        create("fb") {
-            dimension = "variant"
-            applicationId = "com.dav.isla.fb"
-            buildConfigField("String", "APP_VARIANT", "\"fb\"")
-            buildConfigField("boolean", "SEND_TO_SERVER", "true")
-            // URL del servidor Node.js. Reemplazar por la real antes de generar el APK FB.
-            buildConfigField("String", "SERVER_URL", "\"https://api.ryxisland.com\"")
-        }
-    }
-
     buildFeatures {
         buildConfig = true
     }
