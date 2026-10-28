@@ -464,7 +464,47 @@ object Prefs {
     fun hideApps(c: Context): Set<String> = sp(c).getStringSet("hide_apps", emptySet()) ?: emptySet()
     fun setHideApps(c: Context, v: Set<String>) = sp(c).edit().putStringSet("hide_apps", v).apply()
 
-    // ---- Formato libre del sistema ----
+    // ---- Formato libre del sistema y barra lateral ----
+
+    /** Modo de apertura: 0 = Formato libre del sistema (ventana flotante), 1 = Barra lateral. */
+    fun openMode(c: Context): Int = sp(c).getInt("open_mode", 0)
+    fun setOpenMode(c: Context, v: Int) = sp(c).edit().putInt("open_mode", v).apply()
+
+    /** ¿Usar barra lateral? Si está activada y la ROM no soporta freeform, se usa la barra. */
+    fun sidebarOn(c: Context): Boolean = sp(c).getBoolean("sidebar_on", true)
+    fun setSidebarOn(c: Context, v: Boolean) = sp(c).edit().putBoolean("sidebar_on", v).apply()
+
+    /** ¿Mostrar automáticamente la barra lateral al abrir apps seleccionadas? */
+    fun sidebarAuto(c: Context): Boolean = sp(c).getBoolean("sidebar_auto", true)
+    fun setSidebarAuto(c: Context, v: Boolean) = sp(c).edit().putBoolean("sidebar_auto", v).apply()
+
+    /** Modo de control de la barra lateral: 0 = gesto, 1 = botón, 2 = ambos. */
+    fun sidebarCtrlMode(c: Context): Int = sp(c).getInt("sidebar_ctrl", 0)
+    fun setSidebarCtrlMode(c: Context, v: Int) = sp(c).edit().putInt("sidebar_ctrl", v).apply()
+
+    /** ¿Mostrar sugerencias de apps debajo de las fijadas? */
+    fun sidebarSuggestions(c: Context): Boolean = sp(c).getBoolean("sidebar_suggestions", true)
+    fun setSidebarSuggestions(c: Context, v: Boolean) = sp(c).edit().putBoolean("sidebar_suggestions", v).apply()
+
+    /** Apps fijadas en la barra lateral (claves "paquete" o "paquete@espacio"). */
+    fun sidebarPinned(c: Context): List<String> =
+        (sp(c).getString("sidebar_pinned", "") ?: "").split(",").map { it.trim() }.filter { it.isNotEmpty() }
+    fun setSidebarPinned(c: Context, v: List<String>) =
+        sp(c).edit().putString("sidebar_pinned", v.joinToString(",")).apply()
+    fun addSidebarPinned(c: Context, key: String) {
+        val l = sidebarPinned(c).toMutableList()
+        if (key.isNotEmpty() && l.none { it.equals(key, true) }) { l.add(key); setSidebarPinned(c, l) }
+    }
+    fun removeSidebarPinned(c: Context, key: String) =
+        setSidebarPinned(c, sidebarPinned(c).filterNot { it.equals(key, true) })
+
+    /** Posición de la barra lateral: 0 = izquierda, 1 = derecha. */
+    fun sidebarPos(c: Context): Int = sp(c).getInt("sidebar_pos", 1)
+    fun setSidebarPos(c: Context, v: Int) = sp(c).edit().putInt("sidebar_pos", v).apply()
+
+    /** Tamaño del ícono en la barra lateral (dp). */
+    fun sidebarIconDp(c: Context): Int = sp(c).getInt("sidebar_icon_dp", 44)
+    fun setSidebarIconDp(c: Context, v: Int) = sp(c).edit().putInt("sidebar_icon_dp", v).apply()
 
     // ---- Llamadas: contactos prioritarios y comportamiento ----
     /**

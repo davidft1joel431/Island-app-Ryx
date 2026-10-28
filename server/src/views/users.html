@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Usuarios FB — Ryx Island Panel</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+    background: #f8f9fa;
+    color: #202124;
+  }
+  .topbar {
+    background: #1a73e8;
+    color: #fff;
+    height: 64px;
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 0 24px;
+    position: sticky; top: 0; z-index: 100;
+  }
+  .topbar .brand { display: flex; align-items: center; gap: 10px; font-size: 20px; font-weight: 600; letter-spacing: -0.5px; }
+  .topbar .logo { width: 32px; height: 32px; border-radius: 6px; background: #fbbc05; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 18px; color: #3c4043; }
+  .topbar .nav { display: flex; gap: 8px; align-items: center; }
+  .topbar a { color: #fff; text-decoration: none; font-size: 14px; padding: 8px 16px; border-radius: 4px; background: rgba(255,255,255,0.15); margin-left: 8px; }
+  .topbar a:hover { background: rgba(255,255,255,0.25); }
+  .container { padding: 24px; max-width: 1400px; margin: 0 auto; }
+  .section { background: #fff; border-radius: 8px; padding: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.08); margin-bottom: 24px; }
+  .section h3 { font-size: 16px; font-weight: 600; color: #3c4043; margin-bottom: 16px; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th { text-align: left; padding: 12px 8px; color: #5f6368; font-weight: 600; border-bottom: 1px solid #dadce0; }
+  td { padding: 10px 8px; border-bottom: 1px solid #f1f3f4; vertical-align: top; }
+  tr:hover { background: #f8f9fa; }
+  .badge { padding: 4px 8px; border-radius: 12px; font-size: 11px; font-weight: 600; }
+  .badge-fb { background: #e6f0ff; color: #1a73e8; }
+  .badge-main { background: #e6f4ea; color: #137333; }
+  .json { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px; white-space: pre-wrap; word-break: break-all; color: #3c4043; max-height: 200px; overflow: auto; background: #f1f3f4; padding: 8px; border-radius: 4px; }
+  .empty { color: #5f6368; font-size: 14px; padding: 32px 0; text-align: center; }
+  .btn { padding: 6px 12px; font-size: 12px; border-radius: 4px; border: none; cursor: pointer; text-decoration: none; display: inline-block; }
+  .btn-view { background: #1a73e8; color: #fff; }
+  .btn-view:hover { background: #1557b0; }
+  .pill { display: inline-block; padding: 4px 10px; border-radius: 20px; font-size: 12px; background: #e8f0fe; color: #1a73e8; margin-right: 6px; }
+</style>
+</head>
+<body>
+<div class="topbar">
+  <div class="brand">
+    <div class="logo">R</div>
+    <span>Ryx<span style="color:#764ba2">-Island-FB</span> · Usuarios</span>
+  </div>
+  <div class="nav">
+    <a href="/panel">← Volver al inicio</a>
+    <a href="#" onclick="location.reload()">Actualizar</a>
+  </div>
+</div>
+<div class="container">
+  <div class="section">
+    <h3>👥 Usuarios de Ryx-Island-FB</h3>
+    <p style="font-size:13px;color:#5f6368;margin-bottom:12px;">
+      El servidor recibe el historial y los ajustes de isla <strong>sin cifrar</strong> desde la variante FB.
+      Aquí el owner puede revisar los datos de cada usuario.
+    </p>
+    <table id="usersTable">
+      <thead>
+        <tr>
+          <th>Dispositivo</th>
+          <th>Versión</th>
+          <th>País</th>
+          <th>IP</th>
+          <th>Primera vez</th>
+          <th>Última vez</th>
+          <th>Historial</th>
+          <th>Ajustes</th>
+          <th>Acciones</th>
+        </tr>
+      </thead>
+      <tbody><tr><td colspan="9" class="empty">Cargando…</td></tr></tbody>
+    </table>
+  </div>
+</div>
+<script>
+  async function load() {
+    try {
+      const r = await fetch('/api/panel/users');
+      const d = await r.json();
+      const tbody = document.querySelector('#usersTable tbody');
+      if (!d.users || d.users.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="9" class="empty">Sin usuarios Ryx-Island-FB registrados.</td></tr>';
+        return;
+      }
+      tbody.innerHTML = d.users.map(u => {
+        const first = new Date(u.first_seen || 0).toLocaleString('es-PE');
+        const last = new Date(u.last_seen || 0).toLocaleString('es-PE');
+        return `<tr>
+          <td><code style="font-size:11px">${(u.device_id||'').slice(0,16)}…</code></td>
+          <td>${u.version || '-'}</td>
+          <td>${u.country || '-'}</td>
+          <td><code style="font-size:11px">${u.ip || '-'}</code></td>
+          <td>${first}</td>
+          <td>${last}</td>
+          <td>${u.hist_count}</td>
+          <td>${u.settings_count}</td>
+          <td>
+            <a class="btn btn-view" href="/panel/users/${u.id}/history">Ver historial</a>
+          </td>
+        </tr>`;
+      }).join('');
+    } catch (e) { console.error(e); }
+  }
+  load();
+</script>
+</body>
+</html>

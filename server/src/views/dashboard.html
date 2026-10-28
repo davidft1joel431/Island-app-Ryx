@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Panel — Ryx Island</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+    background: #f8f9fa;
+    color: #202124;
+  }
+  .topbar {
+    background: #1a73e8;
+    color: #fff;
+    height: 64px;
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 0 24px;
+    position: sticky; top: 0; z-index: 100;
+  }
+  .topbar .brand { display: flex; align-items: center; gap: 10px; font-size: 20px; font-weight: 600; letter-spacing: -0.5px; }
+  .topbar .logo { width: 32px; height: 32px; border-radius: 6px; background: #fbbc05; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 18px; color: #3c4043; }
+  .topbar .user { display: flex; align-items: center; gap: 12px; font-size: 14px; font-weight: 500; }
+  .topbar a.logout { color: #fff; opacity: 0.9; text-decoration: none; font-size: 14px; padding: 8px 16px; border-radius: 4px; background: rgba(255,255,255,0.15); }
+  .topbar a.logout:hover { background: rgba(255,255,255,0.25); }
+  .container { padding: 24px; max-width: 1200px; margin: 0 auto; }
+  .nav {
+    display: flex; gap: 8px; margin-bottom: 24px; flex-wrap: wrap;
+  }
+  .nav a {
+    padding: 10px 16px; border-radius: 20px; text-decoration: none; font-size: 14px; font-weight: 500;
+    color: #5f6368; border: 1px solid transparent; background: #fff; box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+  }
+  .nav a:hover { background: #f1f3f4; color: #1a73e8; border-color: #dadce0; }
+  .nav a.active { background: #e8f0fe; color: #1a73e8; border-color: #bcd8ff; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; margin-bottom: 24px; }
+  .stat {
+    background: #fff; border-radius: 8px; padding: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+    border-top: 4px solid #1a73e8;
+  }
+  .stat .label { font-size: 13px; color: #5f6368; font-weight: 500; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px; }
+  .stat .value { font-size: 32px; font-weight: 600; color: #202124; }
+  .stat .sub { font-size: 13px; color: #5f6368; margin-top: 6px; }
+  .section { background: #fff; border-radius: 8px; padding: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.08); margin-bottom: 24px; }
+  .section h3 { font-size: 16px; font-weight: 600; color: #3c4043; margin-bottom: 16px; display: flex; align-items: center; gap: 8px; }
+  .recent-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  .recent-table th { text-align: left; padding: 10px; color: #5f6368; font-weight: 600; border-bottom: 1px solid #dadce0; }
+  .recent-table td { padding: 10px 8px; border-bottom: 1px solid #f1f3f4; }
+  .recent-table tr:hover { background: #f8f9fa; }
+  .badge { padding: 4px 8px; border-radius: 12px; font-size: 11px; font-weight: 600; }
+  .badge-fb { background: #e6f0ff; color: #1a73e8; }
+  .badge-main { background: #e6f4ea; color: #137333; }
+  .chip { padding: 6px 10px; border-radius: 16px; font-size: 12px; background: #f1f3f4; color: #5f6368; display: inline-block; margin-right: 6px; }
+  .empty { color: #5f6368; font-size: 14px; padding: 32px 0; text-align: center; }
+</style>
+</head>
+<body>
+<div class="topbar">
+  <div class="brand">
+    <div class="logo">R</div>
+    <span>Ryx<span style="color:#764ba2">-Island-FB</span> · Panel</span>
+  </div>
+  <div class="user">
+    <span id="userName">Owner</span>
+    <a href="#" class="logout" onclick="fetch('/api/panel/logout',{method:'POST'}).then(()=>location.reload())">Cerrar sesión</a>
+  </div>
+</div>
+<div class="container">
+  <div class="nav">
+    <a href="/panel" class="active">Inicio</a>
+    <a href="/panel/users">Usuarios FB</a>
+    <a href="/panel/licenses">Licencias</a>
+    <a href="/panel/ads">Anuncios</a>
+  </div>
+
+  <div class="grid" id="stats">
+    <div class="stat">
+      <div class="label">Usuarios totales</div>
+      <div class="value" id="statTotalUsers">-</div>
+      <div class="sub">Registrados en el servidor</div>
+    </div>
+    <div class="stat">
+      <div class="label">Usuarios Ryx-Island-FB</div>
+      <div class="value" id="statFbUsers">-</div>
+      <div class="sub">Envían historial sin cifrar</div>
+    </div>
+    <div class="stat">
+      <div class="label">Sincronizaciones FB</div>
+      <div class="value" id="statSyncs">-</div>
+      <div class="label">Historiales recibidos</div>
+    </div>
+  </div>
+
+  <div class="section">
+    <h3>📊 Resumen por variante</h3>
+    <div id="variants" class="empty">Cargando…</div>
+  </div>
+
+  <div class="section">
+    <h3>🕒 Últimos usuarios Ryx-Island-FB</h3>
+    <table class="recent-table" id="usersTable">
+      <thead>
+        <tr>
+          <th>Dispositivo</th>
+          <th>Versión</th>
+          <th>Variante</th>
+          <th>Última vez visto</th>
+          <th>Historial</th>
+          <th>Ajustes</th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+  </div>
+
+  <div class="section">
+    <h3>⚡ Accesos rápidos</h3>
+    <div style="display:flex;gap:10px;flex-wrap:wrap">
+      <a href="/panel/users" style="padding:12px 20px;background:#1a73e8;color:#fff;border-radius:6px;text-decoration:none;font-weight:500;">Ver todos los usuarios FB</a>
+      <a href="/panel/licenses" style="padding:12px 20px;background:#f1f3f4;color:#202124;border-radius:6px;text-decoration:none;font-weight:500;">Gestionar licencias</a>
+      <a href="/panel/ads" style="padding:12px 20px;background:#f1f3f4;color:#202124;border-radius:6px;text-decoration:none;font-weight:500;">Gestionar anuncios</a>
+    </div>
+  </div>
+</div>
+<script>
+  async function loadStats() {
+    try {
+      const r = await fetch('/api/panel/stats');
+      const d = await r.json();
+      document.getElementById('statTotalUsers').textContent = d.totalUsers;
+      document.getElementById('statFbUsers').textContent = d.fbUsers;
+      document.getElementById('statSyncs').textContent = d.totalSyncs;
+      const vBox = document.getElementById('variants');
+      if (d.variants && d.variants.length) {
+        vBox.innerHTML = d.variants.map(v => `<div style="margin:6px 0"><span class="chip">${v.variant}</span> <strong>${v.c}</span> usuarios</div>`).join('');
+      } else {
+        vBox.innerHTML = '<div class="empty">Sin datos</div>';
+      }
+    } catch (e) { console.error(e); }
+  }
+  async function loadUsers() {
+    try {
+      const r = await fetch('/api/panel/users');
+      const d = await r.json();
+      const tbody = document.querySelector('#usersTable tbody');
+      if (!d.users || d.users.length === 0) { tbody.innerHTML = '<tr><td colspan="6" class="empty">Sin usuarios Ryx-Island-FB registrados.</td></tr>'; return; }
+      tbody.innerHTML = d.users.map(u => {
+        const date = new Date(u.last_seen || 0).toLocaleString('es-PE');
+        return `<tr>
+          <td><code style="font-size:11px">${(u.device_id||'').slice(0,12)}…</code></td>
+          <td>${u.version || '-'}</td>
+          <td><span class="badge badge-fb">FB</span></td>
+          <td>${date}</td>
+          <td>${u.hist_count}</td>
+          <td>${u.settings_count}</td>
+        </tr>`;
+      }).join('');
+    } catch (e) { console.error(e); }
+  }
+  loadStats();
+  loadUsers();
+</script>
+</body>
+</html>
