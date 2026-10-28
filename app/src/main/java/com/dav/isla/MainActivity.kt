@@ -76,6 +76,8 @@ class MainActivity : Activity() {
     private var histSearchToken = 0
     private var pendingHtml = ""
     private var rootStatus = "Sin comprobar"
+    /** Posición de scroll guardada por pestaña/subpágina para no llevar al usuario arriba al refrescar. */
+    private val scrollPositions = HashMap<String, Int>()
     /** Hilos para descodificar miniaturas del historial fuera del hilo principal (2 bastan y no saturan). */
     private val imgWork = java.util.concurrent.Executors.newFixedThreadPool(2)
     private var htmlBuilding = false
@@ -549,6 +551,13 @@ class MainActivity : Activity() {
         // La barra de abajo solo se reconstruye (iconos, pastillas y animación) cuando cambia de pestaña.
         // Antes se rehacía en cada refresco, y con ella cinco iconos: eso era lo que hacía lento el menú.
         if (tabChanged) renderTabBar()
+        // Guardar posición de scroll antes de reconstruir, para no llevar al usuario arriba
+        val currentScroll = when (val child = content.getChildAt(0)) {
+            is PullRefreshScroll -> child.scrollY()
+            is android.widget.ScrollView -> child.scrollY
+            else -> 0
+        }
+        if (currentScroll > 0) scrollPositions[key] = currentScroll
         content.removeAllViews()
         previewView = null; appsBox = null
         val page = LinearLayout(this).apply {
@@ -614,6 +623,17 @@ class MainActivity : Activity() {
                 }
             }
         } else ScrollView(this).apply { addView(page); isVerticalScrollBarEnabled = false }
+        // Restaurar posición de scroll guardada
+        val savedY = scrollPositions[key] ?: 0
+        if (savedY > 0) {
+            scroll.post {
+                when (scroll) {
+                    is PullRefreshScroll -> scroll.scrollTo(0, savedY)
+                    is android.widget.ScrollView -> scroll.scrollTo(0, savedY)
+                    else -> {}
+                }
+            }
+        }
         val fixed: View? = when (tab) { 2 -> buildPreview(); else -> null }
         if (fixed != null) {
             val colm = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
@@ -1375,15 +1395,21 @@ class MainActivity : Activity() {
     private fun appIcon(key: String): Drawable? = iconCache.getOrPut(key) {
         try {
             val (pkg, uid) = Clones.splitKey(key)
+            val pm = packageManager
             // En un clon se pide el icono a SU espacio (LauncherApps); si no, se usa el del principal.
             val base = if (Clones.isClone(uid)) {
                 try {
                     val la = getSystemService(LAUNCHER_APPS_SERVICE) as android.content.pm.LauncherApps
-                    la.getApplicationInfo(pkg, 0, Clones.handle(uid)).loadIcon(packageManager)
-                } catch (e: Exception) { packageManager.getApplicationIcon(pkg) }
-            } else packageManager.getApplicationIcon(pkg)
+                    val ai = la.getApplicationInfo(pkg, 0, Clones.handle(uid))
+                    ai.loadIcon(pm)
+                } catch (e: Exception) { pm.getApplicationIcon(pkg) }
+            } else pm.getApplicationIcon(pkg)
             // La copia clonada lleva la insignia que le pone la ROM (nombre/icono), para distinguirla del original
-            if (Clones.isClone(uid)) packageManager.getUserBadgedIcon(base, Clones.handle(uid)) else base
+            val badged = if (Clones.isClone(uid)) pm.getUserBadgedIcon(base, Clones.handle(uid)) else base
+            // Si el icono es adaptivo, asegurar que se renderice bien en cualquier forma
+            badged?.let { d ->
+                if (d.intrinsicWidth <= 0 || d.intrinsicHeight <= 0) d else d
+            }
         } catch (e: Exception) { null }
     }
 
