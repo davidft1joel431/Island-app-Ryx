@@ -1490,6 +1490,31 @@ class MainActivity : Activity() {
             sz.addView(segmented(listOf("Centro", "Arriba", "Abajo"), Prefs.fwPos(this), true) { Prefs.setFwPos(this, it) }, lp(6))
         }
 
+        // ---------------- BARRA LATERAL ----------------
+
+        val sb = titled(p, "Barra lateral", "Acceso rápido a tus apps desde el borde de la pantalla")
+        sb.addView(rowWithSwitch("Usar barra lateral", "Muestra una tira vertical con tus apps fijadas al borde de la pantalla",
+            Prefs.sidebarOn(this)) { Prefs.setSidebarOn(this, it) })
+        sb.addView(rowWithSwitch("Abrir automáticamente", "Muestra la barra lateral cuando inicies una app seleccionada",
+            Prefs.sidebarAuto(this)) { Prefs.setSidebarAuto(this, it) })
+        sb.addView(segmented(listOf("Gesto", "Botón", "Ambos"), Prefs.sidebarCtrlMode(this), true) {
+            Prefs.setSidebarCtrlMode(this, it)
+        }, lp(8))
+        sb.addView(rowWithSwitch("Mostrar sugerencias", "Añade apps sugeridas debajo de las fijadas",
+            Prefs.sidebarSuggestions(this)) { Prefs.setSidebarSuggestions(this, it) })
+        sb.addView(segmented(listOf("Izquierda", "Derecha"), Prefs.sidebarPos(this), true) {
+            Prefs.setSidebarPos(this, it)
+        }, lp(8))
+        sb.addView(label("Tamaño del ícono: ${Prefs.sidebarIconDp(this)} dp", 12f, R.color.muted), lp(6))
+        seekRow(sb, "Ícono", "dp", 28, 64, Prefs.sidebarIconDp(this)) { Prefs.setSidebarIconDp(this, it) }
+        sb.addView(button("Apps fijadas", false) {
+            pickSidebarApp()
+        }, lp(8))
+        sb.addView(button("Refrescar barra", false) {
+            SidebarManager.refresh(this)
+            toast("Barra lateral actualizada")
+        }, lp(8))
+
         val t = titled(p, "Probar")
         val test = Prefs.fwTestPkg(this)
         val name = appList.firstOrNull { it.first == test }?.second ?: "Ninguna app elegida"
@@ -1540,6 +1565,29 @@ class MainActivity : Activity() {
         glass(AlertDialog.Builder(this).setTitle("Elegir app")
             .setItems(names) { _, i -> onPick(appList[i].first) }
             .setNegativeButton("Cancelar", null).show())
+    }
+
+    /** Elige qué apps fijar en la barra lateral. */
+    private fun pickSidebarApp() {
+        val all = SidebarCatalog.all(this)
+        val pinned = Prefs.sidebarPinned(this).toMutableSet()
+        val builder = AlertDialog.Builder(this).setTitle("Apps fijadas en la barra lateral")
+        val checked = BooleanArray(all.size) { pinned.contains(all[it].key()) }
+        builder.setMultiChoiceItems(
+            all.map { it.displayName() }.toTypedArray(),
+            checked
+        ) { _, i, isChecked ->
+            if (isChecked) pinned.add(all[i].key()) else pinned.remove(all[i].key())
+        }
+        builder.setPositiveButton("Guardar") { _, _ ->
+            Prefs.setSidebarPinned(this, pinned.toList().sortedBy { key ->
+                all.indexOfFirst { it.key() == key }
+            })
+            SidebarManager.refresh(this)
+            toast("Barra lateral actualizada")
+        }
+        builder.setNegativeButton("Cancelar", null)
+        builder.show()
     }
 
     /** Abre la app de prueba a partir de su clave («paquete» o «paquete@espacio» si es un clon). Fuera del hilo principal. */

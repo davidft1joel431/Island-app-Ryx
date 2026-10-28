@@ -11,9 +11,15 @@ import android.os.Looper
 import android.view.WindowManager
 
 /**
- * Abre una app en FORMATO LIBRE del sistema, encima de la app en la que estás.
- * Todo pasa por el servicio de accesibilidad de Ryx; no hace falta Shizuku, root ni el modo escritorio.
- * Ryx no dibuja una barra flotante propia: los controles son los de la ROM o la barra lateral del launcher.
+ * Sistema de apertura de apps: FORMATO LIBRE del sistema (ventana flotante) o BARRA LATERAL.
+ *
+ * El modo se elige en Ajustes → Barra lateral:
+ *  - 0 = Formato libre: la app se abre en ventana libre encima de la app actual.
+ *  - 1 = Barra lateral: la app se abre normal y la barra lateral queda como acceso rápido.
+ *
+ * Todo pasa por el servicio de accesibilidad de Ryx para formato libre; no hace falta Shizuku, root ni
+ * el modo escritorio. Ryx no dibuja una barra flotante propia sobre las ventanas abiertas: los controles
+ * de mover/cerrar son los de la ROM o la barra lateral del launcher.
  */
 object FloatingWindow {
     private val main = Handler(Looper.getMainLooper())
@@ -70,13 +76,66 @@ object FloatingWindow {
         return sb.toString()
     }
 
-    /** Abre [pkg] según el modo elegido. Devuelve el registro de lo ocurrido (también se guarda). Llamar fuera del hilo principal. */
+    /**
+     * Abre [pkg] según el modo elegido en [Prefs.openMode].
+     *  - Modo 0 (formato libre): ventana libre por accesibilidad.
+     *  - Modo 1 (barra lateral): apertura normal; la barra lateral se encarga del acceso rápido.
+     * Devuelve el registro de lo ocurrido (también se guarda). Llamar fuera del hilo principal.
+     */
     fun open(c: Context, pkg: String, pi: PendingIntent? = null, kind: Int? = null,
              user: android.os.UserHandle? = null, userId: Int = -1): String {
+        val mode = Prefs.openMode(c)
+        if (mode == 1) {
+            // Barra lateral: apertura normal, la barra lateral ya está disponible como acceso rápido
+            return openNormal(c, pkg, pi, user, userId)
+        }
+        // Formato libre del sistema
+        return openFreeform(c, pkg, pi, kind, user, userId)
+    }
+
+    /** Apertura normal (sin formato libre): se lanza la actividad principal. */
+    private fun openNormal(c: Context, pkg: String, pi: PendingIntent?,
+                           user: android.os.UserHandle?, userId: Int): String {
+        val log = StringBuilder("Hora: ${java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.getDefault()).format(java.util.Date())}\n" +
+            "Aplicación: $pkg${if (user != null) " (CLON, espacio $userId)" else ""}\nMétodo: Barra lateral / Normal\n")
+        try {
+            if (pi != null) {
+                // PendingIntent: abrir el destino exacto de la notificación
+                try {
+                    pi.send(c, 0, null)
+                } catch (e: Exception) {}
+                log.append("Destino de notificación abierto.\n")
+                return save(c, log)
+            }
+            val intent = c.packageManager.getLaunchIntentForPackage(pkg) ?: run {
+                log.append("No se encontró la actividad principal de $pkg.\n")
+                return save(c, log)
+            }
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            if (userId >= 0) {
+                // Para clones, lanzar en el espacio de usuario correcto
+                try {
+                    val la = c.getSystemService(Context.LAUNCHER_APPS_SERVICE) as android.content.pm.LauncherApps
+                    la.startMainActivity(intent.component, null, null, null)
+                } catch (e: Exception) {
+                    c.startActivity(intent)
+                }
+            } else {
+                c.startActivity(intent)
+            }
+            log.append("App abierta normalmente. La barra lateral permanece disponible.\n")
+        } catch (e: Exception) {
+            log.append("Error al abrir: ${e.javaClass.simpleName} ${e.message ?: ""}\n")
+        }
+        return save(c, log)
+    }
+
+    /** Apertura en formato libre del sistema (ventana flotante). */
+    private fun openFreeform(c: Context, pkg: String, pi: PendingIntent?, kind: Int?,
+                             user: android.os.UserHandle?, userId: Int): String {
         // [user] solo viene si la app es un CLON (app dual): se abre esa copia y no la original.
         // La burbuja se retiró del menú: solo se usa si un flujo antiguo la pide explícitamente.
         val wantBubble = kind == 1
-        // La burbuja se crea desde el menú del icono en el launcher, que no distingue entre original y clon: con un clon se usa formato libre
         val bubble = wantBubble && user == null
         val log = StringBuilder("Hora: ${java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.getDefault()).format(java.util.Date())}\n" +
             "Aplicación: $pkg${if (user != null) " (CLON, espacio $userId)" else ""}\nMétodo: ${if (bubble) "Burbuja (Android 17)" else "Formato libre directo"}\n")
@@ -103,6 +162,28 @@ object FloatingWindow {
             "esté desbloqueado y que «Permitir ventanas de forma libre» esté activo en Opciones de desarrollador. " +
             "Si tu launcher tiene barra lateral, abre la app desde ahí para colocarla en formato libre.\n")
         return save(c, log)
+    }
+
+    /** Abre [pkg] directamente desde la barra lateral (un solo toque). */
+    fun openFromSidebar(c: Context, pkg: String, userId: Int) {
+        val mode = Prefs.openMode(c)
+        if (mode == 0) {
+            val svc = RyxAccessibility.instance
+            if (svc != null) {
+                val b = bounds(c)
+                svc.launchSmartIsland(pkg, null, b, StringBuilder(), null, userId)
+            } else {
+                val intent = c.packageManager.getLaunchIntentForPackage(pkg)?.apply {
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                } ?: return
+                c.startActivity(intent)
+            }
+        } else {
+            val intent = c.packageManager.getLaunchIntentForPackage(pkg)?.apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            } ?: return
+            c.startActivity(intent)
+        }
     }
 
     @Suppress("DEPRECATION")
