@@ -411,6 +411,12 @@ class PullRefreshScroll(c: Context) : android.widget.FrameLayout(c) {
         if (!this::inner.isInitialized || child === inner) super.addView(child) else inner.addView(child)
     }
 
+    /** Devuelve la posición actual de scroll Y del ScrollView interno. */
+    fun scrollY(): Int = inner.scrollY
+
+    /** Hace scroll a una posición del ScrollView interno. */
+    override fun scrollTo(x: Int, y: Int) = inner.scrollTo(x, y)
+
     /** Termina la recarga y esconde el indicador. */
     fun done() {
         refreshing = false

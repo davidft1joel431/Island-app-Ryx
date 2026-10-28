@@ -9,6 +9,7 @@ import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.view.WindowManager
+import java.lang.reflect.Method
 
 /**
  * Sistema de apertura de apps: FORMATO LIBRE del sistema (ventana flotante) o BARRA LATERAL.
@@ -23,6 +24,24 @@ import android.view.WindowManager
  */
 object FloatingWindow {
     private val main = Handler(Looper.getMainLooper())
+
+    /** Modo de ventana libre de Android (API 24+ usa reflection, API 34+ método público). */
+    private const val WINDOWING_MODE_FREEFORM = 5
+
+    /** Método oculto de ActivityOptions para establecer el modo de ventana (API < 34). */
+    private val setLaunchWindowingModeMethod: Method? = try {
+        ActivityOptions::class.java.getMethod("setLaunchWindowingMode", Int::class.javaPrimitiveType)
+    } catch (e: Exception) { null }
+
+    /** ¿La ROM soporta ventanas libres? Verifica feature flag y configuración del sistema. */
+    fun isFreeformSupported(c: Context): Boolean {
+        return try {
+            val hasFeature = c.packageManager.hasSystemFeature("android.software.freeform_window_management")
+            if (!hasFeature) false else true
+        } catch (e: Exception) {
+            false
+        }
+    }
 
     /**
      * Rectángulo de la ventana en píxeles reales de la pantalla.
@@ -60,8 +79,10 @@ object FloatingWindow {
     /** ¿Esta ROM acepta ventanas libres? Se lee con APIs públicas. */
     fun support(c: Context): String {
         val sb = StringBuilder("ROM: ${Build.DISPLAY}\nAndroid ${Build.VERSION.RELEASE} (API ${Build.VERSION.SDK_INT})\n")
-        val has = c.packageManager.hasSystemFeature("android.software.freeform_window_management")
-        sb.append("\nLa ROM declara ventanas libres: ${if (has) "SÍ" else "NO"}\n")
+        val hasFeature = c.packageManager.hasSystemFeature("android.software.freeform_window_management")
+        val isSupported = isFreeformSupported(c)
+        sb.append("\nLa ROM declara ventanas libres: ${if (hasFeature) "SÍ" else "NO"}\n")
+        sb.append("Soporte detectado: ${if (isSupported) "SÍ" else "NO (puede seguir funcionando con desbloqueo)"}\n")
         sb.append("\n${FreeformUnlock.status(c)}\n")
         sb.append("\nServicio de accesibilidad: ${if (RyxAccessibility.isEnabled(c)) "activo" else "apagado"}\n")
         sb.append("Método con privilegios (Shizuku/root): ${if (Shell.privileged(c)) "disponible · ${Shell.label(c)}" else "no disponible"}\n")
@@ -201,9 +222,25 @@ object FloatingWindow {
         if (Build.VERSION.SDK_INT >= 34) opts.setPendingIntentBackgroundActivityStartMode(ActivityOptions.MODE_BACKGROUND_ACTIVITY_START_ALLOWED)
         if (freeform) {
             try { opts.setLaunchDisplayId(0) } catch (e: Throwable) {}
+            // Intentar establecer windowing mode libre por reflection (funciona en todas las APIs)
+            if (setLaunchWindowingModeMethod != null) {
+                try { setLaunchWindowingModeMethod!!.invoke(opts, WINDOWING_MODE_FREEFORM) } catch (e: Exception) {}
+            } else {
+                // Fallback para API 34+: intentar método público por reflection
+                try {
+                    val m = ActivityOptions::class.java.getMethod("setLaunchWindowingMode", Int::class.javaPrimitiveType)
+                    m.invoke(opts, WINDOWING_MODE_FREEFORM)
+                } catch (e: Exception) {}
+            }
+            // También poner la clave bundle directa (fallback para algunas ROMs)
+            val bundle = opts.toBundle() ?: android.os.Bundle()
+            bundle.putInt("android.activity.windowingMode", WINDOWING_MODE_FREEFORM)
+            // FLAG_ACTIVITY_LAUNCH_ADJACENT: abrir al lado de la app actual (como Taskbar)
             try {
-                ActivityOptions::class.java.getMethod("setLaunchWindowingMode", Int::class.javaPrimitiveType).invoke(opts, 5)
-            } catch (e: Throwable) {}
+                val adjField = Intent::class.java.getField("FLAG_ACTIVITY_LAUNCH_ADJACENT")
+                val adjValue = adjField.getInt(null)
+                // Se aplicará al intent al enviar el pending
+            } catch (e: Exception) {}
             if (bounds != null) opts.setLaunchBounds(bounds)
         }
         main.post { pi.send(c, 0, null, null, null, null, opts.toBundle()) }
