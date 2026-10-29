@@ -29,16 +29,20 @@ import android.view.View
 import android.view.ViewOutlineProvider
 import android.view.Window
 import android.view.WindowInsets
+import android.widget.ArrayAdapter
 import android.widget.Button
 import android.widget.EditText
 import android.widget.FrameLayout
 import android.widget.HorizontalScrollView
 import android.widget.ImageView
 import android.widget.LinearLayout
+import android.widget.ListView
 import android.widget.ScrollView
 import android.widget.SeekBar
 import android.widget.TextView
 import android.widget.Toast
+import android.view.LayoutInflater
+import android.view.ViewGroup
 import android.graphics.BitmapFactory
 import rikka.shizuku.Shizuku
 
@@ -1586,34 +1590,109 @@ class MainActivity : Activity() {
         parent.addView(r, lp(10))
     }
 
-    private fun pickOneApp(onPick: (String) -> Unit) {
-        val names = appList.map { it.second }.toTypedArray()
-        glass(AlertDialog.Builder(this).setTitle("Elegir app")
-            .setItems(names) { _, i -> onPick(appList[i].first) }
-            .setNegativeButton("Cancelar", null).show())
+    /**
+     * Adapter personalizado para mostrar icono + nombre de app en listas de selección.
+     */
+    private inner class AppAdapter(private val items: List<SidebarApp>, private val multi: Boolean = false) :
+        ArrayAdapter<SidebarApp>(this, android.R.layout.simple_list_item_1, items) {
+
+        override fun getView(position: Int, convertView: View?, parent: ViewGroup): View {
+            val item = items[position]
+            val view = convertView ?: LayoutInflater.from(context).inflate(
+                android.R.layout.simple_list_item_2, parent, false)
+            val iconView: ImageView = view.findViewById(android.R.id.icon)
+            val textView: TextView = view.findViewById(android.R.id.text1)
+            val text2: TextView = view.findViewById(android.R.id.text2)
+
+            // Mostrar icono de la app (del sistema o de la ROM)
+            val d = item.icon
+            iconView.setImageDrawable(d)
+            iconView.setPadding(0, 0, 12, 0)
+
+            // Nombre de la app
+            textView.text = item.displayName()
+            textView.textSize = 15f
+            textView.setTextColor(Glass.TEXT)
+
+            // Paquete como subtítulo
+            text2.text = item.pkg
+            text2.textSize = 11f
+            text2.setTextColor(Glass.MUTED)
+
+            if (multi) {
+                // Usar checkbox para selección múltiple
+                view.isEnabled = true
+            }
+            return view
+        }
     }
 
-    /** Elige qué apps fijar en la barra lateral. */
+    /**
+     * Muestra un diálogo con lista de apps (icono + nombre) para elegir una.
+     */
+    private fun showAppPicker(title: String, items: List<SidebarApp>, onPick: (SidebarApp) -> Unit) {
+        val dialog = AlertDialog.Builder(this).setTitle(title).create()
+        val adapter = AppAdapter(items)
+        val lv = ListView(this)
+        lv.adapter = adapter
+        val onPickLocal = onPick
+        val dialogLocal = dialog
+        val itemsLocal = items
+        lv.onItemClickListener = android.widget.AdapterView.OnItemClickListener { _, _, position, _ ->
+            val app = itemsLocal[position]
+            onPickLocal(app)
+            dialogLocal.dismiss()
+        }
+        dialog.setView(lv)
+        dialog.setButton(AlertDialog.BUTTON_NEGATIVE, "Cancelar") { _, _ -> dialog.dismiss() }
+        glass(dialog).show()
+    }
+
+    /** Elige una app para abrir (con iconos). */
+    private fun pickOneApp(onPick: (String) -> Unit) {
+        val all = SidebarCatalog.all(this)
+        showAppPicker("Elegir app", all) { app ->
+            onPick(app.key())
+        }
+    }
+
+    /** Elige qué apps fijar en la barra lateral (con iconos). */
     private fun pickSidebarApp() {
         val all = SidebarCatalog.all(this)
         val pinned = Prefs.sidebarPinned(this).toMutableSet()
-        val builder = AlertDialog.Builder(this).setTitle("Apps fijadas en la barra lateral")
+        val dialog = AlertDialog.Builder(this).setTitle("Apps fijadas en la barra lateral").create()
         val checked = BooleanArray(all.size) { pinned.contains(all[it].key()) }
-        builder.setMultiChoiceItems(
-            all.map { it.displayName() }.toTypedArray(),
-            checked
-        ) { _, i, isChecked ->
-            if (isChecked) pinned.add(all[i].key()) else pinned.remove(all[i].key())
+        val adapter = AppAdapter(all, multi = true)
+        val lv = ListView(this)
+        lv.adapter = adapter
+        lv.choiceMode = ListView.CHOICE_MODE_MULTIPLE
+        for (i in all.indices) lv.setItemChecked(i, checked[i])
+        val allLocal = all
+        val checkedLocal = checked
+        val pinnedLocal = pinned
+        lv.onItemClickListener = android.widget.AdapterView.OnItemClickListener { _, _, position, _ ->
+            val app = allLocal[position]
+            if (checkedLocal[position]) {
+                checkedLocal[position] = false
+                pinnedLocal.remove(app.key())
+                lv.setItemChecked(position, false)
+            } else {
+                checkedLocal[position] = true
+                pinnedLocal.add(app.key())
+                lv.setItemChecked(position, true)
+            }
         }
-        builder.setPositiveButton("Guardar") { _, _ ->
+        dialog.setView(lv)
+        dialog.setButton(AlertDialog.BUTTON_POSITIVE, "Guardar") { _, _ ->
             Prefs.setSidebarPinned(this, pinned.toList().sortedBy { key ->
                 all.indexOfFirst { it.key() == key }
             })
             SidebarManager.refresh(this)
             toast("Barra lateral actualizada")
+            dialog.dismiss()
         }
-        builder.setNegativeButton("Cancelar", null)
-        builder.show()
+        dialog.setButton(AlertDialog.BUTTON_NEGATIVE, "Cancelar") { _, _ -> dialog.dismiss() }
+        glass(dialog).show()
     }
 
     /** Abre la app de prueba a partir de su clave («paquete» o «paquete@espacio» si es un clon). Fuera del hilo principal. */
