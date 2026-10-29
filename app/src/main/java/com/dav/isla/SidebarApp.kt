@@ -1,5 +1,7 @@
 package com.dav.isla
 
+import android.graphics.drawable.Drawable
+
 /**
  * Una aplicación que puede aparecer en la barra lateral o en formato libre.
  * Guarda el paquete, la etiqueta (nombre mostrado) y el espacio de usuario (clon/app dual).
@@ -9,7 +11,8 @@ data class SidebarApp(
     val label: String,
     val userId: Int = -1,       // -1 = espacio principal
     val pinned: Boolean = false,
-    val order: Int = 0
+    val order: Int = 0,
+    val icon: Drawable? = null
 ) {
     /** Clave única: "paquete" o "paquete@espacio" para clones. */
     fun key(): String = if (userId >= 0) "$pkg@$userId" else pkg
@@ -24,15 +27,17 @@ object SidebarCatalog {
         val pm = c.packageManager
         val base = pm.queryIntentActivities(
             android.content.Intent(android.content.Intent.ACTION_MAIN).addCategory(android.content.Intent.CATEGORY_LAUNCHER), 0)
-            .map { it.activityInfo.packageName to it.loadLabel(pm).toString() }
-            .filter { it.first != c.packageName }
-            .distinctBy { it.first }
-            .map { (pkg, lbl) -> SidebarApp(pkg, lbl) }
+            .mapNotNull { ai ->
+                val pkg = ai.activityInfo.packageName
+                if (pkg == c.packageName) null else
+                    SidebarApp(pkg, ai.activityInfo.loadLabel(pm).toString(), icon = ai.activityInfo.loadIcon(pm))
+            }
+            .distinctBy { it.pkg }
         // Añadir copias clonadas
         val clones = Clones.cloneEntries(c).map { it.key to it.label }.filter { it.first != c.packageName }
-        val cloneApps = clones.map { (key, lbl) ->
+        val cloneApps = clones.mapNotNull { (key, lbl) ->
             val (pkg, uid) = Clones.splitKey(key)
-            SidebarApp(pkg, lbl, uid, pinned = false, order = 0)
+            if (pkg == c.packageName) null else SidebarApp(pkg, lbl, uid, pinned = false, order = 0)
         }
         return (base + cloneApps).sortedBy { it.displayName().lowercase() }
     }
