@@ -172,7 +172,7 @@ object Glass {
     /** Fila de ajuste: una pastilla casi transparente, con apenas un velo y un borde de 1 dp. */
     fun row(c: Context, radiusDp: Float = 16f): Drawable =
         GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM,
-            intArrayOf(HAIR, withA(0xFFFFFFFF, 0x08), withA(0x000000, 0x10))).apply {
+            intArrayOf(HAIR, withA(0xFFFFFFFF.toInt(), 0x08), withA(0x000000, 0x10))).apply {
             cornerRadius = dp(c, radiusDp)
             setStroke(maxOf(1, dp(c, 1f).toInt()), HAIR)
         }
