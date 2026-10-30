@@ -123,10 +123,11 @@ import kotlin.time.Duration.Companion.milliseconds
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun OnboardingScreen(onFinish: () -> Unit) {
-    val isCN = remember { DeviceUtils.isCNRom }
     val isXiaomi = remember { DeviceUtils.isXiaomi }
+    val isCN = remember { isXiaomi && DeviceUtils.isCNRom }
     val isCompatibleOS = remember { DeviceUtils.isCompatibleOS() }
-    val canProceedCompat = isXiaomi && isCompatibleOS
+    // Continue on any Android 15+ device; Xiaomi-specific island integration is optional.
+    val canProceedCompat = isCompatibleOS
     
     val context = LocalContext.current
     val prefs = remember { AppPreferences(context) }
@@ -1050,7 +1051,6 @@ fun CompatibilityPage() {
     val deviceName = DeviceUtils.getDeviceMarketName()
 
     val (icon, color, titleRes, descRes) = when {
-        !isXiaomi -> Quad(Icons.Rounded.Devices, MaterialTheme.colorScheme.error, R.string.unsupported_device, R.string.req_xiaomi)
         !isCompatibleOS -> Quad(Icons.Rounded.Devices, MaterialTheme.colorScheme.error, R.string.unsupported_device, R.string.req_hyperos)
         else -> Quad(Icons.Rounded.Devices, Color(0xFF34C759), R.string.device_compatible, R.string.compatible_msg)
     }
@@ -1063,7 +1063,7 @@ fun CompatibilityPage() {
     ) {
         Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
             ListOptionCard(
-                title = Build.MANUFACTURER.uppercase(),
+                title = "${Build.MANUFACTURER} · ${DeviceUtils.getSystemName()}",
                 subtitle = deviceName,
                 icon = Icons.Default.Smartphone,
                 shape = RoundedCornerShape(24.dp, 24.dp, 4.dp, 4.dp),

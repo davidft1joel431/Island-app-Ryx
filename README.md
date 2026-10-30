@@ -1,10 +1,12 @@
 # Ryx Isla
 
-Ryx Isla is an Android notification bridge based on [Hyper Bridge](https://github.com/D4vidDf/HyperBridge). It brings a customizable HyperIsland-style notification interface to supported Xiaomi, Redmi, and POCO devices.
+Ryx Isla is an Android notification bridge based on [Hyper Bridge](https://github.com/D4vidDf/HyperBridge). It brings a customizable HyperIsland-style notification interface to Android 15+ devices. Native Xiaomi HyperOS featured notifications are an optional integration; other Android ROMs use the standard notification and overlay capabilities where available.
 
 ## Version
 
-**Ryx Isla 1.0.0** · package `com.dav.isla` · Android 15 or newer.
+**Ryx Isla 1.0.1** · package `com.dav.isla` · Android 15 or newer.
+
+The compatibility screen reports the detected ROM and Android release/API level. Some device-specific behavior, background execution rules, notification access, and overlay support depend on the manufacturer and permissions granted by the user.
 
 ## Features
 

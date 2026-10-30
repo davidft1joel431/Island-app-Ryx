@@ -37,7 +37,11 @@ jobs:
           tag_name: v${{ steps.version.outputs.version }}
           name: Ryx Isla v${{ steps.version.outputs.version }}
           body: |
-            - Primera versión de Ryx Isla basada en Hyper Bridge bajo Apache 2.0.
-            - Incluye puente de notificaciones, temas, widgets, llamadas, multimedia y navegación.
-            - Nombre y paquete de la app: Ryx Isla (`com.dav.isla`).
+            Ryx Isla 1.0.1.
+
+            - Amplia la deteccion para Android 15+ en distintas marcas y ROMs.
+            - Muestra la ROM detectada y la version/API de Android.
+            - Mantiene la integracion nativa HyperOS como funcion opcional de Xiaomi/Redmi/POCO.
+            - Incluye el icono oficial de Ryx Island.
+            - Basada en Hyper Bridge bajo Apache 2.0.
           files: RyxIsla.apk
