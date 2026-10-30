@@ -164,7 +164,8 @@ fun SetupHealthScreen(onBack: () -> Unit) {
                 StatusRow(
                     title = android.os.Build.MANUFACTURER.uppercase(),
                     subtitle = deviceModel,
-                    isSuccess = isXiaomi,
+                    // OEM-specific island APIs are optional; generic Android bridging is supported.
+                    isSuccess = true,
                     icon = Icons.Default.Smartphone
                 )
                 HorizontalDivider(modifier = Modifier.padding(horizontal = 20.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(0.2f))

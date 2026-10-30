@@ -11,15 +11,37 @@ object DeviceUtils {
                 Build.MANUFACTURER.equals("Poco", ignoreCase = true) ||
                 Build.MANUFACTURER.equals("Redmi", ignoreCase = true)
 
-    fun getHyperOSVersion(): String {
+    /** Returns the detected Android ROM/flavor. Unknown custom ROMs fall back to build metadata. */
+    fun getSystemName(): String {
         val version = getSystemProperty("ro.mi.os.version.name")
         if (version.isNotEmpty()) return "HyperOS $version"
 
         val miuiVer = getSystemProperty("ro.miui.ui.version.name")
         if (miuiVer.isNotEmpty()) return "MIUI $miuiVer"
 
-        return "Android ${Build.VERSION.RELEASE}"
+        val buildInfo = "${Build.DISPLAY} ${Build.FINGERPRINT} ${Build.BRAND} ${Build.MANUFACTURER}".lowercase()
+        return when {
+            buildInfo.contains("oneui") || buildInfo.contains("samsung") -> "Samsung One UI"
+            buildInfo.contains("oxygen") -> "OxygenOS"
+            buildInfo.contains("coloros") || buildInfo.contains("oppo") || buildInfo.contains("oplus") -> "ColorOS"
+            buildInfo.contains("realme") -> "realme UI"
+            buildInfo.contains("funtouch") || buildInfo.contains("vivo") -> "Funtouch OS"
+            buildInfo.contains("magicos") || buildInfo.contains("honor") -> "MagicOS"
+            buildInfo.contains("nothing") -> "Nothing OS"
+            buildInfo.contains("flyme") -> "Flyme OS"
+            buildInfo.contains("lineage") -> "LineageOS"
+            buildInfo.contains("graphene") -> "GrapheneOS"
+            buildInfo.contains("crdroid") -> "crDroid"
+            buildInfo.contains("pixel") -> "Pixel UI"
+            buildInfo.contains("aosp") || buildInfo.contains("userdebug") -> "Android AOSP / ROM personalizada"
+            else -> "Android (${Build.MANUFACTURER})"
+        }
     }
+
+    fun getAndroidVersion(): String = "Android ${Build.VERSION.RELEASE} (API ${Build.VERSION.SDK_INT})"
+
+    /** Alias kept for existing screens that used the old Xiaomi-only label. */
+    fun getHyperOSVersion(): String = "${getSystemName()} - ${getAndroidVersion()}"
 
     // NEW: Get Marketing Name (e.g. "Redmi Note 13 Pro+")
     fun getDeviceMarketName(): String {
@@ -31,14 +53,9 @@ object DeviceUtils {
         return Build.MODEL
     }
 
-    fun isCompatibleOS(): Boolean {
-        // 1. Future Proof: Android 16 (API 36) is definitely HyperOS 3+ base
-        if (Build.VERSION.SDK_INT >= 36) return true
-
-        // 2. HyperOS 3 on Android 15 (API 35)
-        val version = getSystemProperty("ro.mi.os.version.name")
-        return version.startsWith("OS3", ignoreCase = true)
-    }
+    // This bridge requires Android 15 APIs. Xiaomi's native featured-island integration
+    // remains optional and is checked separately by XiaomiNotificationHelper.
+    fun isCompatibleOS(): Boolean = Build.VERSION.SDK_INT >= Build.VERSION_CODES.VANILLA_ICE_CREAM
 
     val isCNRom: Boolean
         get() {

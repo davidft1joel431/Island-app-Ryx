@@ -13,7 +13,7 @@
     <string name="sort_order">Sort Order</string>
 
     <string name="welcome_title">Welcome to\nRyx Isla</string>
-    <string name="welcome_subtitle">Seamlessly integrate HyperIslands into your HyperOS experience.</string>
+    <string name="welcome_subtitle">Bring dynamic notifications to Android 15+ with native HyperOS integration where available.</string>
     <string name="get_started">Get Started</string>
 
     <string name="how_it_works">How it Works</string>
@@ -21,8 +21,8 @@
     <string name="beta_warning">Note: This app is in Beta. You may encounter bugs or incorrect visual information.</string>
 
     <string name="device_compatible">Device Compatible</string>
-    <string name="unsupported_device">Unsupported Device</string>
-    <string name="compatible_msg">Your device appears to be running HyperOS/MIUI. You are good to go!</string>
+    <string name="unsupported_device">Unsupported Android version</string>
+    <string name="compatible_msg">Android 15 or newer is supported. Native HyperOS integration is available when the device supports it.</string>
 
     <string name="show_island">Show Island</string>
     <string name="perm_post_desc">We need permission to post the \'Island\' notification on your screen.</string>
@@ -229,8 +229,8 @@
     <string name="no_active_rules">No active rules</string>
 
     <string name="setup_health_title">System Compatibility</string>
-    <string name="req_hyperos">Requires HyperOS 3.0+ (Android 15+)</string>
-    <string name="req_xiaomi">Xiaomi/Redmi/Poco device required</string>
+    <string name="req_hyperos">This release requires Android 15 or newer.</string>
+    <string name="req_xiaomi">Native HyperOS integration requires Xiaomi, Redmi, or POCO.</string>
 
     <string name="warning_cn_rom_title">China ROM Detected</string>
     <string name="warning_cn_rom_desc">Your device appears to be running a Chinese firmware. Xiaomi modifies notification internals significantly on CN ROMs. Features might be unstable or not work at all.</string>
