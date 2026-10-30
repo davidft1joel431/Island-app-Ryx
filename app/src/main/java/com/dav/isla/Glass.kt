@@ -24,40 +24,40 @@ import android.animation.ValueAnimator
 data class AppTheme(val id: String, val label: String, val accent: Int, val glow1: Int, val glow2: Int)
 
 object Glass {
+    /** Temas modernos y minimalistas: fondos oscuros, acentos sutiles, sin tonos amarillos intensos. */
     val THEMES = listOf(
-        AppTheme("yellow", "Amarillo", 0xFFFFC857.toInt(), 0x30FFC857, 0x26FF8A4C),
-        AppTheme("ryx", "Naranja Ryx", 0xFFFF8A4C.toInt(), 0x30FF7A3D, 0x264F7CFF),
-        AppTheme("ocean", "Océano", 0xFF4DA3FF.toInt(), 0x304DA3FF, 0x2600D4C8),
-        AppTheme("forest", "Bosque", 0xFF4ADE80.toInt(), 0x3040D87A, 0x26F2C94C),
-        AppTheme("violet", "Violeta", 0xFFB388FF.toInt(), 0x30B388FF, 0x264DA3FF),
-        AppTheme("rose", "Rosa", 0xFFFF6B9A.toInt(), 0x30FF6B9A, 0x26FFB84D),
-        AppTheme("mint", "Menta", 0xFF2EE6C5.toInt(), 0x302EE6C5, 0x264DA3FF),
-        AppTheme("sunset", "Atardecer", 0xFFFF7A59.toInt(), 0x30FF7A59, 0x30B388FF),
-        AppTheme("midnight", "Medianoche", 0xFF7C89FF.toInt(), 0x307C89FF, 0x2600D4C8)
+        AppTheme("onyx", "Ónix", 0xFF6366F1.toInt(), 0x1A6366F1, 0x0F4C86FF),   // índigo profundo
+        AppTheme("slate", "Pizarra", 0xFF94A3B8.toInt(), 0x1594A3B8, 0x0E3B535C), // gris azulado
+        AppTheme("emerald", "Esmeralda", 0xFF10B981.toInt(), 0x1510B981, 0x0B0F3B33), // verde esmeralda
+        AppTheme("amber", "Ámbar tenue", 0xFFC0A060.toInt(), 0x12C0A060, 0x0A1A2A3A), // ámbar suave
+        AppTheme("ruby", "Rubí", 0xFFEF4444.toInt(), 0x18EF4444, 0x0E2A2A3A), // rojo suave
+        AppTheme("neon", "Neón azul", 0xFF06B6D4.toInt(), 0x1A06B6D4, 0x0B1A2A4A), // cian neón
+        AppTheme("void", "Vacío", 0xFF8B5CF6.toInt(), 0x188B5CF6, 0x0C1A2A4A), // violeta profundo
+        AppTheme("graphite", "Grafito", 0xFF6B7280.toInt(), 0x106B7280, 0x08151D25) // gris neutro
     )
     var theme: AppTheme = THEMES[0]
         private set
     var ACCENT: Int = THEMES[0].accent
         private set
 
-    // Texto
-    const val TEXT = 0xFFF4F6FA.toInt()
-    const val MUTED = 0xFF9AA4B7.toInt()
-    const val FAINT = 0xFF646D7F.toInt()
-    // Superficies: del fondo a lo que sobresale dentro de una tarjeta
-    const val SURFACE = 0xFF111419.toInt()
-    const val SURFACE_HI = 0xFF1C212A.toInt()
-    const val SURFACE_TOP = 0xFF272D39.toInt()
-    /** Borde fino (10 % de blanco) de tarjetas y controles. */
-    const val HAIR = 0x1AFFFFFF
+    // Texto: tonos claros sobre fondo oscuro, sin amarillos
+    const val TEXT = 0xFFFFFFFF.toInt()
+    const val MUTED = 0xFF9CA3AF.toInt()
+    const val FAINT = 0xFF6B7280.toInt()
+    // Superficies: negro profundo y gris pizarra (estética minimalista moderna)
+    const val SURFACE = 0xFF0B0C10.toInt()      // fondo principal casi negro
+    const val SURFACE_HI = 0xFF11131A.toInt()   // superficie elevada
+    const val SURFACE_TOP = 0xFF171A23.toInt()  // superficie aún más elevada
+    /** Borde fino tenue (8 % de blanco) para tarjetas y controles minimalistas. */
+    const val HAIR = 0x14FFFFFF
     /** Borde algo más visible para elementos elevados. */
-    const val EDGE = 0x2EFFFFFF
+    const val EDGE = 0x2AFFFFFF
     /** Verde de estado (concedido / activo). */
-    const val GREEN = 0xFF3DDC84.toInt()
+    const val GREEN = 0xFF34D399.toInt()
     /** Rojo de estado (apagado / error). */
-    const val RED = 0xFFFF6B6B.toInt()
-    /** Ámbar de advertencia. */
-    const val AMBER = 0xFFFFB020.toInt()
+    const val RED = 0xFFF87171.toInt()
+    /** Ámbar de advertencia suave. */
+    const val AMBER = 0xFFFBBF24.toInt()
 
     fun applyTheme(c: Context) {
         theme = THEMES.firstOrNull { it.id == Prefs.appTheme(c) } ?: THEMES[0]
@@ -81,11 +81,11 @@ object Glass {
 
     private fun dp(c: Context, v: Float) = v * c.resources.displayMetrics.density
 
-    /** Fondo de la app: casi negro con dos resplandores muy suaves del color del tema. */
+    /** Fondo de la app: negro profundo con resplandores sutiles del color del tema. */
     fun page(c: Context): Drawable {
         val d = c.resources.displayMetrics
         val base = GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM,
-            intArrayOf(0xFF11141A.toInt(), 0xFF0A0C10.toInt(), 0xFF07080B.toInt()))
+            intArrayOf(SURFACE, SURFACE_HI, 0xFF07080B.toInt()))
         val glow = GradientDrawable().apply {
             gradientType = GradientDrawable.RADIAL_GRADIENT
             setGradientCenter(0.9f, 0.0f)
@@ -107,30 +107,30 @@ object Glass {
      */
     fun card(c: Context, radiusDp: Float = 24f, strong: Boolean = false): Drawable =
         GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM,
-            if (strong) intArrayOf(0xFF222833.toInt(), 0xFF1A1F28.toInt(), 0xFF161A21.toInt())
-            else intArrayOf(0xFF1B2029.toInt(), 0xFF161A21.toInt(), 0xFF13171D.toInt())).apply {
+            if (strong) intArrayOf(SURFACE_TOP, SURFACE_HI, SURFACE)
+            else intArrayOf(SURFACE_HI, SURFACE, 0xFF0A0C10.toInt())).apply {
             cornerRadius = dp(c, radiusDp); setStroke(maxOf(1, dp(c, 1f).toInt()), HAIR)
         }
 
     /** Tarjeta anidada: un tono por encima de [card], para filas dentro de una tarjeta. */
     fun innerCard(c: Context, radiusDp: Float = 18f): Drawable =
         GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM,
-            intArrayOf(0xFF20252F.toInt(), 0xFF191E26.toInt())).apply {
+            intArrayOf(SURFACE_TOP, SURFACE_HI)).apply {
             cornerRadius = dp(c, radiusDp); setStroke(maxOf(1, dp(c, 1f).toInt()), HAIR)
         }
 
     /** Cabecera destacada: la tarjeta con un velo del color [tint] que se apaga hacia el fondo. */
     fun hero(c: Context, tint: Int = ACCENT, radiusDp: Float = 28f): Drawable =
         GradientDrawable(GradientDrawable.Orientation.TL_BR,
-            intArrayOf(withA(tint, 0x42), withA(tint, 0x14), 0xFF14181F.toInt(), 0xFF111419.toInt())).apply {
+            intArrayOf(withA(tint, 0x30), withA(tint, 0x0F), SURFACE_TOP, SURFACE)).apply {
             cornerRadius = dp(c, radiusDp)
-            setStroke(maxOf(1, dp(c, 1f).toInt()), withA(tint, 0x4D))
+            setStroke(maxOf(1, dp(c, 1f).toInt()), withA(tint, 0x3C))
         }
 
     /** Fondo opaco para diálogos: el contenido de atrás no se mezcla con el texto. */
     fun solid(c: Context, radiusDp: Float = 24f): Drawable =
         GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM,
-            intArrayOf(0xFF202630.toInt(), 0xFF181C24.toInt(), 0xFF15181F.toInt())).apply {
+            intArrayOf(SURFACE_TOP, SURFACE_HI, SURFACE)).apply {
             cornerRadius = dp(c, radiusDp); setStroke(maxOf(1, dp(c, 1f).toInt()), EDGE)
         }
 
@@ -138,7 +138,7 @@ object Glass {
     fun sheet(c: Context, radiusDp: Float = 28f): Drawable {
         val r = dp(c, radiusDp)
         return GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM,
-            intArrayOf(0xFF232934.toInt(), 0xFF1A1F27.toInt(), 0xFF161A21.toInt())).apply {
+            intArrayOf(SURFACE_TOP, SURFACE_HI, SURFACE)).apply {
             cornerRadii = floatArrayOf(r, r, r, r, 0f, 0f, 0f, 0f)
             setStroke(maxOf(1, dp(c, 1f).toInt()), EDGE)
         }
@@ -171,9 +171,9 @@ object Glass {
     /** Fila de ajuste: una pastilla casi transparente, con apenas un velo y un borde de 1 dp. */
     fun row(c: Context, radiusDp: Float = 16f): Drawable =
         GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM,
-            intArrayOf(0x14FFFFFF, 0x0CFFFFFF, 0x08FFFFFF)).apply {
+            intArrayOf(HAIR, withA(0xFFFFFFFF, 0x08), withA(0x000000, 0x10))).apply {
             cornerRadius = dp(c, radiusDp)
-            setStroke(maxOf(1, dp(c, 1f).toInt()), 0x1AFFFFFF)
+            setStroke(maxOf(1, dp(c, 1f).toInt()), HAIR)
         }
 
     /** Botón lleno: degradado del acento (más claro arriba) y sin borde. Da volumen sin sombra. */
