@@ -74,6 +74,8 @@ class MainActivity : Activity() {
     private val histGroupHandles = ArrayList<CollapsibleHandle>()
     /** Tarjetas de Diseño dibujadas ahora mismo; «Abrir todo» las despliega sin rehacer la pantalla. */
     private val designHandles = ArrayList<CollapsibleHandle>()
+    private val designHandlesByKey = HashMap<String, CollapsibleHandle>()
+    private val designViewsByKey = HashMap<String, View>()
     /** Cancela aperturas diferidas anteriores al cambiar de sección o de búsqueda. */
     private var histExpandToken = 0
     /** Agrupa las pulsaciones del buscador para no reconstruir la lista en cada letra. */
@@ -680,12 +682,28 @@ class MainActivity : Activity() {
 
     /** Editor visual fijo arriba: muestra la parte superior de ESTE teléfono con la isla en vivo. */
     private fun buildPreview(): View {
-        val c = card().apply { setPadding(px(12), px(12), px(12), px(12)) }
+        val c = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            background = Glass.hero(this@MainActivity, Glass.ACCENT, 26f)
+            setPadding(px(14), px(12), px(14), px(12))
+            elevation = px(3).toFloat()
+        }
         val m = resources.displayMetrics
         val wDp = (minOf(m.widthPixels, m.heightPixels) / m.density).toInt()
         val hDp = (maxOf(m.widthPixels, m.heightPixels) / m.density).toInt()
-        c.addView(label("Vista previa · ${Build.MANUFACTURER.replaceFirstChar { it.uppercase() }} ${Build.MODEL}", 15f, R.color.text, true))
-        c.addView(label("Pantalla $wDp × $hDp dp · Android ${Build.VERSION.RELEASE}", 12f, R.color.muted))
+        val top = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
+        val title = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        title.addView(label("ESTUDIO DE ISLAND", 10f, Glass.ACCENT, true).apply { letterSpacing = 0.12f })
+        title.addView(label("Vista previa en vivo", 16f, R.color.text, true))
+        top.addView(title, LinearLayout.LayoutParams(0, WRAP, 1f))
+        val live = label("● EN VIVO", 10f, R.color.green, true).apply {
+            setPadding(px(9), px(6), px(9), px(6))
+            background = Glass.pill(this@MainActivity, 0x1F3DDC84, 0x443DDC84, 14f)
+        }
+        top.addView(live)
+        c.addView(top)
+        c.addView(label("${Build.MANUFACTURER.replaceFirstChar { it.uppercase() }} ${Build.MODEL} · $wDp × $hDp dp",
+            11.5f, R.color.muted).apply { setPadding(0, px(2), 0, 0) })
         val pv = IslandPreview(this)
         pv.landscape = landscapeView
         val ins = window.decorView.rootWindowInsets
@@ -696,14 +714,14 @@ class MainActivity : Activity() {
             ins.getInsets(WindowInsets.Type.statusBars()).top.toFloat() else 0f
         previewView = pv
         if (previewOpen) pv.setExpanded(true)
-        c.addView(pv, LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = px(8) })
+        c.addView(pv, LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = px(7) })
         val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
-        row.addView(button(if (previewOpen) "Ver compacta" else "Ver expandida", false) {
+        row.addView(button(if (previewOpen) "Vista compacta" else "Vista expandida", false) {
             previewOpen = !previewOpen; pv.setExpanded(previewOpen); render()
         }, LinearLayout.LayoutParams(0, WRAP, 1f).apply { marginEnd = px(6) })
-        row.addView(button("▶ Animación", true) { previewOpen = false; pv.play() },
+        row.addView(button("▶ Probar animación", true) { previewOpen = false; pv.play() },
             LinearLayout.LayoutParams(0, WRAP, 1f).apply { marginStart = px(6) })
-        c.addView(row, lp(8))
+        c.addView(row, lp(7))
         return c
     }
 
@@ -1003,31 +1021,35 @@ class MainActivity : Activity() {
 
     private fun buildLayout(p: LinearLayout) {
         designHandles.clear()
-        pageHero(p, "palette", 0xFF7C89FF.toInt(), "Diseño", "Formas, colores, tamaños y movimiento; todo en tarjetas")
-        heroStat(p, 0xFF7C89FF.toInt(), listOf(
+        designHandlesByKey.clear()
+        designViewsByKey.clear()
+        pageHero(p, "palette", Glass.ACCENT, "Diseño de la isla", "Ajusta el aspecto de tu Hyper Island")
+        heroStat(p, Glass.ACCENT, listOf(
             "Estilo" to Styles.byId(Prefs.style(this)).label,
             "Tema" to Glass.theme.label,
             "Medidas" to "${Prefs.idleWidthDp(this)}×${Prefs.heightDp(this)} · ${IslandGeometry.EXPANDED_WIDTH_DP}×${IslandGeometry.EXPANDED_HEIGHT_DP} dp"))
 
-        // Menú de la pestaña, como en Historial: las secciones se abren y cierran sin rehacer la pantalla.
+        designQuickGrid(p)
+
+        // Los controles detallados permanecen en su sitio; la cuadrícula superior sirve de acceso rápido.
         val menu = card()
-        menu.addView(label("Diseño en tarjetas", 16f, R.color.text, true))
-        menu.addView(label("Cada bloque se abre por separado. «Abrir todo» los despliega de una vez y luego se convierte en «Contraer todo».", 12f, R.color.muted), lp(4))
+        menu.addView(label("Ajustes detallados", 16f, R.color.text, true))
+        menu.addView(label("Abre una sección para ajustar cada parte de la isla.", 12f, R.color.muted), lp(4))
         val menuRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
-        menuRow.addView(label("Tu isla, por secciones", 12f, R.color.muted), LinearLayout.LayoutParams(0, WRAP, 1f).apply { marginEnd = px(8) })
+        menuRow.addView(label("Controles de personalización", 12f, R.color.muted), LinearLayout.LayoutParams(0, WRAP, 1f).apply { marginEnd = px(8) })
         val toggle = TextView(this).apply {
             text = "Abrir todo"; textSize = 12.5f; gravity = Gravity.CENTER
-            setTextColor(0xFF7C89FF.toInt()); typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+            setTextColor(Glass.ACCENT); typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
             setPadding(px(14), px(8), px(14), px(8))
             background = Glass.ripple(this@MainActivity,
-                Glass.pill(this@MainActivity, Glass.withA(0xFF7C89FF.toInt(), 0x26), Glass.withA(0xFF7C89FF.toInt(), 0x55), 15f), 15f)
+                Glass.pill(this@MainActivity, Glass.accentA(0x26), Glass.accentA(0x55), 15f), 15f)
         }
         menuRow.addView(toggle)
         menu.addView(menuRow, lp(10))
         p.addView(menu, lp(8))
 
         // ─────────────────────────── ESTILOS ───────────────────────────
-        designSection(p, "styles", "Estilos de isla", "${Styles.ALL.size} acabados: cristal, color, neón, claro y más", "palette", 0xFF7C89FF.toInt(), true) { b ->
+        designSection(p, "styles", "Estilos de isla", "${Styles.ALL.size} acabados: cristal, color, neón, claro y más", "palette", 0xFF7C89FF.toInt()) { b ->
             Styles.ALL.chunked(2).forEach { pair ->
                 val r = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
                 pair.forEach { sty ->
@@ -1221,6 +1243,59 @@ class MainActivity : Activity() {
         }
     }
 
+    /** Cuadrícula de acceso rápido inspirada en un Design Hub: estado real y navegación a los controles de Ryx. */
+    private fun designQuickGrid(parent: LinearLayout) {
+        heading(parent, "PERSONALIZA TU ISLA")
+        val active = Events.GROUPS.sumOf { g -> g.events.count { Prefs.eventOnFor(this, it.id, landscapeView) } }
+        val total = Events.GROUPS.sumOf { it.events.size }
+        val cells = listOf(
+            Triple("palette", "Temas y estilos", "${Styles.byId(Prefs.style(this)).label} · ${Glass.theme.label}") to listOf("styles", "accent"),
+            Triple("window", "Forma y tamaño", "${Prefs.idleWidthDp(this)} × ${Prefs.heightDp(this)} dp · expandida ${IslandGeometry.EXPANDED_WIDTH_DP} × ${IslandGeometry.EXPANDED_HEIGHT_DP}") to listOf("collapsed", "expanded"),
+            Triple("bell", "Avisos y multimedia", "$active de $total avisos activos · fotos y stickers") to listOf("notif", "media"),
+            Triple("bolt", "Movimiento y gestos", "${listOf("Relajada", "Normal", "Ágil")[Prefs.speed(this).coerceIn(0, 2)]} · animación y acciones") to listOf("animation", "gestures")
+        )
+        val tones = listOf(Glass.ACCENT, 0xFF91A7FF.toInt(), 0xFF75D7B0.toInt(), 0xFFC5A0F5.toInt())
+        cells.chunked(2).forEachIndexed { rowIndex, pair ->
+            val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+            pair.forEachIndexed { cellIndex, (item, keys) ->
+                val (iconName, title, summary) = item
+                val color = tones[rowIndex * 2 + cellIndex]
+                val tile = LinearLayout(this).apply {
+                    orientation = LinearLayout.VERTICAL
+                    background = Glass.ripple(this@MainActivity, Glass.hero(this@MainActivity, color, 23f), 23f)
+                    setPadding(px(14), px(14), px(14), px(14))
+                    isClickable = true; isFocusable = true
+                    setOnClickListener { openDesignSections(keys) }
+                    Glass.press(this)
+                }
+                val head = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
+                head.addView(tileIcon(iconName, Glass.withA(color, 0x32), color),
+                    LinearLayout.LayoutParams(px(40), px(40)))
+                val spacer = View(this)
+                head.addView(spacer, LinearLayout.LayoutParams(0, 1, 1f))
+                head.addView(icon("arrow_right", 18, color).apply {
+                    gravity = Gravity.CENTER; background = Glass.pill(this@MainActivity, Glass.withA(color, 0x1A), 0, 18f)
+                    setPadding(px(8), px(8), px(8), px(8))
+                }, LinearLayout.LayoutParams(px(34), px(34)))
+                tile.addView(head)
+                tile.addView(label(title, 15f, R.color.text, true).apply { maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END }, lp(16))
+                tile.addView(label(summary, 11.5f, R.color.muted).apply { maxLines = 2; ellipsize = android.text.TextUtils.TruncateAt.END })
+                row.addView(tile, LinearLayout.LayoutParams(0, WRAP, 1f).apply {
+                    marginStart = px(4); marginEnd = px(4)
+                })
+            }
+            if (pair.size == 1) row.addView(View(this), LinearLayout.LayoutParams(0, 1, 1f))
+            parent.addView(row, lp(8))
+        }
+    }
+
+    private fun openDesignSections(keys: List<String>) {
+        keys.forEach { designHandlesByKey[it]?.setOpen(true, true) }
+        designViewsByKey[keys.firstOrNull()]?.let { target ->
+            target.postDelayed({ target.requestRectangleOnScreen(android.graphics.Rect(0, 0, target.width, target.height), true) }, 220L)
+        }
+    }
+
     /** Tarjeta desplegable de Diseño con icono, título, subtítulo y cuerpo perezoso. */
     private fun designSection(
         parent: LinearLayout, key: String, title: String, sub: String,
@@ -1239,6 +1314,8 @@ class MainActivity : Activity() {
             body(b)
         }, topMargin = 8, lazyBody = true)
         designHandles.add(handle)
+        designHandlesByKey[key] = handle
+        designViewsByKey[key] = parent.getChildAt(parent.childCount - 1)
     }
 
     /** Nota informativa compacta: icono tonal y texto, con fondo de pastilla suave. */
