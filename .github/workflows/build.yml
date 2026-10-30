@@ -37,7 +37,7 @@ jobs:
           tag_name: v${{ steps.ver.outputs.v }}
           name: Ryx Island v${{ steps.ver.outputs.v }}
           body: |
-            - Diseño renovado para Island: editor con vista previa en vivo y accesos rápidos a temas, forma, avisos y movimiento.
-            - La previsualización muestra un mensaje de ejemplo más realista, pila de avisos e identidad visual cálida.
-            - Los accesos rápidos abren directamente los controles correspondientes; se mantienen las secciones detalladas.
+            - Interfaz Ryx Studio renovada con una paleta marfil y miel, gradientes suaves y superficies claras en todas las pantallas.
+            - Navegación, cabeceras, controles, formularios y hojas de diálogo rediseñados con contraste mejorado.
+            - El estudio de la isla incorpora accesos bento y vista previa en vivo, manteniendo las herramientas existentes organizadas por sección.
           files: RyxIsland.apk

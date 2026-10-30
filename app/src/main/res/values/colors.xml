@@ -1,18 +1,18 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <!-- Base -->
-    <color name="bg">#0D0C09</color>
-    <color name="card">#15130E</color>
-    <color name="text">#FFF9EC</color>
-    <color name="muted">#B9AE98</color>
+    <color name="bg">#FFF9ED</color>
+    <color name="card">#FFFFFF</color>
+    <color name="text">#282317</color>
+    <color name="muted">#766E60</color>
 
     <!-- Acentos -->
-    <color name="gold">#FFC857</color>
-    <color name="green">#3DDC84</color>
-    <color name="red">#FF6B6B</color>
-    <color name="blue">#4DA3FF</color>
-    <color name="violet">#B388FF</color>
-    <color name="mint">#2EE6C5</color>
+    <color name="gold">#AA7100</color>
+    <color name="green">#21834F</color>
+    <color name="red">#C64B3F</color>
+    <color name="blue">#2872B8</color>
+    <color name="violet">#7853B8</color>
+    <color name="mint">#127E70</color>
 
     <!-- Secciones del historial -->
     <color name="sec_apps">#6A62E8</color>
@@ -22,5 +22,5 @@
     <color name="sec_net">#40C8E0</color>
     <color name="sec_bt">#5E5CE6</color>
 
-    <color name="ic_launcher_background">#171207</color>
+    <color name="ic_launcher_background">#FFF4DC</color>
 </resources>
