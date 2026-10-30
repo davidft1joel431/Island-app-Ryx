@@ -497,11 +497,7 @@
     <string name="channel_live_updates">Actualizaciones nativas en vivo</string>
     <string name="engine_preview_title">Vista previa</string>
     <string name="engine_design_section">Diseño de notificaciones</string>
-    <string name="engine_xiaomi_title">Diseño destacado de Xiaomi</string>
-    <string name="engine_xiaomi_desc">Diseño moderno de HyperOS de Xiaomi.</string>
-    <string name="engine_native_title">Actualización en vivo</string>
-    <string name="engine_native_desc">Diseño de notificaciones de Android, funciona en CN ROM.</string>
-    <string name="engine_config_title">Configuación del motor</string>
+
     <string name="engine_section_design">Diseño de notificaciones</string>
     <string name="good_to_know">Debe saber que</string>
     <string name="nav_layout_info">• Los diseños de navegación se integrarán completamente en el Motor de Temas en una próxima actualización.\n• Al usar el motor nativo de Live Updates, solo el contenido del Lado Derecho es visible.</string>
@@ -509,7 +505,7 @@
     <string name="island_behavior_title">Comportamiento de la Isla</string>
     <string name="island_behavior_desc"><![CDATA[Tiempos de espera, duplicados y visibilidad]]></string>
     <string name="engine">Motor</string>
-    <string name="engine_desc">Live Updates vs Isla de Xiaomi</string>
+
     <string name="dnd_mode_title">No molestar</string>
     <string name="dnd_mode_desc">Gestionar la visibilidad de la isla durante No molestar</string>
     <string name="dnd_manual_toggle">Pausar islas</string>
@@ -669,7 +665,7 @@
     <string name="customize_inline_reply">Personalizar el diseño de la respuesta</string>
     <string name="reply_hint">Responder...</string>
     <string name="perm_display_title">Mostrar sobre otras aplicaciones</string>
-    <string name="perm_display_onboard_desc">Requerido para mostrar la ventana de respuesta rápida.</string>
+    <string name="perm_display_onboard_desc">Necesario para mostrar la isla flotante y la ventana de respuesta r&#225;pida.</string>
 
     <string name="changelog_0_5_7">
         <b>Optimizaciones y correcciones</b>\n
@@ -679,4 +675,27 @@
     <string name="title_0_5_7">Actualización de Rendimiento y Sincronización</string>
     <string name="type_message">Mensajes y chats</string>
     <string name="type_message_desc">Mensajes, chats y conversaciones</string>
+    <string name="engine_xiaomi_title">Isla flotante universal</string>
+    <string name="engine_xiaomi_desc">Funciona en ROM Android 15+. Usa la presentaci&#243;n nativa de HyperOS cuando est&#225; disponible y una ventana flotante en los dem&#225;s sistemas.</string>
+    <string name="engine_native_title">Actualizaciones en vivo de Android</string>
+    <string name="engine_native_desc">Usa el formato nativo cuando Android 16 o HyperOS lo admite; si no, Ryx Isla muestra una ventana flotante.</string>
+    <string name="engine_config_title">Configuraci&#243;n del motor</string>
+    <string name="engine_desc">Elige entre la presentaci&#243;n nativa del sistema y la isla flotante de Ryx Isla.</string>
+    <string name="title_1_0_0">Ryx Isla: nueva identidad</string>
+    <string name="changelog_1_0_0">Hyper Bridge pasa a llamarse Ryx Isla. Incluye isla din&#225;mica, temas, widgets, multimedia, llamadas y navegaci&#243;n.</string>
+    <string name="title_1_0_1">Compatibilidad y detecci&#243;n del sistema</string>
+    <string name="changelog_1_0_1">La configuraci&#243;n deja de exigir un dispositivo Xiaomi; muestra la ROM detectada y la versi&#243;n y API de Android. HyperOS nativo se usa cuando est&#225; disponible.</string>
+    <string name="title_1_0_2">Autor&#237;a y espa&#241;ol de Per&#250;</string>
+    <string name="changelog_1_0_2">Creador: David Joel, Per&#250;. Se a&#241;ade Espa&#241;ol (Per&#250;) y se actualizan los datos de autor&#237;a y pa&#237;s.</string>
+    <string name="title_1_0_3">Motor universal y mejoras de compatibilidad</string>
+    <string name="changelog_1_0_3">Ryx Isla muestra notificaciones en una ventana flotante cuando la ROM no dispone de HyperOS nativo. Los avisos Xiaomi solo aparecen en equipos compatibles. Se actualizan el historial y el icono.</string>
+    <string name="changelog_links_title">Notas de publicaci&#243;n oficiales</string>
+    <string name="changelog_ryx_repo_link">Versiones de Ryx Isla</string>
+    <string name="changelog_upstream_link">Versiones del proyecto Hyper Bridge</string>
+    <string name="changelog_ryx_section">Ryx Isla</string>
+    <string name="changelog_source_section">Historial del proyecto de origen</string>
+    <string name="title_0_6_0_beta5">Hyper Bridge 0.6.0 beta 5</string>
+    <string name="changelog_0_6_0_beta5">Referencia del historial oficial: isla de carga personalizable, indicador de depuraci&#243;n USB e inal&#225;mbrica, personalizaci&#243;n de VPN y mejoras del estudio de dise&#241;o.</string>
+    <string name="title_0_6_0_beta4">Hyper Bridge 0.6.0 beta 4</string>
+    <string name="changelog_0_6_0_beta4">Referencia del historial oficial: estudio de dise&#241;o de widgets, vistas previas, importaci&#243;n y exportaci&#243;n, adem&#225;s de mejoras para notificaciones, llamadas y progreso.</string>
 </resources>

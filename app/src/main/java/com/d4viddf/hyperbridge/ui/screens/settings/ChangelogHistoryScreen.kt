@@ -11,6 +11,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.OpenInNew
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -18,6 +19,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -29,9 +31,18 @@ data class VersionLog(val version: String, val titleRes: Int, val textRes: Int, 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ChangelogHistoryScreen(onBack: () -> Unit) {
-    // Define history here (Newest first)
-    val history = listOf(
-        VersionLog("0.5.7", R.string.title_0_5_7, R.string.changelog_0_5_7, isLatest = true),
+    val uriHandler = LocalUriHandler.current
+    val ryxHistory = listOf(
+        VersionLog("1.0.3", R.string.title_1_0_3, R.string.changelog_1_0_3, isLatest = true),
+        VersionLog("1.0.2", R.string.title_1_0_2, R.string.changelog_1_0_2),
+        VersionLog("1.0.1", R.string.title_1_0_1, R.string.changelog_1_0_1),
+        VersionLog("1.0.0", R.string.title_1_0_0, R.string.changelog_1_0_0)
+    )
+    // This section records the upstream Hyper Bridge versions used as Ryx Isla's base.
+    val upstreamHistory = listOf(
+        VersionLog("0.6.0-beta5", R.string.title_0_6_0_beta5, R.string.changelog_0_6_0_beta5, isLatest = true),
+        VersionLog("0.6.0-beta4", R.string.title_0_6_0_beta4, R.string.changelog_0_6_0_beta4),
+        VersionLog("0.5.7", R.string.title_0_5_7, R.string.changelog_0_5_7),
         VersionLog("0.5.6", R.string.title_0_5_6, R.string.changelog_0_5_6),
         VersionLog("0.5.5", R.string.title_0_5_5, R.string.changelog_0_5_5),
         VersionLog("0.5.2", R.string.title_0_5_2, R.string.changelog_0_5_2),
@@ -68,7 +79,50 @@ fun ChangelogHistoryScreen(onBack: () -> Unit) {
             modifier = Modifier.padding(padding).padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            items(history) { log ->
+            item {
+                Text(
+                    text = stringResource(R.string.changelog_links_title),
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.padding(bottom = 4.dp)
+                )
+                OutlinedButton(
+                    onClick = { uriHandler.openUri("https://github.com/davidft1joel431/Island-app-Ryx/releases") },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Icon(Icons.Default.OpenInNew, contentDescription = null)
+                    Spacer(Modifier.width(8.dp))
+                    Text(stringResource(R.string.changelog_ryx_repo_link))
+                }
+                OutlinedButton(
+                    onClick = { uriHandler.openUri("https://github.com/D4vidDf/HyperBridge/releases") },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Icon(Icons.Default.OpenInNew, contentDescription = null)
+                    Spacer(Modifier.width(8.dp))
+                    Text(stringResource(R.string.changelog_upstream_link))
+                }
+            }
+            item {
+                Text(
+                    text = stringResource(R.string.changelog_ryx_section),
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.padding(top = 8.dp, bottom = 4.dp)
+                )
+            }
+            items(ryxHistory) { log ->
+                ChangelogItem(log)
+            }
+            item {
+                Text(
+                    text = stringResource(R.string.changelog_source_section),
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.padding(top = 16.dp, bottom = 4.dp)
+                )
+            }
+            items(upstreamHistory) { log ->
                 ChangelogItem(log)
             }
         }

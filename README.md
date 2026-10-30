@@ -50,7 +50,7 @@ La información visible depende del contenido que envíe cada aplicación. La is
 | Sistema | Compatibilidad |
 | --- | --- |
 | Android 15 o posterior | Requisito mínimo de esta versión. |
-| Otras marcas y ROM | Se usa el acceso a notificaciones y la superposición de Android; el ahorro de batería y las reglas en segundo plano varían según el fabricante. |
+| Otras marcas y ROM | Ryx Isla dibuja la isla con una ventana flotante de Android; el ahorro de batería y las reglas en segundo plano varían según el fabricante. |
 | Xiaomi, Redmi y POCO con HyperOS | Pueden ofrecer integración nativa adicional con notificaciones destacadas. |
 | Permisos | Debes habilitar el acceso a notificaciones y permitir que Ryx Isla se muestre sobre otras aplicaciones. |
 

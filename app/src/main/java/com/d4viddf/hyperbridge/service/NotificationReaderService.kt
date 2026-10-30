@@ -41,6 +41,8 @@ import com.d4viddf.hyperbridge.service.translators.DownloadTranslator
 import com.d4viddf.hyperbridge.service.translators.StandardTranslator
 import com.d4viddf.hyperbridge.service.translators.TimerTranslator
 import com.d4viddf.hyperbridge.service.translators.WidgetTranslator
+import com.d4viddf.hyperbridge.util.DeviceUtils
+import com.d4viddf.hyperbridge.util.XiaomiNotificationHelper
 import com.d4viddf.hyperbridge.util.ShizukuManager
 import io.github.d4viddf.hyperisland_kit.HyperIslandNotification
 import kotlinx.coroutines.CoroutineScope
@@ -120,6 +122,8 @@ class NotificationReaderService : NotificationListenerService() {
     private lateinit var mediaTranslator: MediaTranslator
     private lateinit var widgetTranslator: WidgetTranslator
     private lateinit var liveUpdateTranslator: LiveUpdateTranslator
+    private lateinit var genericIslandOverlay: GenericIslandOverlay
+    private var hasNativeHyperIsland = false
 
     @Volatile
     private var isScreenOn = true
@@ -183,6 +187,8 @@ class NotificationReaderService : NotificationListenerService() {
         )
         
         preferences = AppPreferences(applicationContext)
+        genericIslandOverlay = GenericIslandOverlay(this)
+        hasNativeHyperIsland = DeviceUtils.isXiaomi && XiaomiNotificationHelper.isSupportIsland()
         createChannels()
 
         // [INIT] Theme Engine
@@ -393,6 +399,8 @@ class NotificationReaderService : NotificationListenerService() {
             if (intentionallyRemovedKeys.remove(notifKey)) {
                 return
             }
+
+            genericIslandOverlay.dismiss(notifKey)
 
             recentlyRemovedKeys[notifKey] = System.currentTimeMillis()
 
@@ -765,6 +773,16 @@ class NotificationReaderService : NotificationListenerService() {
 
             // --- LAYERED ENGINE LOGIC ---
             val useLiveUpdates = getEffectiveEngine(sbn.packageName)
+            if (!hasNativeHyperIsland) {
+                genericIslandOverlay.show(
+                    notificationKey = sbn.key,
+                    packageName = sbn.packageName,
+                    title = effectiveTitle,
+                    text = effectiveText,
+                    isOngoing = sbn.isOngoing,
+                    timeoutSeconds = finalConfig.timeout ?: 5
+                )
+            }
 
             if (useLiveUpdates) {
                 Log.i(TAG, " POSTING Native Live Update -> ID: $bridgeId, Type: $type")
@@ -786,8 +804,8 @@ class NotificationReaderService : NotificationListenerService() {
                 val shouldAlertOnce = isUpdate && (type == NotificationType.PROGRESS || type == NotificationType.DOWNLOAD || type == NotificationType.MEDIA)
                 builder.setOnlyAlertOnce(shouldAlertOnce)
 
-                val hasPermission = com.d4viddf.hyperbridge.util.XiaomiNotificationHelper.hasFocusPermission(this)
-                if (!hasPermission && com.d4viddf.hyperbridge.util.XiaomiNotificationHelper.isSupportIsland()) {
+                val hasPermission = !hasNativeHyperIsland || XiaomiNotificationHelper.hasFocusPermission(this)
+                if (!hasPermission && hasNativeHyperIsland) {
                     serviceScope.launch {
                         preferences.setFeaturedPermissionWarning(true)
                     }
@@ -1040,8 +1058,8 @@ class NotificationReaderService : NotificationListenerService() {
         builder.addExtras(extras)
         builder.addExtras(data.resources)
 
-        val hasPermission = com.d4viddf.hyperbridge.util.XiaomiNotificationHelper.hasFocusPermission(this)
-        if (!hasPermission) {
+        val hasPermission = !hasNativeHyperIsland || XiaomiNotificationHelper.hasFocusPermission(this)
+        if (hasNativeHyperIsland && !hasPermission) {
             val intent = Intent(this, MainActivity::class.java).apply {
                 flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
                 putExtra("open_troubleshoot", true)
@@ -1372,6 +1390,7 @@ class NotificationReaderService : NotificationListenerService() {
 
     override fun onDestroy() {
         super.onDestroy()
+        genericIslandOverlay.dismiss()
         unregisterReceiver(systemReceiver)
         unregisterReceiver(islandClickReceiver)
         syncJob?.cancel()
