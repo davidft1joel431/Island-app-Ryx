@@ -1292,12 +1292,19 @@ fun ListenerPermissionPage(context: Context, isGranted: Boolean) {
 
 @Composable
 fun FeaturedNotificationCheckPage(context: Context) {
-    val isSupported = remember { com.d4viddf.hyperbridge.util.XiaomiNotificationHelper.isSupportIsland() }
+    val isXiaomi = remember { DeviceUtils.isXiaomi }
+    val isSupported = remember {
+        isXiaomi && com.d4viddf.hyperbridge.util.XiaomiNotificationHelper.isSupportIsland()
+    }
     
     // We want to re-check when returning to this page, so we use a LaunchedEffect
     var isGranted by remember { mutableStateOf(false) }
     
-    androidx.compose.runtime.LaunchedEffect(Unit) {
+    androidx.compose.runtime.LaunchedEffect(isSupported) {
+        if (!isSupported) {
+            isGranted = false
+            return@LaunchedEffect
+        }
         while (true) {
             isGranted = com.d4viddf.hyperbridge.util.XiaomiNotificationHelper.hasFocusPermission(context)
             kotlinx.coroutines.delay(1000.milliseconds)
@@ -1312,8 +1319,8 @@ fun FeaturedNotificationCheckPage(context: Context) {
     ) {
         if (!isSupported) {
             Text(
-                stringResource(R.string.featured_notifications_not_supported),
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                stringResource(R.string.featured_notifications_generic_fallback),
+                color = MaterialTheme.colorScheme.primary,
                 style = MaterialTheme.typography.titleMedium
             )
         } else {
@@ -1527,6 +1534,12 @@ fun AutoHidePagePreview(){
 
 @Composable
 fun PermanentIslandConfigPage(prefs: AppPreferences) {
+    val context = LocalContext.current
+    val nativeIslandSupported = remember {
+        DeviceUtils.isXiaomi &&
+            com.d4viddf.hyperbridge.util.XiaomiNotificationHelper.isSupportIsland() &&
+            com.d4viddf.hyperbridge.util.XiaomiNotificationHelper.hasFocusPermission(context)
+    }
     val isEnabled by prefs.isPermanentIslandEnabledFlow.collectAsState(initial = false)
     val islandWidth by prefs.permanentIslandWidthFlow.collectAsState(initial = 0)
     
@@ -1563,9 +1576,17 @@ fun PermanentIslandConfigPage(prefs: AppPreferences) {
                     }
                     Switch(
                         checked = isEnabled,
+                        enabled = nativeIslandSupported,
                         onCheckedChange = { checked ->
                             scope.launch { prefs.setPermanentIslandEnabled(checked) }
                         }
+                    )
+                }
+                if (!nativeIslandSupported) {
+                    Text(
+                        text = stringResource(R.string.permanent_island_native_only),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
                 

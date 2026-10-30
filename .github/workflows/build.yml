@@ -37,11 +37,10 @@ jobs:
           tag_name: v${{ steps.version.outputs.version }}
           name: Ryx Isla v${{ steps.version.outputs.version }}
           body: |
-            Ryx Isla 1.0.3.
+            Ryx Isla 1.0.4.
 
-            - Añade una isla flotante de respaldo para ROM Android 15+ sin HyperOS.
-            - Limita los avisos de notificación destacada a dispositivos compatibles con HyperOS.
-            - Actualiza el historial de Ryx Isla y enlaza las versiones oficiales de ambos proyectos.
-            - Corrige el margen del icono y actualiza los recursos para todas las densidades.
+            - Aclara que el chequeo de isla destacada solo evalúa la integración nativa de Xiaomi.
+            - Elimina la isla vacía permanente en ROM que no admiten HyperOS nativo.
+            - Muestra el permiso necesario para usar la isla flotante en otras ROM Android 15+.
             - Creador: David Joel, Perú. Basada en Hyper Bridge bajo Apache 2.0.
           files: RyxIsla.apk

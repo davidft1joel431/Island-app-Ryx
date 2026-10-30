@@ -188,7 +188,8 @@ class NotificationReaderService : NotificationListenerService() {
         
         preferences = AppPreferences(applicationContext)
         genericIslandOverlay = GenericIslandOverlay(this)
-        hasNativeHyperIsland = DeviceUtils.isXiaomi && XiaomiNotificationHelper.isSupportIsland()
+        val supportsXiaomiIsland = DeviceUtils.isXiaomi && XiaomiNotificationHelper.isSupportIsland()
+        hasNativeHyperIsland = supportsXiaomiIsland && XiaomiNotificationHelper.hasFocusPermission(this)
         createChannels()
 
         // [INIT] Theme Engine
@@ -213,7 +214,12 @@ class NotificationReaderService : NotificationListenerService() {
             WidgetManager.init(this)
         }
 
-        permanentIslandManager = PermanentIslandManager(this, serviceScope, preferences)
+        permanentIslandManager = PermanentIslandManager(
+            this,
+            serviceScope,
+            preferences,
+            nativeIslandSupported = hasNativeHyperIsland
+        )
 
         serviceScope.launch { preferences.allowedPackagesFlow.collectLatest { allowedPackageSet = it } }
         serviceScope.launch { preferences.limitModeFlow.collectLatest { currentMode = it } }

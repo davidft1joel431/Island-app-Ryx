@@ -23,7 +23,8 @@ import kotlin.time.Duration.Companion.milliseconds
 class PermanentIslandManager(
     private val context: Context,
     private val scope: CoroutineScope,
-    private val preferences: AppPreferences
+    private val preferences: AppPreferences,
+    private val nativeIslandSupported: Boolean
 ) {
     private val TAG = "HyperBridgeDebug"
 
@@ -46,6 +47,10 @@ class PermanentIslandManager(
     private var pendingDispatchJob: Job? = null
 
     init {
+        if (!nativeIslandSupported) {
+            // Clear a stale Xiaomi-only placeholder left by an earlier service run.
+            ShizukuManager.cancel(context, PERMANENT_BRIDGE_ID)
+        }
         scope.launch {
             preferences.isPermanentIslandEnabledFlow.collectLatest { enabled ->
                 synchronized(this@PermanentIslandManager) {
@@ -102,6 +107,7 @@ class PermanentIslandManager(
     // focus island on top, so keeping 9999 posted makes the permanent island reappear instantly
     // when a bridged island collapses or expires (removing it would leave a gap until the TTL).
     private fun desiredActive(): Boolean {
+        if (!nativeIslandSupported) return false
         val isLandscape = context.resources.configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
         return isPermanentIslandEnabled && !hasNativeIsland && !(isHideInLandscapeEnabled && isLandscape)
     }
