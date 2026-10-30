@@ -2119,7 +2119,9 @@ class NotifListener : NotificationListenerService() {
     /** Fondo tenue para stickers (se ve la transparencia) y mientras llega una imagen. */
     private fun mediaTile(radius: Float): Drawable = GradientDrawable().apply {
         cornerRadius = px(radius).toFloat()
-        setColor(0x1FFFFFFF)
+        orientation = GradientDrawable.Orientation.TL_BR
+        colors = intArrayOf(0x24FFFFFF, Glass.withA(Glass.ACCENT, 0x18), 0x14FFFFFF)
+        setStroke(px(1).coerceAtLeast(1), Glass.withA(Glass.ACCENT, 0x36))
     }
 
     /** Pinta una imagen con un fundido corto; si ya estaba puesta, no se repite la animación. */

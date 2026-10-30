@@ -37,13 +37,8 @@ jobs:
           tag_name: v${{ steps.ver.outputs.v }}
           name: Ryx Island v${{ steps.ver.outputs.v }}
           body: |
-            - v0.9.53 corrige el Historial y la isla: solo se registran notificaciones y mensajes capturados. Se eliminan los eventos internos de batería, las marcas de revisión y los prefijos técnicos; las entradas antiguas se limpian automáticamente.
-            - La captura por accesibilidad guarda lo que se vio, con el nombre de la app como título. Ya no aparece «Chat en pantalla», «(pantalla · app)» ni el tipo «Pantalla».
-            - Imágenes, stickers y animaciones: los GIF/WebP animados conservan sus bytes originales y se muestran con ImageDecoder/AnimatedImageDrawable en la isla, el Historial y el visor. Las fotos grandes se reducen para no agotar memoria.
-            - La isla expandida y el detalle miden exactamente 350 × 74 dp. El texto largo se desplaza dentro de una caja fija; la miniatura, los botones y la pila de apps se adaptan sin agrandar la tarjeta.
-            - Una sola vista previa fija en Diseño. Se retiraron los controles de ancho expandido y margen lateral: el ancho abierto es siempre 350 dp, solo recortado si la pantalla física es más estrecha.
-            - El Historial y la isla solo ofrecen copiar mensaje e imagen/sticker. Base64/binario sigue siendo el respaldo interno, invisible para el usuario.
-            - Gestos: 10 copiar mensaje, 11 silenciar app y 14 copiar imagen. Los índices 12, 13 y 15 no hacen nada.
-            - Sin root ni Shizuku, Ryx no promete poder absoluto: Android siempre exige confirmar cada permiso especial.
-            - Se mantienen el respaldo completo, la copia en la nube, las apps clonadas, las ventanas libres, las llamadas, la conectividad y los diagnósticos.
+            - Nueva identidad visual dorada con superficies oscuras cálidas, degradados más definidos y controles con mejor contraste.
+            - Se restaura el tema amarillo predeterminado que faltaba en la lista de temas; las preferencias de otros temas se conservan.
+            - La isla HyperOS adopta un borde dorado discreto y las vistas previas de fotos y stickers tienen un marco cálido.
+            - Se mantienen las imágenes y stickers animados en la isla, el Historial y el visor.
           files: RyxIsland.apk

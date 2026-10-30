@@ -23,14 +23,14 @@ data class IslandStyle(
 )
 
 object Styles {
-    // HyperOS: fondo oscuro translúcido con borde tenue.
+    // HyperOS: grafito cálido con un borde dorado discreto.
     val HYPEROS = IslandStyle(
         id = "hyperos", label = "HyperOS",
-        bgTop = 0xEE14181E.toInt(), bgBottom = 0xE40E1015.toInt(),
-        strokeColor = 0x669CA3AF, strokeDp = 1.2f, highlight = 0x30FFFFFF,
+        bgTop = 0xEE19160E.toInt(), bgBottom = 0xE40E0C08.toInt(),
+        strokeColor = 0x66F5B82E, strokeDp = 1.2f, highlight = 0x26F5B82E,
         cornerDp = 28f, iconCircle = false, iconCornerDp = 12f, iconDp = 38,
         showAppName = false, expandedWidthDp = 350, titleSp = 14f, bodySp = 12f,
-        padH = 14, padV = 12, textColor = 0xFFFFFFFF.toInt(), subColor = 0xCC94A3B8.toInt()
+        padH = 14, padV = 12, textColor = 0xFFFFF8E8.toInt(), subColor = 0xCCD8C9A6.toInt()
     )
 
     // iOS: negro absoluto con ícono squircle, estilo minimalista.

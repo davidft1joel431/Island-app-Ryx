@@ -1,13 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <!-- Base -->
-    <color name="bg">#0B0D12</color>
-    <color name="card">#13161C</color>
-    <color name="text">#F3F5F9</color>
-    <color name="muted">#98A1B3</color>
+    <color name="bg">#0D0C09</color>
+    <color name="card">#15130E</color>
+    <color name="text">#FFF9EC</color>
+    <color name="muted">#B9AE98</color>
 
     <!-- Acentos -->
-    <color name="gold">#FF8A4C</color>
+    <color name="gold">#FFC857</color>
     <color name="green">#3DDC84</color>
     <color name="red">#FF6B6B</color>
     <color name="blue">#4DA3FF</color>
@@ -22,5 +22,5 @@
     <color name="sec_net">#40C8E0</color>
     <color name="sec_bt">#5E5CE6</color>
 
-    <color name="ic_launcher_background">#10162A</color>
+    <color name="ic_launcher_background">#171207</color>
 </resources>
