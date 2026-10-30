@@ -24,8 +24,9 @@ import android.animation.ValueAnimator
 data class AppTheme(val id: String, val label: String, val accent: Int, val glow1: Int, val glow2: Int)
 
 object Glass {
-    /** Temas modernos y minimalistas: fondos oscuros, acentos sutiles, sin tonos amarillos intensos. */
+    /** Temas oscuros con acentos personalizables; el tema amarillo es el predeterminado de Ryx. */
     val THEMES = listOf(
+        AppTheme("yellow", "Miel dorada", 0xFFFFC857.toInt(), 0xFFF5A623.toInt(), 0xFFFF7B32.toInt()),
         AppTheme("onyx", "Ónix", 0xFF6366F1.toInt(), 0x1A6366F1, 0x0F4C86FF),   // índigo profundo
         AppTheme("slate", "Pizarra", 0xFF94A3B8.toInt(), 0x1594A3B8, 0x0E3B535C), // gris azulado
         AppTheme("emerald", "Esmeralda", 0xFF10B981.toInt(), 0x1510B981, 0x0B0F3B33), // verde esmeralda
@@ -40,14 +41,14 @@ object Glass {
     var ACCENT: Int = THEMES[0].accent
         private set
 
-    // Texto: tonos claros sobre fondo oscuro, sin amarillos
+    // Texto crema sobre superficies oscuras cálidas.
     const val TEXT = 0xFFFFFFFF.toInt()
     const val MUTED = 0xFF9CA3AF.toInt()
     const val FAINT = 0xFF6B7280.toInt()
-    // Superficies: negro profundo y gris pizarra (estética minimalista moderna)
-    const val SURFACE = 0xFF0B0C10.toInt()      // fondo principal casi negro
-    const val SURFACE_HI = 0xFF11131A.toInt()   // superficie elevada
-    const val SURFACE_TOP = 0xFF171A23.toInt()  // superficie aún más elevada
+    // Superficies grafito con un matiz cálido que deja respirar el acento dorado.
+    const val SURFACE = 0xFF0D0C09.toInt()      // fondo principal casi negro
+    const val SURFACE_HI = 0xFF15130E.toInt()   // superficie elevada
+    const val SURFACE_TOP = 0xFF1E1A11.toInt()  // superficie aún más elevada
     /** Borde fino tenue (8 % de blanco) para tarjetas y controles minimalistas. */
     const val HAIR = 0x14FFFFFF
     /** Borde algo más visible para elementos elevados. */
@@ -85,7 +86,7 @@ object Glass {
     fun page(c: Context): Drawable {
         val d = c.resources.displayMetrics
         val base = GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM,
-            intArrayOf(SURFACE, SURFACE_HI, 0xFF07080B.toInt()))
+            intArrayOf(SURFACE_TOP, SURFACE, 0xFF080704.toInt()))
         val glow = GradientDrawable().apply {
             gradientType = GradientDrawable.RADIAL_GRADIENT
             setGradientCenter(0.9f, 0.0f)
@@ -108,7 +109,7 @@ object Glass {
     fun card(c: Context, radiusDp: Float = 24f, strong: Boolean = false): Drawable =
         GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM,
             if (strong) intArrayOf(SURFACE_TOP, SURFACE_HI, SURFACE)
-            else intArrayOf(SURFACE_HI, SURFACE, 0xFF0A0C10.toInt())).apply {
+            else intArrayOf(SURFACE_HI, SURFACE, 0xFF0A0906.toInt())).apply {
             cornerRadius = dp(c, radiusDp); setStroke(maxOf(1, dp(c, 1f).toInt()), HAIR)
         }
 
