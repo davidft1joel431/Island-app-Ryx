@@ -1,812 +1,682 @@
+<?xml version="1.0" encoding="utf-8"?>
 <resources>
     <!-- Ryx Isla modifications: app branding and localization; derived from Hyper Bridge (Apache-2.0). -->
     <string name="app_name">Ryx Isla</string>
-
-    <string name="back">Back</string>
-    <string name="next">Next</string>
-    <string name="finish">Finish</string>
-    <string name="done">Done</string>
-    <string name="logo_desc">App Logo</string>
-    <string name="settings">Settings</string>
-    <string name="configure">Configure</string>
-    <string name="clear">Clear</string>
-    <string name="sort_order">Sort Order</string>
-
-    <string name="welcome_title">Welcome to\nRyx Isla</string>
-    <string name="welcome_subtitle">Bring dynamic notifications to Android 15+ with native HyperOS integration where available.</string>
-    <string name="get_started">Get Started</string>
-
-    <string name="how_it_works">How it Works</string>
-    <string name="how_it_works_desc">Select your favorite apps (Spotify, Maps, Timer). Ryx Isla transforms their notifications into a sleek HyperIsland.</string>
-    <string name="beta_warning">Note: This app is in Beta. You may encounter bugs or incorrect visual information.</string>
-
-    <string name="device_compatible">Device Compatible</string>
-    <string name="unsupported_device">Unsupported Android version</string>
-    <string name="compatible_msg">Android 15 or newer is supported. Native HyperOS integration is available when the device supports it.</string>
-
-    <string name="show_island">Show Island</string>
-    <string name="perm_post_desc">We need permission to post the \'Island\' notification on your screen.</string>
-    <string name="perm_granted">Permission Granted</string>
-    <string name="allow_notifications">Allow Notifications</string>
-
-    <string name="read_data">Read Notifications</string>
-    <string name="perm_listener_desc">To bridge your apps, we need to read their notifications (Music, Maps, Timers).</string>
-    <string name="open_settings">Open Settings</string>
-
-    <string name="optimization_desc">HyperOS kills background apps. Enable Autostart and No Restrictions to keep the island active.</string>
-    <string name="enable_autostart">Allow Autostart</string>
-    <string name="set_battery_no_restrictions">Disable Restrictions</string>
-
-    <string name="tab_active">Active</string>
-    <string name="tab_library">Library</string>
-    <string name="search_hint">Search apps…</string>
-
-    <string name="no_active_bridges">No Active Bridges</string>
-    <string name="no_active_bridges_desc">Go to Library to enable apps.</string>
-    <string name="no_apps_found">No apps found</string>
-
-    <string name="version_template">Version %s</string>
-    <string name="developer_credit">Ryx Isla · Hyper Bridge (Apache 2.0)</string>
-
-    <string name="group_configuration">Configuration</string>
-    <string name="system_setup">System Setup</string>
-    <string name="system_setup_subtitle">Fix permissions &amp; battery</string>
-
+    <string name="back">Atrás</string>
+    <string name="next">Siguiente</string>
+    <string name="finish">Finalizar</string>
+    <string name="done">Hecho</string>
+    <string name="logo_desc">Logo de la App</string>
+    <string name="settings">Ajustes</string>
+    <string name="configure">Configurar</string>
+    <string name="clear">Borrar</string>
+    <string name="sort_order">Orden</string>
+    <string name="welcome_title">Bienvenido a\nRyx Isla</string>
+    <string name="welcome_subtitle">Lleva notificaciones dinámicas a Android 15+ y disfruta de la integración HyperOS cuando esté disponible.</string>
+    <string name="get_started">Empezar</string>
+    <string name="how_it_works">Cómo funciona</string>
+    <string name="how_it_works_desc">Selecciona tus aplicaciones favoritas (Spotify, Navegación, Relojes). Ryx Isla transforma sus notificaciones en una elegante Hyper Island.</string>
+    <string name="beta_warning">Nota: Esta app está en Beta. Puedes encontrar errores o información visual incorrecta.</string>
+    <string name="device_compatible">Dispositivo Compatible</string>
+    <string name="unsupported_device">Android no compatible</string>
+    <string name="compatible_msg">Android 15 o superior es compatible. La integración nativa HyperOS aparece cuando el dispositivo la admite.</string>
+    <string name="show_island">Mostrar Isla</string>
+    <string name="perm_post_desc">Necesitamos permiso para mostrar la notificación \'Isla\' en tu pantalla.</string>
+    <string name="perm_granted">Permiso Concedido</string>
+    <string name="allow_notifications">Permitir Notificaciones</string>
+    <string name="read_data">Leer Notificaciones</string>
+    <string name="perm_listener_desc">Para conectar tus aplicaciones, necesitamos leer sus notificaciones (Música, Mapas, Temporizadores).</string>
+    <string name="open_settings">Abrir Ajustes</string>
+    <string name="optimization_desc">HyperOS cierra aplicaciones en segundo plano. Habilita el Inicio Automático y Sin Restricciones para mantener la isla activa.</string>
+    <string name="enable_autostart">1. Activar Inicio Automático</string>
+    <string name="set_battery_no_restrictions">2. Batería \'Sin Restricciones\'</string>
+    <string name="tab_active">Activos</string>
+    <string name="tab_library">Biblioteca</string>
+    <string name="search_hint">Buscar aplicaciones…</string>
+    <string name="no_active_bridges">Sin Bridges Activos</string>
+    <string name="no_active_bridges_desc">Ve a la Biblioteca para habilitar aplicaciones.</string>
+    <string name="no_apps_found">No se encontraron apps</string>
+    <string name="version_template">Versión %s</string>
+    <string name="developer_credit">Creado por David Joel · Ryx Isla</string>
+    <string name="group_configuration">Configuración</string>
+    <string name="system_setup">Configuración del Sistema</string>
+    <string name="system_setup_subtitle">Arreglar permisos y batería</string>
     <!-- Permanent Island -->
-    <string name="permanent_island_title">Permanent Island</string>
-    <string name="permanent_island_desc">Keep the Dynamic Island permanently visible on screen when there are no active notifications.</string>
-    <string name="permanent_island_screen_desc">When enabled, an empty Dynamic Island will be shown permanently on your screen. It will automatically hide when real notifications arrive and reappear when all notifications are cleared. It will not be visible in your notification shade.</string>
-    <string name="permanent_island_width">Island Width</string>
-    <string name="permanent_island_hide_landscape">Hide in Landscape</string>
-
-    <string name="group_about">About</string>
-    <string name="special_thanks">Special Thanks</string>
-    <string name="xmsf_workaround_credit_title">XMSF Workaround</string>
-    <string name="xmsf_workaround_credit_subtitle">Research by Stardawn (星间晞)</string>
-    <string name="developer">Developer</string>
-    <string name="developer_subtitle">Visit d4viddf.com</string>
-    <string name="source_code">Source Code</string>
-    <string name="source_code_subtitle">GitHub Repository</string>
-    <string name="licenses">Open Source Licenses</string>
-    <string name="licenses_subtitle">Third-party software</string>
-    <string name="footer_made_with_love">Made with ❤️ in Spain</string>
-
-    <string name="app_health_desc">Ensure all checks are green for the app to work correctly in the background.</string>
-    <string name="req_permissions">Required Permissions</string>
-    <string name="notif_access">Notification Access</string>
-    <string name="notif_access_desc">Required to read app events</string>
-    <string name="device_optimization">Device Optimization</string>
-    <string name="xiaomi_autostart">Xiaomi Autostart</string>
-    <string name="battery_unrestricted">Battery Unrestricted</string>
-    <string name="battery_desc">Prevent system killing app</string>
-    <string name="recents_note">Note: Also lock the app in the \'Recents\' overview menu.</string>
-    <string name="status_active">Active</string>
-
-    <string name="cat_all">All</string>
-    <string name="cat_music">Music</string>
-    <string name="cat_nav">Navigation</string>
-    <string name="cat_timer">Productivity</string>
-    <string name="cat_other">Other</string>
-
-    <string name="type_standard">General Alerts</string>
-    <string name="type_message">Messages &amp; Chats</string>
-    <string name="type_progress">Progress &amp; Tasks</string>
-    <string name="type_download">Downloads</string>
-    <string name="type_media">Music &amp; Media</string>
-    <string name="type_nav">Maps &amp; GPS</string>
-    <string name="type_call">Calls</string>
-    <string name="type_timer">Timers &amp; Alarms</string>
-
-    <string name="download_complete">Download Complete</string>
-    <string name="downloading">Downloading</string>
-    <string name="maps_title">Maps</string>
-
+    <string name="permanent_island_title">Isla Permanente</string>
+    <string name="permanent_island_desc">Mantener la Isla Dinámica permanentemente visible en la pantalla cuando no haya notificaciones activas.</string>
+    <string name="permanent_island_screen_desc">Cuando esté activado, se mostrará una Isla Dinámica vacía de forma permanente en la pantalla. Se ocultará automáticamente cuando lleguen notificaciones reales y volverá a aparecer cuando se borren todas las notificaciones. No será visible en el panel de notificaciones.</string>
+    <string name="permanent_island_width">Ancho de la Isla</string>
+    <string name="permanent_island_hide_landscape">Ocultar en Horizontal</string>
+    <string name="group_about">Sobre la aplicación</string>
+    <string name="developer">David Joel</string>
+    <string name="developer_subtitle">Creador de Ryx Isla · Perú</string>
+    <string name="source_code">Código Fuente</string>
+    <string name="source_code_subtitle">Repositorio en GitHub</string>
+    <string name="licenses">Licencias de código abierto</string>
+    <string name="licenses_subtitle">Software de terceros</string>
+    <string name="footer_made_with_love">Hecho con ❤️ en Perú</string>
+    <string name="app_health_desc">Asegúrate de que todo esté en verde para que la aplicación funcione correctamente en segundo plano.</string>
+    <string name="req_permissions">Permisos Requeridos</string>
+    <string name="notif_access">Acceso a Notificaciones</string>
+    <string name="notif_access_desc">Necesario para leer eventos</string>
+    <string name="device_optimization">Optimización del Dispositivo</string>
+    <string name="xiaomi_autostart">Inicio Automático Xiaomi</string>
+    <string name="battery_unrestricted">Batería Sin Restricciones</string>
+    <string name="battery_desc">Evita que el sistema cierre la aplicación</string>
+    <string name="recents_note">Nota: Bloquea también la aplicación en el menú de \'Recientes\'.</string>
+    <string name="status_active">Activo</string>
+    <string name="cat_all">Todas</string>
+    <string name="cat_music">Música</string>
+    <string name="cat_nav">Navegación</string>
+    <string name="cat_timer">Productividad</string>
+    <string name="cat_other">Otros</string>
+    <string name="type_standard">Mensajes y General</string>
+    <string name="type_progress">Progreso y Tareas</string>
+    <string name="type_download">Descargas</string>
+    <string name="type_media">Música y Multimedia</string>
+    <string name="type_nav">Mapas y GPS</string>
+    <string name="type_call">Llamadas</string>
+    <string name="type_timer">Temporizadores y Alarmas</string>
+    <string name="download_complete">Descarga Completa</string>
+    <string name="downloading">Descargando</string>
+    <string name="maps_title">Mapas</string>
     <string-array name="progress_finish_keywords">
-        <item>downloaded</item>
-        <item>completed</item>
-        <item>finished</item>
-        <item>installed</item>
-        <item>done</item>
-        <item>successful</item>
-        <item>succeeded</item>
+        <item>descargado</item>
+        <item>completado</item>
+        <item>finalizado</item>
+        <item>instalado</item>
+        <item>hecho</item>
+        <item>exitoso</item>
+        <item>listo</item>
     </string-array>
-
-    <string name="status_now_playing">Now Playing</string>
-
-    <string name="fallback_timer">Timer</string>
-
-    <string name="whats_new_title">What\'s New in %s</string>
-    <string name="awesome">Awesome!</string>
-
-
-    <string name="island_behavior">Island Behavior</string>
-    <string name="limit_strategy">Limit Strategy</string>
-    <string name="limit_desc">What happens when you reach 9 islands?</string>
-    <string name="mode_fcfs_title">First Come, First Served</string>
-    <string name="mode_fcfs_desc">Keeps the first 9 apps. New apps are ignored until space opens.</string>
-    <string name="mode_recent_title">Most Recent (Default)</string>
-    <string name="mode_recent_desc">New notifications replace the oldest ones.</string>
-    <string name="mode_priority_title">Custom Priority</string>
-    <string name="mode_priority_desc">Define which types (e.g. Calls) are more important.</string>
-    <string name="priority_order">Priority Order</string>
-    <string name="priority_order_desc">High priority (Top) replaces Low priority (Bottom).</string>
-    <string name="configure_order">Configure apps order</string>
-
-    <string name="global_settings">Global Settings</string>
-    <string name="island_appearance">Island Appearance</string>
-    <string name="setting_float">Heads-up Popup</string>
-    <string name="setting_float_desc">Show the full notification banner briefly before minimizing to the Island.</string>
-    <string name="setting_float_timeout_desc">How long the heads-up popup stays visible.</string>
-
-    <string name="setting_shade">Notification Panel</string>
-    <string name="setting_shade_desc">Keep the notification visible in the notification panel. If disabled, it only appears as an Island.</string>
-
+    <string name="status_now_playing">Reproduciendo</string>
+    <string name="fallback_timer">Temporizador</string>
+    <string name="whats_new_title">Novedades en %s</string>
+    <string name="awesome">¡Genial!</string>
+    <string name="island_behavior">Comportamiento</string>
+    <string name="limit_strategy">Estrategia de Límite</string>
+    <string name="limit_desc">¿Qué sucede al llegar a 9 islas?</string>
+    <string name="mode_fcfs_title">Por Orden de Llegada</string>
+    <string name="mode_fcfs_desc">Mantiene las primeras 9 notificaciones. Las nuevas notificaciones se ignoran hasta que haya espacio.</string>
+    <string name="mode_recent_title">Más Reciente (Por defecto)</string>
+    <string name="mode_recent_desc">Las nuevas notificaciones reemplazan a las más antiguas.</string>
+    <string name="mode_priority_title">Prioridad Personalizada</string>
+    <string name="mode_priority_desc">Tú decides qué aplicaciones son más importantes.</string>
+    <string name="priority_order">Orden de Prioridad</string>
+    <string name="priority_order_desc">Las aplicaciones más arriba tienen mayor prioridad</string>
+    <string name="configure_order">Configurar Orden de aplicaciones</string>
+    <string name="global_settings">Ajustes Globales</string>
+    <string name="island_appearance">Apariencia de Isla</string>
+    <string name="setting_float">Notificación Emergente</string>
+    <string name="setting_float_desc">Muestra el banner completo antes de minimizarlo en la Isla.</string>
+    <string name="setting_float_timeout_desc">Cuánto tiempo la ventana emergente se mantiene visible.</string>
+    <string name="setting_shade">Panel de Notificaciones</string>
+    <string name="setting_shade_desc">Mantén la notificación visible en el panel de notificación. Si está desactivada, solo aparece como una isla.</string>
     <string name="seconds_suffix">%ds</string>
-
-    <string name="use_global_default">Use Global Defaults</string>
-
+    <string name="use_global_default">Usar valores globales</string>
     <string-array name="nav_arrival_keywords">
-        <item>arrival</item>
-        <item>arrive</item>
+        <item>llegada</item>
+        <item>llega</item>
+        <item>llegando</item>
         <item>eta</item>
-        <item>reaching</item>
-        <item>destination</item>
+        <item>destino</item>
     </string-array>
-
-    <string name="version_history">Version History</string>
-
-    <string name="title_0_2_0">The Information Update</string>
-    <string name="changelog_0_2_0">
-        • &lt;b&gt;Advanced Progress:&lt;/b&gt; Added support for "Step Progress" (e.g. 1 of 3) and progress bars with icons inside the notification shade.\n
-        • &lt;b&gt;Priority System:&lt;/b&gt; New "Island Behavior" settings. Choose between "Most Recent", "First Come", or a custom "App Priority" list.\n
-        • &lt;b&gt;Smart Filtering:&lt;/b&gt; Improved detection of duplicate notifications and grouped downloads.\n
-        • &lt;b&gt;Visual Improvements:&lt;/b&gt; Fixed layout issues with Navigation instructions.\n
-        • &lt;b&gt;Per-App Config:&lt;/b&gt; Customize Timeout and Floating behavior per app.
+    <string name="version_history">Historial de Versiones</string>
+    <string name="title_0_2_0">La Actualización de Información</string>
+    <string name="changelog_0_2_0">        • &lt;b&gt;Progreso Avanzado:&lt;/b&gt; Soporte para \"Pasos\" (ej. 1 de 3) y barras de progreso con iconos en el panel de notificaciones.\n
+        • &lt;b&gt;Sistema de Prioridad:&lt;/b&gt; Nuevos ajustes de \"Comportamiento\". Elige el orden de aparición de las islas.\n
+        • &lt;b&gt;Filtros Inteligentes:&lt;/b&gt; Detección mejorada de duplicados.\n
+        • &lt;b&gt;Mejoras Visuales:&lt;/b&gt; Diseño de navegación mejorado.\n
+        • &lt;b&gt;Configuración por Aplicación:&lt;/b&gt; Personaliza la duración y tiempo de muestra por aplicación.
     </string>
-
-    <string name="title_0_1_0">The Expressive Update</string>
-    <string name="changelog_0_1_0">
-        • &lt;b&gt;Major UI Overhaul:&lt;/b&gt; New Material 3 Expressive design with smooth animations.\n
-        • &lt;b&gt;Better Island:&lt;/b&gt; Text now appears on the right side. Added Green Tick for finished downloads.\n
-        • &lt;b&gt;Per-App Config:&lt;/b&gt; Select specific notification types (Music, Maps, Calls) per app.\n
-        • &lt;b&gt;Smart Filters:&lt;/b&gt; Blocks duplicate notifications and saves battery.\n
-        • &lt;b&gt;New Library:&lt;/b&gt; Filter apps by category and sort order.\n
-        • &lt;b&gt;Localization:&lt;/b&gt; Added Spanish support.
+    <string name="title_0_1_0">La Actualización Expresiva</string>
+    <string name="changelog_0_1_0">        • &lt;b&gt;Nuevo Diseño :&lt;/b&gt; Ryx Isla ahora usa Material 3 Expressive con nuevas animaciones.\n
+        • &lt;b&gt;Mejoras en HyperIsland:&lt;/b&gt; El texto ahora aparece a la derecha y muestra un tick verde para descargas completas.\n
+        • &lt;b&gt;Configuración por aplicación:&lt;/b&gt; Ahora puedes personalizar que tipos de notificación se puede mostrar para cada aplicación.\n
+        • &lt;b&gt;Filtros Inteligentes:&lt;/b&gt; Ryx Isla ahora bloquea notificaciones duplicadas y ahorra batería.\n
+        • &lt;b&gt;Nueva Biblioteca:&lt;/b&gt; Filtra aplicaciones por categoría y orden.\n
+        • &lt;b&gt;Idiomas:&lt;/b&gt; Soporte completo para Español.
     </string>
-
-    <string name="priority_edu_title">Control the Island</string>
-    <string name="priority_edu_desc">Choose how the island should behave when multiple notifications are active at the same time.</string>
-
-    <string name="badge_new">NEW</string>
-
-    <string name="nav_layout_title">Navigation Layout</string>
-    <string name="nav_layout_desc">Choose where information appears</string>
-    <string name="left_content">Left Side</string>
-    <string name="right_content">Right Side</string>
-
-    <string name="nav_content_instruction">Instruction</string>
-    <string name="nav_content_distance">Distance</string>
-    <string name="nav_content_eta">Arrival Time</string>
-    <string name="nav_content_distance_eta">Dist. &amp; Time</string>
-    <string name="nav_content_none">Empty</string>
-
-    <string name="channel_active_islands">Active Islands</string>
-
-    <string name="cd_enable_type">Enable %s notifications</string>
-    <string name="cd_disable_type">Disable %s notifications</string>
-    <string name="cd_nav_edit">Edit navigation layout</string>
-    <string name="cd_app_state_active">Active</string>
-    <string name="cd_app_state_inactive">Inactive</string>
-
-    <string name="cd_move_up">Move item up</string>
-    <string name="cd_move_down">Move item down</string>
-    <string name="cd_drag_handle">Drag handle. Double tap and hold to reorder, or use actions to move.</string>
-    <string name="cd_app_icon">App Icon for %s</string>
-    <string name="cd_nav_preview">Navigation Preview: %1$s on left, %2$s on right</string>
-    <string name="cd_expand_changelog">Expand version details</string>
-    <string name="cd_collapse_changelog">Collapse version details</string>
-
-    <string name="nav_preview_instruction">Turn Right</string>
+    <string name="priority_edu_title">Controla la Isla</string>
+    <string name="priority_edu_desc">Elige cómo debe comportarse la isla cuando hay varias notificaciones activas al mismo tiempo.</string>
+    <string name="badge_new">NUEVO</string>
+    <string name="nav_layout_title">Diseño de Navegación</string>
+    <string name="nav_layout_desc">Elige dónde aparece la información</string>
+    <string name="left_content">Lado Izquierdo</string>
+    <string name="right_content">Lado Derecho</string>
+    <string name="nav_content_instruction">Instrucción</string>
+    <string name="nav_content_distance">Distancia</string>
+    <string name="nav_content_eta">Hora de Llegada</string>
+    <string name="nav_content_distance_eta">Dist. y Hora</string>
+    <string name="nav_content_none">Vacío</string>
+    <string name="channel_active_islands">Islas Activas</string>
+    <string name="cd_enable_type">Activar notificaciones de %s</string>
+    <string name="cd_disable_type">Desactivar notificaciones de %s</string>
+    <string name="cd_nav_edit">Editar diseño de navegación</string>
+    <string name="cd_app_state_active">Activo</string>
+    <string name="cd_app_state_inactive">Inactivo</string>
+    <string name="cd_move_up">Mover hacia arriba</string>
+    <string name="cd_move_down">Mover hacia abajo</string>
+    <string name="cd_drag_handle">Control de arrastre. Toca dos veces y mantén pulsado para reordenar, o usa las acciones para mover.</string>
+    <string name="cd_app_icon">Icono de la aplicación %s</string>
+    <string name="cd_nav_preview">Vista previa de navegación: %1$s a la izquierda, %2$s a la derecha</string>
+    <string name="cd_expand_changelog">Expandir detalles de la versión</string>
+    <string name="cd_collapse_changelog">Contraer detalles de la versión</string>
+    <string name="nav_preview_instruction">Girar a la derecha</string>
     <string name="nav_preview_distance">200m</string>
     <string name="nav_preview_time">10:30</string>
-
-    <string name="blocked_terms">Blocked Terms</string>
-    <string name="blocked_terms_desc">Notifications containing these words will be ignored.</string>
-    <string name="add_blocked_word">Add word (e.g. Spoiler)</string>
-    <string name="add">Add</string>
-    <string name="remove">Remove</string>
-    <string name="spoiler_subtitle">Manage spoiler protection and filters</string>
-
-    <string name="active_notifications_title">Notification Types</string>
-    <string name="active_notifications_subtitle">%d active</string>
-    <string name="appearance_use_defaults_desc">Using system defaults for animation speed and floating behavior.</string>
-    <string name="blocked_terms_active_count">%d rules active</string>
-
-    <string name="global_rules">Global Rules</string>
-    <string name="app_specific_rules">App Specific Rules</string>
-    <string name="manage_app_rules_desc">Customize filters for specific applications</string>
-    <string name="blocked_terms_count">%d terms blocked</string>
-    <string name="no_active_rules">No active rules</string>
-
-    <string name="setup_health_title">System Compatibility</string>
-    <string name="req_hyperos">This release requires Android 15 or newer.</string>
-    <string name="req_xiaomi">Native HyperOS integration requires Xiaomi, Redmi, or POCO.</string>
-
-    <string name="warning_cn_rom_title">China ROM Detected</string>
-    <string name="warning_cn_rom_desc">Your device appears to be running a Chinese firmware. Xiaomi modifies notification internals significantly on CN ROMs. Features might be unstable or not work at all.</string>
-
-    <string name="shizuku_workaround_title">Enable Shizuku Workaround</string>
-    <string name="shizuku_enable_workaround">Enable Workaround</string>
-    <string name="shizuku_workaround_desc">If you are on a CN ROM, you must enable the Shizuku Workaround for notifications to trigger correctly.</string>
-    <string name="shizuku_status_running">Shizuku is running</string>
-    <string name="shizuku_permission_granted">Permission Granted</string>
-    <string name="shizuku_permission_denied">Permission Denied</string>
-    <string name="shizuku_request_permission">Grant Shizuku Permission</string>
-    <string name="shizuku_not_installed">Shizuku app is not installed or running. Please install and start Shizuku first.</string>
-
-    <string name="system_version">System Version</string>
-
-    <string name="call_incoming">Incoming Call</string>
-    <string name="call_ongoing">Active Call</string>
-
+    <string name="blocked_terms">Términos Bloqueados</string>
+    <string name="blocked_terms_desc">Se ignorarán las notificaciones que contengan estas palabras.</string>
+    <string name="add_blocked_word">Añadir palabra (ej. \'Spoiler\')</string>
+    <string name="add">Añadir</string>
+    <string name="remove">Eliminar</string>
+    <string name="spoiler_subtitle">Gestionar protección contra spoilers y filtros</string>
+    <string name="active_notifications_title">Tipos de Notificación</string>
+    <string name="active_notifications_subtitle">%d activas</string>
+    <string name="appearance_use_defaults_desc">Usando valores predeterminados del sistema para velocidad y comportamiento flotante.</string>
+    <string name="blocked_terms_active_count">%d reglas activas</string>
+    <string name="global_rules">Reglas Globales</string>
+    <string name="app_specific_rules">Reglas por Aplicación</string>
+    <string name="manage_app_rules_desc">Personaliza filtros para aplicaciones específicas</string>
+    <string name="blocked_terms_count">%d términos bloqueados</string>
+    <string name="no_active_rules">Sin reglas activas</string>
+    <string name="setup_health_title">Compatibilidad del Sistema</string>
+    <string name="req_hyperos">Esta versión requiere Android 15 o superior.</string>
+    <string name="req_xiaomi">La integración nativa de HyperOS requiere Xiaomi, Redmi o POCO.</string>
+    <string name="warning_cn_rom_title">ROM China Detectada</string>
+    <string name="warning_cn_rom_desc">Tu dispositivo parece ejecutar un firmware chino. Xiaomi modifica drásticamente las notificaciones en estas ROMs. Las funciones podrían ser inestables o no funcionar.</string>
+    <string name="shizuku_workaround_title">Habilitar parche de Shizuku</string>
+    <string name="shizuku_enable_workaround">Habilitar parche</string>
+    <string name="shizuku_workaround_desc">Si estás en una ROM China, debes habilitar el parche de Shizuku para que las notificaciones se activen correctamente.</string>
+    <string name="shizuku_status_running">Shizuku está en ejecución</string>
+    <string name="shizuku_permission_granted">Permiso concedido</string>
+    <string name="shizuku_permission_denied">Permiso denegado</string>
+    <string name="shizuku_request_permission">Otorgar permiso de Shizuku</string>
+    <string name="shizuku_not_installed">La aplicación Shizuku no está instalada o en ejecución. Por favor, instala e inicia Shizuku primero.</string>
+    <string name="system_version">Versión del Sistema</string>
+    <string name="call_incoming">Llamada Entrante</string>
+    <string name="call_ongoing">Llamada en Curso</string>
     <string-array name="call_keywords_hangup">
+        <item>colgar</item>
+        <item>finalizar</item>
+        <item>rechazar</item>
         <item>hang</item>
-        <item>end</item>
-        <item>decline</item>
-        <item>reject</item>
     </string-array>
     <string-array name="call_keywords_answer">
-        <item>answer</item>
-        <item>accept</item>
+        <item>responder</item>
+        <item>contestar</item>
     </string-array>
     <string-array name="call_keywords_speaker">
-        <item>speaker</item>
+        <item>altavoz</item>
         <item>audio</item>
     </string-array>
-
-    <string name="title_0_3_0">The Global Update</string>
-    <string name="changelog_0_3_0">
-        <b>Hidden Notification 👻</b>\n
-        New option to hide notifications from the system panel while keeping the Island active. Check Global Settings!\n\n
-        <b>New Languages 🌍</b>\n
-        Special thanks to our community for these translations:\n
-        • 🇧🇷 Portuguese (Brazil)\n
-        • 🇵🇱 Polish\n
-        • 🇰🇷 Korean\n\n
-        • 🇺🇦 Ukranian\n\n
-        <b>Navigation Customization 🧭</b>\n
-        You can now choose what information appears on the Left and Right sides of the Navigation Island (Distance, ETA, Instruction).\n\n
-        <b>Spoiler Protection 🛡️</b>\n
-        New "Blocked Terms" feature. Define words globally or per-app to prevent specific notifications from showing up on the Island.\n\n
-        <b>Call Improvements 📞</b>\n
-        Improved detection logic to support a wider range of VoIP and Dialer applications.\n\n
-        <b>Fixes &amp; Improvements 🛠️</b>\n
-        • Fixed a critical bug where the app would get stuck loading after a reboot.\n
-        • Fixed notifications sometimes showing raw package names (e.g. "com.google...") instead of content.\n
-        • Redesigned App Configuration sheet for better usability.\n
-        • Improved Compatibility Check screen with detailed device info.
+    <string name="title_0_3_0">La Actualización Global</string>
+    <string name="changelog_0_3_0">        <b>Notificación Oculta 👻</b>\n
+        Nueva opción para ocultar notificaciones del panel del sistema manteniendo la Isla activa. ¡Revisa los Ajustes Globales!\n\n
+        <b>Nuevos Idiomas 🌍</b>\n
+        ¡Un agradecimiento especial a la comunidad por estas traducciones!\n
+        • 🇧🇷 Portugués (Brasil)\n
+        • 🇵🇱 Polaco\n
+        • 🇰🇷 Coreano\n
+        • 🇺🇦 Ucraniano\n\n
+        <b>Personalización de Navegación 🧭</b>\n
+        Ahora puedes elegir qué información aparece a la izquierda y derecha de la Isla de Navegación (Distancia, Hora de llegada, Instrucción).\n\n
+        <b>Protección Anti-Spoilers 🛡️</b>\n
+        Nueva función de \"Términos Bloqueados\". Define palabras globalmente o por aplicación para evitar que ciertas notificaciones aparezcan en la Isla.\n\n
+        <b>Mejoras en Llamadas 📞</b>\n
+        Mejorada la lógica de detección para soportar más aplicaciones de VoIP y Teléfono.\n\n
+        <b>Correcciones y Mejoras 🛠️</b>\n
+        • Solucionado un error crítico donde la app se quedaba cargando tras reiniciar.\n
+        • Corregido error donde las notificaciones mostraban el nombre del paquete (ej. \"com.google…\") en lugar del contenido.\n
+        • Rediseñado el panel de Configuración de App.\n
+        • Mejorada la pantalla de Comprobación de Compatibilidad con info detallada.
     </string>
-
-    <string name="privacy_title">100% Offline &amp; Secure</string>
-    <string name="privacy_desc">Ryx Isla processes everything directly on your phone\'s processor.\n\nIt does NOT require internet access, meaning your notifications and personal data never leave your device.</string>
-
-    <string name="language">Language</string>
-    <string name="language_desc">Change application language</string>
-    <string name="system_default">System Default</string>
-    <string name="save">Save</string>
-
-    <string name="backup_restore_title">Backup &amp; Restore</string>
-    <string name="backup_section_title">Manage Data</string>
-    <string name="backup_options_subtitle">Select data to include in the operation</string>
-
-    <string name="option_app_settings">App Settings</string>
-    <string name="option_app_settings_desc">Setup status, theme, behavior modes</string>
-
-    <string name="option_blocklist">Blocklist Database</string>
-    <string name="option_blocklist_desc">Your custom blocked keywords and apps</string>
-
-    <string name="option_priorities">Priority Rules</string>
-    <string name="option_priorities_desc">Custom notification priority configurations</string>
-
-    <string name="action_export">Create Backup</string>
-    <string name="action_import">Restore Backup</string>
-
-    <string name="export_success">Backup saved successfully</string>
-    <string name="export_failed">Export failed: %s</string>
-    <string name="import_success">Data restored successfully</string>
-    <string name="import_failed">Import failed: %s</string>
-
-    <string name="autostart_manual_check">Status cannot be verified automatically.\nPlease check this manually to ensure the service works proprely</string>
-
-    <string name="backup_info_title">Backup Information</string>
-    <string name="backup_meta_date">Date</string>
-    <string name="backup_meta_device">Device</string>
-    <string name="backup_meta_version">Version</string>
-    <string name="backup_meta_keys">Total Items</string>
-    <string name="backup_empty_suffix"> (Empty)</string>
-    <string name="action_restore_selected">Restore Selected Data</string>
-
-    <string name="optimization_title">Device Optimization</string>
-
-    <string name="privacy_card_title">Offline First</string>
-    <string name="privacy_card_desc">No internet connection required.</string>
-
-    <string name="title_0_3_1">Backup &amp; Polyglot Update</string>
-    <string name="changelog_0_3_1">
-        <b>Backup &amp; Restore 📦</b>\n
-        New power-user feature! Securely export your settings, blocklists, and app priorities to a .hbr file and restore them anytime.\n\n
-        <b>New Languages 🌍</b>\n
-        Added support for:\n
-        • 🇩🇪 German\n
-        • 🇷🇺 Russian\n
-        • 🇺🇦 Ukrainian (Improved)\n
-        <i>Plus: A new in-app Language Selector to change languages without affecting your system settings.</i>\n\n
-        <b>Visual Refresh 🎨</b>\n
-        The app has been updated with <b>Material 3 Expressive</b> design. Enjoy larger headers, rounder shapes, and a smoother experience.\n\n
-        <b>Privacy &amp; Setup 🛡️</b>\n
-        • Improved Onboarding with a dedicated Privacy page clarifying offline-first architecture.\n
-        • Stricter compatibility checks to ensure the best experience on HyperOS 3.0.\n\n
-        <b>Fixes 🛠️</b>\n
-        • Fixed a critical issue where settings were lost after device reboot (migrated to database).\n
-        • Fixed "Exit" button in Navigation island showing as an icon instead of text.\n
-        • Fixed App Icon loading in Settings.\n
+    <string name="privacy_title">100% Offline y Seguro</string>
+    <string name="privacy_desc">Ryx Isla procesa todo directamente en el procesador de tu teléfono.\n\nNO requiere acceso a internet, lo que significa que tus notificaciones y datos personales nunca salen de tu dispositivo.</string>
+    <string name="language">Idioma</string>
+    <string name="language_desc">Cambiar idioma de la aplicación</string>
+    <string name="system_default">Predeterminado del sistema</string>
+    <string name="save">Guardar</string>
+    <string name="backup_restore_title">Copia de seguridad y restauración</string>
+    <string name="backup_section_title">Gestionar datos</string>
+    <string name="backup_options_subtitle">Selecciona los datos a incluir en la operación</string>
+    <string name="option_app_settings">Ajustes de la aplicación</string>
+    <string name="option_app_settings_desc">Estado de configuración, tema, modos de comportamiento</string>
+    <string name="option_blocklist">Base de datos de bloqueo</string>
+    <string name="option_blocklist_desc">Tus palabras clave bloqueadas y reglas por aplicación</string>
+    <string name="option_priorities">Reglas de prioridad</string>
+    <string name="option_priorities_desc">Configuraciones personalizadas de prioridad de notificaciones</string>
+    <string name="action_export">Crear copia de seguridad</string>
+    <string name="action_import">Restaurar copia de seguridad</string>
+    <string name="export_success">Copia de seguridad guardada correctamente</string>
+    <string name="export_failed">Error al exportar: %s</string>
+    <string name="import_success">Datos restaurados correctamente</string>
+    <string name="import_failed">Error al importar: %s</string>
+    <string name="autostart_manual_check">El estado no se puede verificar automáticamente.\nPor favor, comprueba manualmente para asegurar que el servicio funciona correctamente.</string>
+    <string name="backup_info_title">Información de la Copia</string>
+    <string name="backup_meta_date">Fecha</string>
+    <string name="backup_meta_device">Dispositivo</string>
+    <string name="backup_meta_version">Versión</string>
+    <string name="backup_meta_keys">Elementos Totales</string>
+    <string name="backup_empty_suffix"> (Vacío)</string>
+    <string name="action_restore_selected">Restaurar Datos Seleccionados</string>
+    <string name="optimization_title">Optimización del Dispositivo</string>
+    <string name="privacy_card_title">Funcionamiento Offline</string>
+    <string name="privacy_card_desc">No requiere conexión a internet.</string>
+    <string name="title_0_3_1">Actualización de Copias y Idiomas</string>
+    <string name="changelog_0_3_1">        <b>Copia de Seguridad y Restauración 📦</b>\n
+        ¡Nueva función para usuarios avanzados! Exporta de forma segura tu configuración, listas de bloqueo y prioridades a un archivo .hbr y restáuralos cuando quieras.\n\n
+        <b>Nuevos Idiomas 🌍</b>\n
+        Añadido soporte para:\n
+        • 🇩🇪 Alemán\n
+        • 🇷🇺 Ruso\n
+        • 🇺🇦 Ucraniano (Mejorado)\n
+        <i>Además: Nuevo selector de idioma en la app para cambiarlo sin afectar a los ajustes del sistema.</i>\n\n
+        <b>Renovación Visual 🎨</b>\n
+        La aplicación se ha actualizado al diseño <b>Material 3 Expressive</b>. Disfruta de cabeceras más grandes, formas más redondeadas y una experiencia más fluida.\n\n
+        <b>Privacidad y Configuración 🛡️</b>\n
+        • Onboarding mejorado con una página de Privacidad dedicada que aclara la arquitectura offline.\n
+        • Verificaciones de compatibilidad más estrictas para asegurar la mejor experiencia en HyperOS 3.0.\n\n
+        <b>Correcciones 🛠️</b>\n
+        • Solucionado un error crítico donde la configuración se perdía al reiniciar (migración a base de datos).\n
+        • Corregido el botón \"Salir\" en la isla de Navegación (ahora muestra texto en lugar de un icono).\n
+        • Corregida la carga del icono de la App en Ajustes.\n
     </string>
-
-    <string name="close">Close</string>
-    <string name="search">Search</string>
-    <string name="widget_updated_toast">Widget updated</string>
-    <string name="widget_settings_error">Cannot edit this widget settings</string>
-
-    <string name="widget_picker_title">Add Widget</string>
-    <string name="search_apps_placeholder">Search apps...</string>
+    <string name="close">Cerrar</string>
+    <string name="search">Buscar</string>
+    <string name="widget_updated_toast">Widget actualizado</string>
+    <string name="widget_settings_error">No se puede editar la configuración de este widget</string>
+    <string name="widget_picker_title">Añadir widget</string>
+    <string name="search_apps_placeholder">Buscar aplicaciones…</string>
     <plurals name="widget_count_fmt">
-        <item quantity="many">%d widgets</item>
         <item quantity="other">%d widgets</item>
         <item quantity="one">%d widget</item>
     </plurals>
-
-    <string name="widget_config_title">Configure Widget</string>
-    <string name="widget_settings_button">Widget Settings</string>
-
-    <string name="config_tab_appearance">Appearance</string>
-    <string name="config_tab_behavior">Behavior</string>
-
-    <string name="config_render_mode_label">Render Mode</string>
-    <string name="config_container_size_label">Container Size</string>
-
-    <string name="config_shade_title">Show in Shade</string>
-    <string name="config_shade_desc">Visible in notification panel</string>
-
-    <string name="config_timeout_title">Auto Close</string>
-    <string name="config_timeout_desc">Close island after delay</string>
+    <string name="widget_config_title">Configurar widget</string>
+    <string name="widget_settings_button">Ajustes del widget</string>
+    <string name="config_tab_appearance">Apariencia</string>
+    <string name="config_tab_behavior">Comportamiento</string>
+    <string name="config_render_mode_label">Modo de renderizado</string>
+    <string name="config_container_size_label">Tamaño del contenedor</string>
+    <string name="config_shade_title">Mostrar en cortina</string>
+    <string name="config_shade_desc">Visible en el panel de notificaciones</string>
+    <string name="config_timeout_title">Cierre automático</string>
+    <string name="config_timeout_desc">Cerrar isla tras un retraso</string>
     <plurals name="config_timeout_fmt">
-        <item quantity="many">%d seconds</item>
-        <item quantity="other">%d seconds</item>
-        <item quantity="one">%d second</item>
+        <item quantity="other">%d segundos</item>
+        <item quantity="one">%d segundo</item>
     </plurals>
-
-    <string name="config_refresh_title">Auto Refresh</string>
-    <string name="config_refresh_desc">Update snapshot periodically</string>
-¡    <plurals name="config_refresh_fmt">
-        <item quantity="many">Every %d minutes</item>
-    <item quantity="other">Every %d minutes</item>
-    <item quantity="one">Every minute</item>
+    <string name="config_refresh_title">Actualización automática</string>
+    <string name="config_refresh_desc">Actualizar instantánea periódicamente</string>
+    <plurals name="config_refresh_fmt">
+        <item quantity="other">Cada %d minutos</item>
+        <item quantity="one">Cada minuto</item>
     </plurals>
-    <string name="config_refresh_warning">Higher frequency uses more battery.</string>
-
-    <string name="render_interactive_label">Interactive</string>
-    <string name="render_interactive_desc">Buttons work. Best for Music, Controls.</string>
-    <string name="render_snapshot_label">Snapshot</string>
-    <string name="render_snapshot_desc">Fixes empty lists. Best for Calendar, Gmail.</string>
-
+    <string name="config_refresh_warning">Una mayor frecuencia consume más batería.</string>
+    <string name="render_interactive_label">Interactivo</string>
+    <string name="render_interactive_desc">Botones funcionales. Ideal para Música, Controles.</string>
+    <string name="render_snapshot_label">Instantánea</string>
+    <string name="render_snapshot_desc">Arregla listas vacías. Ideal para Calendario, Gmail.</string>
     <string name="size_original">Original</string>
-    <string name="size_small">Small (100dp)</string>
-    <string name="size_medium">Medium (180dp)</string>
-    <string name="size_large">Large (280dp)</string>
-    <string name="size_xlarge">Extra Large (380dp)</string>
-
-    <string name="app_uninstalled_badge">Uninstalled</string>
-    <string name="settings_action">Settings</string>
-
-    <string name="saved_widgets_title">Saved Widgets</string>
-    <string name="no_saved_widgets">No saved widgets found.</string>
+    <string name="size_small">Pequeño (100dp)</string>
+    <string name="size_medium">Mediano (180dp)</string>
+    <string name="size_large">Grande (280dp)</string>
+    <string name="size_xlarge">Extra Grande (380dp)</string>
+    <string name="app_uninstalled_badge">Desinstalada</string>
+    <string name="settings_action">Ajustes</string>
+    <string name="saved_widgets_title">Widgets Guardados</string>
+    <string name="no_saved_widgets">No hay widgets guardados.</string>
     <string name="widget_id_fmt">Widget #%d</string>
-    <string name="show_on_island">Show on Island</string>
-
-    <string name="theme_installer_analyzing">Analyzing theme package...</string>
-    <string name="theme_installer_success_title">Theme Ready</string>
-    <string name="theme_installer_author">Created by %s</string>
-    <string name="theme_installer_version">Version %d</string>
-    <string name="theme_installer_apply_question">Do you want to apply this theme to Ryx Isla now?</string>
-    <string name="theme_installer_action_apply">Apply Theme</string>
-    <string name="theme_installer_action_later">Save for Later</string>
-    <string name="theme_installer_error_title">Import Failed</string>
-    <string name="theme_installer_error_generic">Could not verify the theme file.</string>
-    <string name="theme_installer_btn_close">Close</string>
-    <string name="theme_manager_title">My Themes</string>
-    <string name="theme_manager_cd_add">Add New Theme</string>
-
-    <string name="theme_card_author_format">by %s</string>
-    <string name="theme_card_cd_active">Active Theme</string>
-    <string name="theme_card_cd_delete">Delete Theme</string>
-
-    <string name="theme_system_default_title">System Default</string>
-    <string name="theme_system_default_desc">Standard Look</string>
-
-    <string name="theme_sheet_title">Add New Theme</string>
-
-    <string name="theme_sheet_action_create">Create New Theme</string>
-    <string name="theme_sheet_action_find">Search</string>
-    <string name="theme_action_import_short">Import</string>
-    <string name="theme_card_action_edit">Edit</string>
-    <string name="theme_card_action_export">Export</string>
-
-    <string name="creator_title_new">Create Theme</string>
-    <string name="creator_title_edit">Edit Theme</string>
-    <string name="creator_nav_colors">Colors</string>
-    <string name="creator_nav_icons">Icons &amp; Shapes</string>
-    <string name="creator_nav_calls">Call Style</string>
-    <string name="creator_nav_apps">App Config</string>
-    <string name="creator_action_save">Save</string>
-    <string name="creator_btn_edit_info">Edit Theme Info</string>
-    <string name="creator_sub_colors">Palettes &amp; contrast</string>
-    <string name="creator_sub_icons">Shape &amp; padding</string>
-    <string name="creator_sub_calls">Answer &amp; decline buttons</string>
-    <string name="creator_sub_apps">Per-app overrides</string>
-
-    <string name="meta_title">Theme Info</string>
-    <string name="meta_label_name">Theme Name</string>
-    <string name="meta_label_author">Author Name</string>
-    <string name="meta_action_done">Done</string>
-
-    <string name="colors_tab_presets">Presets</string>
-    <string name="colors_tab_custom">Custom</string>
-    <string name="colors_label_presets">Presets</string>
-    <string name="colors_label_use_app_colors">Use App Colors</string>
-    <string name="colors_desc_use_app_colors">Adapt colors from installed apps</string>
-    <string name="colors_label_custom_title">Custom Color</string>
-    <string name="colors_cd_add_custom">Add Custom Color</string>
-    <string name="colors_dialog_title">Pick a Color</string>
-    <string name="colors_action_done">Done</string>
-
-    <string name="icons_tab_style">Style</string>
-    <string name="icons_tab_assets">Icons</string>
-    <string name="icons_tab_shape">Shape</string>
-    <string name="icons_label_size">Icon Size</string>
-    <string name="icons_label_full">Full</string>
-    <string name="icons_label_minimal">Minimal</string>
-    <string name="icons_group_nav">Navigation</string>
-    <string name="icons_btn_start">Start</string>
-    <string name="icons_btn_end">End</string>
-    <string name="icons_group_progress">Progress</string>
-    <string name="icons_btn_success">Success</string>
-    <string name="icons_label_shape_title">Icon Shape</string>
-
-    <string name="shape_circle">Circle</string>
-    <string name="shape_square">Square</string>
-    <string name="shape_cookie">Cookie</string>
-    <string name="shape_arch">Arch</string>
-    <string name="shape_clover">Clover</string>
-
-    <string name="calls_label_answer">Answer</string>
-    <string name="calls_label_decline">Decline</string>
-
-    <string name="apps_empty">No apps configured</string>
-
-    <string name="design_hero_customization_title">Customization</string>
-    <string name="design_hero_customization_subtitle">Learn how to create themes</string>
-    <string name="design_hero_pro_title">Pro Features</string>
-    <string name="design_hero_pro_subtitle">Unlock more power</string>
-    <string name="design_hero_community_title">Community</string>
-    <string name="design_hero_community_subtitle">Join our GitHub</string>
-
-    <string name="design_section_themes">Themes</string>
+    <string name="show_on_island">Mostrar en Isla</string>
+    <string name="theme_installer_analyzing">Analizando paquete del tema...</string>
+    <string name="theme_installer_success_title">Tema listo</string>
+    <string name="theme_installer_author">Creado por %s</string>
+    <string name="theme_installer_version">Versión %d</string>
+    <string name="theme_installer_apply_question">¿Quieres aplicar este tema a Ryx Isla ahora?</string>
+    <string name="theme_installer_action_apply">Aplicar tema</string>
+    <string name="theme_installer_action_later">Guardar para luego</string>
+    <string name="theme_installer_error_title">Error al importar</string>
+    <string name="theme_installer_error_generic">No se pudo verificar el archivo del tema.</string>
+    <string name="theme_installer_btn_close">Cerrar</string>
+    <string name="theme_manager_title">Mis temas</string>
+    <string name="theme_manager_cd_add">Añadir nuevo tema</string>
+    <string name="theme_card_author_format">por %s</string>
+    <string name="theme_card_cd_active">Tema activo</string>
+    <string name="theme_card_cd_delete">Eliminar tema</string>
+    <string name="theme_system_default_title">Predeterminado del sistema</string>
+    <string name="theme_system_default_desc">Apariencia estándar</string>
+    <string name="theme_sheet_title">Añadir nuevo tema</string>
+    <string name="theme_sheet_action_create">Crear nuevo tema</string>
+    <string name="theme_sheet_action_find">Buscar</string>
+    <string name="theme_action_import_short">Importar</string>
+    <string name="theme_card_action_edit">Editar</string>
+    <string name="theme_card_action_export">Exportar</string>
+    <string name="creator_title_new">Crear tema</string>
+    <string name="creator_title_edit">Editar tema</string>
+    <string name="creator_nav_colors">Colores</string>
+    <string name="creator_nav_icons">Iconos y formas</string>
+    <string name="creator_nav_calls">Estilo de llamada</string>
+    <string name="creator_nav_apps">Config. de Apps</string>
+    <string name="creator_action_save">Guardar</string>
+    <string name="creator_btn_edit_info">Editar info. del tema</string>
+    <string name="creator_sub_colors">Paletas y contraste</string>
+    <string name="creator_sub_icons">Forma y relleno</string>
+    <string name="creator_sub_calls">Botones de respuesta</string>
+    <string name="creator_sub_apps">Ajustes por aplicación</string>
+    <string name="meta_title">Info. del tema</string>
+    <string name="meta_label_name">Nombre del tema</string>
+    <string name="meta_label_author">Nombre del autor</string>
+    <string name="meta_action_done">Hecho</string>
+    <string name="colors_tab_presets">Preajustes</string>
+    <string name="colors_tab_custom">Personalizado</string>
+    <string name="colors_label_presets">Preajustes</string>
+    <string name="colors_label_use_app_colors">Usar colores de la App</string>
+    <string name="colors_desc_use_app_colors">Adaptar colores de apps instaladas</string>
+    <string name="colors_label_custom_title">Color personalizado</string>
+    <string name="colors_cd_add_custom">Añadir color personalizado</string>
+    <string name="colors_dialog_title">Elegir un color</string>
+    <string name="colors_action_done">Hecho</string>
+    <string name="icons_tab_style">Estilo</string>
+    <string name="icons_tab_assets">Iconos</string>
+    <string name="icons_tab_shape">Forma</string>
+    <string name="icons_label_size">Tamaño del icono</string>
+    <string name="icons_label_full">Completo</string>
+    <string name="icons_label_minimal">Mínimo</string>
+    <string name="icons_group_nav">Navegación</string>
+    <string name="icons_btn_start">Inicio</string>
+    <string name="icons_btn_end">Fin</string>
+    <string name="icons_group_progress">Progreso</string>
+    <string name="icons_btn_success">Éxito</string>
+    <string name="icons_label_shape_title">Forma del icono</string>
+    <string name="shape_circle">Círculo</string>
+    <string name="shape_square">Cuadrado</string>
+    <string name="shape_cookie">Galleta</string>
+    <string name="shape_arch">Arco</string>
+    <string name="shape_clover">Trébol</string>
+    <string name="calls_label_answer">Responder</string>
+    <string name="calls_label_decline">Rechazar</string>
+    <string name="apps_empty">Ninguna app configurada</string>
+    <string name="design_hero_customization_title">Personalización</string>
+    <string name="design_hero_customization_subtitle">Aprende a crear temas</string>
+    <string name="design_hero_pro_title">Funciones Pro</string>
+    <string name="design_hero_pro_subtitle">Desbloquea todo el potencial</string>
+    <string name="design_hero_community_title">Comunidad</string>
+    <string name="design_hero_community_subtitle">Únete a nuestro GitHub</string>
+    <string name="design_section_themes">Temas</string>
     <string name="design_section_widgets">Widgets</string>
-
-    <string name="design_browse_more">Browse More</string>
-    <string name="design_add_new">Add New</string>
-    <string name="design_add_design">Add Design</string>
-    <string name="design_add_to_island">Customization</string>
-    <string name="design_system_widget_beta">System Widget (Beta)</string>
-    <string name="design_get_themes">Get Themes</string>
-    <string name="design_empty_widget_title">Add your first Widget</string>
-    <string name="design">Design</string>
-
-    <string name="creator_nav_actions">Global Actions</string>
-    <string name="creator_sub_actions">Style buttons by keyword</string>
-    <string name="action_sheet_title">Configure Action</string>
-    <string name="action_label_keyword">Keyword (e.g. \'Reply\')</string>
-    <string name="action_label_bg_color">Background Color</string>
-    <string name="action_label_tint_color">Icon/Text Color</string>
-    <string name="action_preview">Live Preview</string>
-    <string name="action_mode_icon">Icon Only</string>
-    <string name="action_mode_text">Text</string>
-    <string name="action_mode_both">Both</string>
-    <string name="actions_empty_title">No Custom Actions</string>
-    <string name="actions_empty_desc">Add rules to style notification buttons based on their text (e.g., "Reply", "Archive").</string>
-    <string name="action_default_preview_text">Action</string>
-
-    <string name="actions_search_hint">Search actions...</string>
-    <string name="actions_search_empty_fmt">No actions found for "%1$s"</string>
-
-    <string name="action_wip_warning">This feature is a Work in Progress. Keyword matching depends on how apps structure their notifications and may not work for every app.</string>
-    <string name="creator_dialog_apply_title">Apply Theme?</string>
-    <string name="creator_dialog_apply_desc">Do you want to apply this theme now?</string>
-    <string name="creator_dialog_action_save_apply">Save &amp; Apply</string>
-    <string name="creator_dialog_action_save_only">Save Only</string>
-    <string name="select_icon">Select Icon</string>
-    <string name="change_icon">Change Icon</string>
-    <string name="action_add">Add App</string>
-    <string name="apps_sheet_select_title">Select App</string>
-    <string name="edit_app">Edit App</string>
-
-    <string name="creator_sub_colors_custom">Custom Color Set</string>
-    <string name="creator_sub_colors_default">Using Global Default</string>
-
-    <string name="creator_sub_icons_custom">Custom Shape Set</string>
-    <string name="creator_sub_icons_default">Using Global Default</string>
-    <string name="app_customization_desc">Add an app to customize its look specifically.</string>
-    <string name="discard">Discard</string>
-    <string name="unsaved_changes">Unsaved Changes</string>
-    <string name="unsaved_changes_desc">You have unsaved changes for this app. Do you want to save them before exiting?</string>
-    <string name="share_theme">Share Theme</string>
-    <string name="my_theme">My Theme</string>
+    <string name="design_browse_more">Ver más</string>
+    <string name="design_add_new">Añadir nuevo</string>
+    <string name="design_add_design">Añadir diseño</string>
+    <string name="design_add_to_island">Añadir a la Isla</string>
+    <string name="design_system_widget_beta">Widget del sistema (Beta)</string>
+    <string name="design_get_themes">Obtener temas</string>
+    <string name="design_empty_widget_title">Añade tu primer widget</string>
+    <string name="design">Diseño</string>
+    <string name="creator_nav_actions">Acciones globales</string>
+    <string name="creator_sub_actions">Personalizar botones con palabras clave</string>
+    <string name="action_sheet_title">Configurar Acción</string>
+    <string name="action_label_keyword">Palabra clave (ej. Responder)</string>
+    <string name="action_label_bg_color">Color de fondo</string>
+    <string name="action_label_tint_color">Color de Icono y Texto</string>
+    <string name="action_preview">Previsualización</string>
+    <string name="action_mode_icon">Solo icono</string>
+    <string name="action_mode_text">Texto</string>
+    <string name="action_mode_both">Ambos</string>
+    <string name="actions_empty_title">No hay acciones personalizados</string>
+    <string name="actions_empty_desc">Añadir reglas al estilo de botones de notificación basados en su texto (por ejemplo, \"Responder\", \"Archivo\").</string>
+    <string name="action_default_preview_text">Acción</string>
+    <string name="actions_search_hint">Buscar acciones...</string>
+    <string name="actions_search_empty_fmt">No se encontraron acciones que coincida con \"%1$s\"</string>
+    <string name="action_wip_warning">Esta función es un trabajo en progreso. La coincidencia de palabras clave depende de cómo las aplicaciones estructuran sus notificaciones y puede no funcionar para cada aplicación.</string>
+    <string name="creator_dialog_apply_title">¿Aplicar tema?</string>
+    <string name="creator_dialog_apply_desc">¿Quieres aplicar este tema ahora?</string>
+    <string name="creator_dialog_action_save_apply">Guardar &amp; Aplicar</string>
+    <string name="creator_dialog_action_save_only">Guardar solamente</string>
+    <string name="select_icon">Seleccionar icono</string>
+    <string name="change_icon">Cambiar icono</string>
+    <string name="action_add">Añadir aplicación</string>
+    <string name="apps_sheet_select_title">Seleccionar aplicación</string>
+    <string name="edit_app">Editar App</string>
+    <string name="creator_sub_colors_custom">Personalizado</string>
+    <string name="creator_sub_colors_default">Usar valores globales</string>
+    <string name="creator_sub_icons_custom">Forma personalizada</string>
+    <string name="creator_sub_icons_default">Usar valores globales</string>
+    <string name="app_customization_desc">Añade una aplicación para personalizar su aspecto.</string>
+    <string name="discard">Descartar</string>
+    <string name="unsaved_changes">Cambios sin guardar</string>
+    <string name="unsaved_changes_desc">Tiene cambios no guardados para esta aplicación. ¿Desea guardarlos antes de salir?</string>
+    <string name="share_theme">Compartir tema</string>
+    <string name="my_theme">Mi tema</string>
     <plurals name="creator_sub_actions_count">
-        <item quantity="one">%1$d custom action</item>
-        <item quantity="other">%1$d custom actions</item>
-        <item quantity="many">%1$d custom actions</item>
-
+        <item quantity="one">%1$d acción personalizada</item>
+        <item quantity="other">%1$d acciones personalizadas</item>
     </plurals>
+    <string name="title_0_4_0">La Actualización de Personalización</string>
+    <string name="changelog_0_4_0">        <b>Motor de temas 🎨</b>\n
+        ¡La actualización más grande hasta la fecha! Ahora puedes personalizar completamente la experiencia visual de la isla dinámica.\n
+        • <b>Creador de temas:</b> Diseña temas directamente en tu teléfono con cambios en tiempo real.\n
+        • <b>Control avanzado:</b> Elegir exactamente cómo se muestran los iconos, personalizar colores y formas de notificación de llamadas, y configurar aplicaciones individuales.\n
+        • <b>Colores Inteligentes:</b> Extraer automáticamente los colores de acento de los iconos de la aplicación.\n
+        • <b>Personalización por acción (Beta):</b> Ajusta el aspecto de las acciones de notificación específicas.\n
+        • <b>Compartir:</b> Exporta e importa temas como paquetes <i>. hbr</i>.\n\n
 
-    <string name="title_0_4_0">The Customization Update</string>
-    <string name="changelog_0_4_0">
-        <b>Theme Engine 🎨</b>\n
-        The biggest update yet! You can now fully customize the Dynamic Island visual experience.\n
-        • <b>Theme Creator:</b> Design themes directly on your phone with real-time previews.\n
-        • <b>Granular Control:</b> Choose exactly how icons are shown, customize call notification colors and shapes, and configure individual app overrides.\n
-        • <b>Smart Colors:</b> Automatically extract vibrant brand colors from app icons.\n
-        • <b>Per-Action Customization (Beta):</b> Fine-tune the look of specific notification actions.\n
-        • <b>Sharing:</b> Export and import themes as portable <i>.hbr</i> packages.\n\n
+        <b>Soporte para Widgets🧩</b>\n
+        Ancla Widgets a la isla para un rápido acceso, incluso en tu <b>Pantalla de Bloqueo</b>!\n
+        • Elija entre <b>modo interactivo</b> o <b>Snapshot</b> para aquellas aplcaciones que tengan problemas para cargar la información.\n\n
 
-        <b>Widget Support 🧩</b>\n
-        Pin standard Android widgets to the island for quick access—even on your <b>Lockscreen</b>!\n
-        • Choose between <b>Interactive</b> mode for speed or <b>Snapshot</b> mode for battery efficiency.\n\n
+        <b>Motor de notificación 2.0. ⚡</b>\n
+        Una completa reescritura de la lógica para una mejor estabilidad:\n
+        • <b>Análisis más inteligente:</b> Problemas arreglados donde las notificaciones mostraban los nombres de los paquetes (ej. com.whatsapp) en lugar del contenido del mensaje.\n
+        • <b>Anti-Flicker:</b> Nuevo hashing de contenido previene actualizaciones redundantes.\n
+        • <b>Notificaciones Fantasmas:</b> Resuelto varios problemas que hacían que las notificaciones se mantuvieran auqnue la notificación original ya no estaba presente\n\n
 
-        <b>Notification Engine 2.0 ⚡</b>\n
-        A complete rewrite of the core logic for better stability:\n
-        • <b>Smarter Parsing:</b> Fixed issues where notifications showed package names (e.g., com.whatsapp) instead of message content.\n
-        • <b>Anti-Flicker:</b> New content hashing prevents redundant updates and stuttering.\n
-        • <b>Ghost Fixes:</b> Solved race conditions where islands lingered after dismissal.\n\n
+        <b>Refresco visual ✨</b>\n
+        • Pestaña \"Diseño\": Nueva pantalla que permite crear tus propios temas o usar Widgets.\n
+        • Nuevos botones de \"Texto\" para acciones de notificación más claras.\n
+        • Añadido soporte para 🇮🇩 Indonesia y 🇹🇷 Turco.\n\n
 
-        <b>Visual Refresh ✨</b>\n
-        • Redesigned "Design" tab with fluid, native-feeling carousels.\n
-        • New "Text Pill" buttons for clearer notification actions.\n
-        • Added support for 🇮🇩 Indonesian and 🇹🇷 Turkish.\n\n
-
-        <i>Note: This release includes significant architectural changes. Please report any bugs on GitHub!</i>
+        <i>Nota: Esta versión incluye cambios significativos en la arquitectura. Por favor, informe de cualquier error en GitHub!</i>
     </string>
-    <string name="title_0_4_2">Hotfix Update</string>
-    <string name="changelog_0_4_2">        •&lt;b&gt;Crash Fix:&lt;/b&gt; Resolved a critical issue that caused the app to crash when opening the settings menu in Traditional Chinese.\n
-        •&lt;b&gt;Under the Hood:&lt;/b&gt; General bug fixes and stability improvements to keep your Island running smoothly.
+    <string name="title_0_4_2">Actualización Rápida</string>
+    <string name="changelog_0_4_2">        •&lt;b&gt;Corrección de errores:&lt;/b&gt; Se solucionó un error crítico que provocaba el cierre de la aplicación al abrir la configuración en Chino Tradicional.\n
+        •&lt;b&gt;Mejoras generales:&lt;/b&gt; Corrección de errores menores y mejoras de estabilidad para que la Isla funcione sin problemas.
     </string>
-
-    <string name="colors_label_hue">Hue</string>
-    <string name="colors_label_saturation">Saturation</string>
-    <string name="colors_label_lightness">Lightness</string>
-    <string name="colors_label_dynamic_modes">Dynamic Colors</string>
-    <string name="colors_label_material_you">Material You (System)</string>
-    <string name="colors_desc_material_you">Extracts colors from your current wallpaper.</string>
-
-    <string name="kill_all_widgets">Kill Active Widgets</string>
-    <string name="permission_reminder_title">Update Notice</string>
-    <string name="permission_reminder_desc">Ryx Isla has been updated! Please ensure that your Autostart and Background Battery permissions haven\'t been silently revoked by the system to keep your widgets running smoothly.</string>
-    <string name="got_it">Got it</string>
-
-    <string name="recommended">Recommended</string>
-    <string name="all">All</string>
-    <string name="favorites">Favorites</string>
-
-    <string name="channel_live_updates">Native Live Updates</string>
-
-    <string name="engine_preview_title">Preview</string>
-    <string name="engine_design_section">Notification Design</string>
-    <string name="engine_xiaomi_title">Xiaomi Featured Design</string>
-    <string name="engine_xiaomi_desc">Modern HyperOS layout with Xiaomi intended design.</string>
-    <string name="engine_native_title">Live Update Design</string>
-    <string name="engine_native_desc">Native android notification designs, works on CN ROM.</string>
-
-    <string name="engine_config_title">Engine Configuration</string>
-    <string name="engine_section_design">Notification Design</string>
-    <string name="good_to_know">Good to know</string>
-    <string name="nav_layout_info">• Navigation layouts will be fully integrated into the Theme Engine in an upcoming update.\n• When using the Native Live Update engine, only the Right Side content is visible.</string>
-    <string name="xiaomi_featured_notifications">Xiaomi Featured Notifications</string>
-    <string name="island_behavior_title">Island Behavior</string>
-    <string name="island_behavior_desc"><![CDATA[Timeouts, duplicates & visibility]]></string>
-    <string name="engine">Engine</string>
-    <string name="engine_desc">Live Updates vs Xiaomi Island</string>
-
-    <string name="dnd_mode_title">Do Not Disturb</string>
-    <string name="dnd_mode_desc">Manage island visibility during DND</string>
-    <string name="dnd_manual_toggle">Pause Islands</string>
-    <string name="dnd_manual_toggle_desc">Manually pause all islands until you turn this back on</string>
-    <string name="dnd_auto_detect">Auto-detect System DND</string>
-    <string name="dnd_auto_detect_desc">Automatically pause islands when your phone is in Do Not Disturb mode</string>
-    <string name="behaviour_triggers"><![CDATA[Behaviour & Triggers]]></string>
-    <string name="engine_timeouts_triggers"><![CDATA[Engine, timeouts & triggers]]></string>
-    <string name="global_behavior">Global Behavior</string>
-    <string name="auto_hide_island">Auto-hide Island</string>
-    <string name="hides_after_a_set_time">Hides after a set time</string>
-    <string name="behavior_hide_desc">Visible until manually dismissed</string>
-    <string name="behavior_desc_hide_long">Determines how long the island stays on screen before disappearing automatically.</string>
-    <string name="active_triggers">Active Triggers</string>
-    <string name="active_triggers_global_desc">Select which global events trigger the island</string>
-    <string name="type_standard_desc">General alerts and notifications</string>
-    <string name="type_message_desc">Messages, chats, and conversations</string>
-    <string name="type_progress_desc">Ongoing tasks, rendering, and operations</string>
-    <string name="type_download_desc">Downloads, uploads, and file transfers</string>
-    <string name="type_media_desc">Music and video playback controls</string>
-    <string name="type_nav_desc">Turn-by-turn directions and ETA</string>
-    <string name="type_call_desc">Incoming and ongoing phone calls</string>
-    <string name="type_timer_desc">Active timers and stopwatches</string>
-    <string name="select_triggered_events">Select triggered events</string>
-    <string name="override_global_triggers">Override Global Triggers</string>
-    <string name="override_global_trigger_desc">Set custom allowed notifications for this app</string>
-    <string name="trigger_override">Trigger Override</string>
-    <string name="trigger_app_desc">Select which events trigger the island for this app.</string>
-    <string name="enable_triggers">Enable specific triggers</string>
-    <string name="open_source_licenses">Open Source Licenses</string>
-    <string name="remove_original_notification">Remove original notification</string>
-    <string name="remove_original_notification_desc">Automatically dismiss the source notification when a Live Update is active.</string>
-    <string name="dismiss_with_original">Dismiss with original</string>
-    <string name="dismiss_with_original_desc">Island will disappear when you clear the original notification.</string>
-    <string name="enable_inline_reply">Enable inline reply</string>
-    <string name="enable_inline_reply_desc">Launch the custom inline reply overlay when replying from the island.</string>
-    <string name="remove_original_notification_hidden_warning">Note: When enabled, Ryx Isla cannot respond or mark messages as read. Reply and Mark as Read actions will be hidden.</string>
-
-    <string name="color_mode">Color Mode</string>
-    <string name="color_mode_select">Select Color Mode</string>
-    <string name="color_mode_change_cd">Change color mode</string>
-    <string name="color_mode_default">Default</string>
-    <string name="color_mode_default_desc">Use default standard colors</string>
-    <string name="color_mode_app">App Colors</string>
-    <string name="color_mode_app_desc">Extract colors from the app icon</string>
+    <string name="colors_label_hue">Tono</string>
+    <string name="colors_label_saturation">Saturación</string>
+    <string name="colors_label_lightness">Claridad</string>
+    <string name="colors_label_dynamic_modes">Colores Dinámicos</string>
+    <string name="colors_label_material_you">Material You (Sistema)</string>
+    <string name="colors_desc_material_you">Extrae los colores de tu fondo de pantalla actual.</string>
+    <string name="kill_all_widgets">Detener widgets activos</string>
+    <string name="permission_reminder_title">Aviso de actualización</string>
+    <string name="permission_reminder_desc">¡Ryx Isla se ha actualizado! Por favor, asegúrate de que los permisos de Inicio automático y Batería en segundo plano no hayan sido revocados silenciosamente por el sistema para que tus widgets sigan funcionando sin problemas.</string>
+    <string name="got_it">Entendido</string>
+    <string name="recommended">Recomendados</string>
+    <string name="all">Todos</string>
+    <string name="favorites">Favoritos</string>
+    <string name="channel_live_updates">Actualizaciones nativas en vivo</string>
+    <string name="engine_preview_title">Vista previa</string>
+    <string name="engine_design_section">Diseño de notificaciones</string>
+    <string name="engine_xiaomi_title">Diseño destacado de Xiaomi</string>
+    <string name="engine_xiaomi_desc">Diseño moderno de HyperOS de Xiaomi.</string>
+    <string name="engine_native_title">Actualización en vivo</string>
+    <string name="engine_native_desc">Diseño de notificaciones de Android, funciona en CN ROM.</string>
+    <string name="engine_config_title">Configuación del motor</string>
+    <string name="engine_section_design">Diseño de notificaciones</string>
+    <string name="good_to_know">Debe saber que</string>
+    <string name="nav_layout_info">• Los diseños de navegación se integrarán completamente en el Motor de Temas en una próxima actualización.\n• Al usar el motor nativo de Live Updates, solo el contenido del Lado Derecho es visible.</string>
+    <string name="xiaomi_featured_notifications">Notificaciones Destacadas de Xiaomi</string>
+    <string name="island_behavior_title">Comportamiento de la Isla</string>
+    <string name="island_behavior_desc"><![CDATA[Tiempos de espera, duplicados y visibilidad]]></string>
+    <string name="engine">Motor</string>
+    <string name="engine_desc">Live Updates vs Isla de Xiaomi</string>
+    <string name="dnd_mode_title">No molestar</string>
+    <string name="dnd_mode_desc">Gestionar la visibilidad de la isla durante No molestar</string>
+    <string name="dnd_manual_toggle">Pausar islas</string>
+    <string name="dnd_manual_toggle_desc">Pausar manualmente todas las islas hasta que vuelvas a activarlo</string>
+    <string name="dnd_auto_detect">Autodetectar No molestar del sistema</string>
+    <string name="dnd_auto_detect_desc">Pausar automáticamente las islas cuando tu teléfono esté en modo No molestar</string>
+    <string name="behaviour_triggers"><![CDATA[Comportamiento y Activadores]]></string>
+    <string name="engine_timeouts_triggers"><![CDATA[Motor, tiempos de espera y activadores]]></string>
+    <string name="global_behavior">Comportamiento Global</string>
+    <string name="auto_hide_island">Ocultar automáticamente la isla</string>
+    <string name="hides_after_a_set_time">Se oculta tras un tiempo establecido</string>
+    <string name="behavior_hide_desc">Visible hasta que se descarte manualmente</string>
+    <string name="behavior_desc_hide_long">Determina cuánto tiempo permanece la isla en pantalla antes de desaparecer automáticamente.</string>
+    <string name="active_triggers">Desencadenantes Activos</string>
+    <string name="active_triggers_global_desc">Selecciona qué eventos globales activan la isla</string>
+    <string name="type_standard_desc">Mensajes normales, correos electrónicos y alertas</string>
+    <string name="type_progress_desc">Tareas en curso, procesamiento y operaciones</string>
+    <string name="type_download_desc">Descargas, subidas y transferencias de archivos</string>
+    <string name="type_media_desc">Controles de reproducción de música y video</string>
+    <string name="type_nav_desc">Indicaciones paso a paso y tiempo estimado (ETA)</string>
+    <string name="type_call_desc">Llamadas telefónicas entrantes y en curso</string>
+    <string name="type_timer_desc">Temporizadores activos y cronómetros</string>
+    <string name="select_triggered_events">Seleccionar eventos desencadenantes</string>
+    <string name="override_global_triggers">Anular Desencadenantes Globales</string>
+    <string name="override_global_trigger_desc">Establecer notificaciones permitidas personalizadas para esta aplicación</string>
+    <string name="trigger_override">Anular desencadenantes</string>
+    <string name="trigger_app_desc">Selecciona qué eventos activan la isla para esta aplicación.</string>
+    <string name="enable_triggers">Habilitar eventos específicos</string>
+    <string name="open_source_licenses">Licencias de código abierto</string>
+    <string name="remove_original_notification">Eliminar notificación original</string>
+    <string name="remove_original_notification_desc">Descartar automáticamente la notificación original cuando una Live Update está activa.</string>
+    <string name="dismiss_with_original">Descartar con original</string>
+    <string name="dismiss_with_original_desc">La isla desaparecerá cuando elimines la notificación original.</string>
+    <string name="enable_inline_reply">Habilitar respuesta rápida</string>
+    <string name="enable_inline_reply_desc">Inicia la superposición de respuesta rápida al responder desde la isla.</string>
+    <string name="remove_original_notification_hidden_warning">Nota: Al estar activado, Ryx Isla no puede responder o marcar mensajes como leídos. Las acciones Responder y Marcar como leído se ocultarán.</string>
+    <string name="color_mode">Modo de Color</string>
+    <string name="color_mode_select">Seleccionar Modo de Color</string>
+    <string name="color_mode_change_cd">Cambiar modo de color</string>
+    <string name="color_mode_default">Por Defecto</string>
+    <string name="color_mode_default_desc">Usar colores estándar</string>
+    <string name="color_mode_app">Colores de App</string>
+    <string name="color_mode_app_desc">Extraer colores del icono de la aplicación</string>
     <string name="color_mode_material">Material You</string>
-    <string name="color_mode_material_desc">Match the system wallpaper (Monet)</string>
-    <string name="color_mode_custom">Custom Colors</string>
-    <string name="color_mode_custom_desc">Manually choose your own colors</string>
-
-    <string name="reply_textfield_color">Textfield Color</string>
-    <string name="reply_textfield_color_desc">Inner text box background</string>
-    <string name="reply_text_color">Text Color</string>
-    <string name="reply_text_color_desc">Reply text color</string>
-    <string name="reply_send_color">Send Button Color</string>
-    <string name="reply_send_color_desc">Send icon color</string>
-
-    <string name="reply_appearance">Appearance</string>
-    <string name="reply_blur_effect">Blur Effect</string>
-    <string name="reply_blur_effect_desc">Apply glassmorphism to textfield</string>
-    <string name="reply_textfield_radius">Textfield Corner Radius</string>
-    <string name="reply_send_radius">Send Button Corner Radius</string>
-
-    <string name="onboarding_can_be_changed">You can change these options later in Settings and Theme Configurator.</string>
-    <string name="onboarding_widget_desc">Add standard Android widgets to your island for quick access.</string>
-    <string name="onboard_theme_desc">Fully customize colors, shapes and icons of your island.</string>
-    <string name="onboard_design_desc">Expand the possibilities with different customization options</string>
-    <string name="behavior_desc_glob_config">Determines how the island behaves.</string>
-    <string name="widget_layout_snapshot">Preview of the widget</string>
-
-    <string name="changelog_0_5_7">
-        <b>Optimizations &amp; Fixes</b>\n
-              • <b>Code Optimization:</b> Upgraded to the latest Android Gradle Plugin and enabled R8 code shrinking for a smaller, faster app.\n
-              • <b>Stability:</b> Improved notification synchronization and fixed an issue where original notifications were sometimes prematurely dismissed (PR #258).\n
-    </string>
-    <string name="title_0_5_7">Performance &amp; Sync Update</string>
-
+    <string name="color_mode_material_desc">Adaptar al fondo de pantalla del sistema (Monet)</string>
+    <string name="color_mode_custom">Colores Personalizados</string>
+    <string name="color_mode_custom_desc">Elige tus propios colores manualmente</string>
+    <string name="reply_textfield_color">Color de Cuadro de Texto</string>
+    <string name="reply_textfield_color_desc">Fondo del cuadro de texto</string>
+    <string name="reply_text_color">Color del Texto</string>
+    <string name="reply_text_color_desc">Color del texto de respuesta</string>
+    <string name="reply_send_color">Color de Enviar</string>
+    <string name="reply_send_color_desc">Color del icono de enviar</string>
+    <string name="reply_appearance">Apariencia</string>
+    <string name="reply_blur_effect">Efecto Desenfocado</string>
+    <string name="reply_blur_effect_desc">Aplica desenfoque tipo cristal al fondo</string>
+    <string name="reply_textfield_radius">Borde del Cuadro de Texto</string>
+    <string name="reply_send_radius">Borde del Botón de Enviar</string>
+    <string name="onboarding_can_be_changed">Puedes cambiar estas opciones más tarde en Ajustes y el Configurador de Temas.</string>
+    <string name="onboarding_widget_desc">Añade widgets estándar de Android a tu isla para un acceso rápido.</string>
+    <string name="onboard_theme_desc">Personaliza completamente los colores, formas e iconos de tu isla.</string>
+    <string name="onboard_design_desc">Amplía las posibilidades con diferentes opciones de personalización</string>
+    <string name="behavior_desc_glob_config">Determina el comportamiento de la isla.</string>
+    <string name="widget_layout_snapshot">Vista previa del widget</string>
     <string name="changelog_0_5_6">
-        <b>Fixes &amp; Improvements</b>\n
-              • <b>System UI Stability:</b> Validated highlightColor before passing to SystemUI to prevent crashes.\n
-              • <b>Permanent Island Behavior:</b> Fixed an issue where the permanent island disappeared after notifications or unlock.\n
-              • <b>Landscape Mode:</b> Added an option to hide the Permanent Island in landscape orientation.\n
+        <b>Correcciones y Mejoras</b>\n
+              • <b>Estabilidad de System UI:</b> Validación de highlightColor antes de enviarlo a SystemUI para evitar cierres.\n
+              • <b>Isla Permanente:</b> Solucionado un problema por el que la isla permanente desaparecía tras recibir notificaciones o desbloquear el dispositivo.\n
+              • <b>Modo Horizontal:</b> Añadida opción para ocultar la isla permanente en orientación horizontal.\n
     </string>
-    <string name="title_0_5_6">Landscape Hide &amp; Stability Fixes</string>
+    <string name="title_0_5_6">Modo Horizontal y Correcciones de Estabilidad</string>
 
     <string name="changelog_0_5_5">
-        <b>Live Updates &amp; Islands</b>\n
-              • <b>Icons:</b> Fixed an issue where the original app icon wouldn\'t display properly on Android 16 Live Updates.\n
-              • <b>Inline Replies:</b> You can now use inline replies directly from Live Update notifications.\n
-              • <b>Island Removal:</b> Fixed an issue where islands were not being properly removed when dismissed.\n\n
-        <b>Messaging Grouping Overhaul</b>\n
-              • <b>Deduplication:</b> Completely reworked how messaging-style notifications (like WhatsApp) are grouped to prevent duplicated islands.\n\n
-        <b>Fixes &amp; Stability</b>\n
-              • <b>Update Migration:</b> Fixed a critical bug where updating the app wouldn\'t trigger the proper database migration logic.\n
-              • <b>Defaults:</b> Disabled "Show in shade" by default on the onboarding screen.\n
-              • <b>Localization:</b> Resolved broken characters in translated strings.\n
+        <b>Live Updates e Islas</b>\n
+              • <b>Iconos:</b> Solucionado un problema por el que el icono de la aplicación original no se mostraba correctamente en los Live Updates de Android 16.\n
+              • <b>Respuestas Rápidas:</b> Ahora puedes usar las respuestas rápidas directamente desde las notificaciones de Live Updates.\n
+              • <b>Cierre de Islas:</b> Solucionado un problema por el que las islas no se cerraban correctamente al descartarlas.\n\n
+        <b>Renovación de Agrupación de Mensajes</b>\n
+              • <b>Desduplicación:</b> Se ha rediseñado por completo la forma en que se agrupan las notificaciones de mensajería (como WhatsApp) para evitar islas duplicadas.\n\n
+        <b>Correcciones y Estabilidad</b>\n
+              • <b>Migración de Actualización:</b> Se ha solucionado un error crítico por el que la actualización de la aplicación no activaba correctamente la lógica de migración de la base de datos.\n
+              • <b>Valores predeterminados:</b> Se ha desactivado \"Mostrar en panel\" por defecto en la pantalla de inicio.\n
+              • <b>Localización:</b> Se han corregido los caracteres corruptos en las cadenas traducidas.\n
     </string>
-    <string name="title_0_5_5">Messaging &amp; Update Fixes</string>
-
-    <string name="changelog_0_5_2">
-        <b>New Inline Reply Feature!</b>\n
-              • <b>Inline Reply:</b> You can now reply to messages directly from the island without opening the app!\n
-              • <b>Customization:</b> Fully customize the look of the new inline reply editor globally or per-app.\n
-              • <b>Global Settings:</b> Access the new Reply customization section directly from the Global Settings -> Inline reply.\n
+    <string name="title_0_5_5">Mensajería y Correcciones</string>
+    <string name="changelog_0_5_2">        <b>¡Nueva Respuesta Rápida!</b>\n
+              • <b>Respuesta Rápida:</b> ¡Ahora puedes responder a los mensajes directamente desde la isla sin abrir la app!\n
+              • <b>Personalización:</b> Personaliza completamente el aspecto del nuevo editor de respuestas rápidas a nivel global o por aplicación.\n
+              • <b>Ajustes Globales:</b> Accede a la nueva sección de personalización de Respuestas directamente desde los Ajustes Globales -&gt; Respuesta Rápida.\n
         \n
-        <b>Play Store Crash Fixes &amp; Stability</b>\n
-              • <b>Theme Creator:</b> Fixed a crash when parsing large sets of custom assets.\n
-              • <b>Performance:</b> Resolved an ANR (Application Not Responding) issue on the initial Welcome Screen.\n
-              • <b>Widget Picker:</b> Eliminated crashes and Out-Of-Memory (OOM) errors caused by extremely large widget previews.\n
-              • <b>UI Layouts:</b> Fixed Jetpack Compose layout constraint exceptions that crashed the app when resizing certain menus.\n
-              • <b>Backups:</b> Resolved OOM errors when importing large backup files by optimizing JSON parsing.\n
-              • <b>Warm Starts:</b> Significantly improved app launch speeds and eliminated UI thread blocking on mid-range devices.\n
-              • <b>Background Service:</b> Completely overhauled the Notification Listener memory architecture, dropping background overhead to 0% and improving battery life.\n
+        <b>Actualización de Rendimiento y Estabilidad</b>\n
+              • <b>Creador de Temas:</b> Se resolvió un cierre inesperado al cargar conjuntos de iconos grandes.\n
+              • <b>Mejora en la Bienvenida:</b> Eliminado un error de \"Aplicación no Responde\" (ANR) en la primera pantalla.\n
+              • <b>Selector de Widgets:</b> Prevenidos cierres y errores de falta de memoria (OOM) causados por vistas previas gigantes.\n
+              • <b>Diseño Más Robusto:</b> Solucionados problemas de restricciones de diseño en Jetpack Compose al achicar menús.\n
+              • <b>Copias de Seguridad:</b> Mejorado el análisis de JSON, evitando errores de OOM al restaurar archivos grandes.\n
+              • <b>Inicio Rápido:</b> Reducción significativa de los bloqueos de la interfaz, acelerando el inicio de la app en dispositivos de gama media.\n
+              • <b>Servicio en Segundo Plano:</b> Arquitectura de memoria del Notification Listener completamente rediseñada, reduciendo el consumo en segundo plano al 0% y mejorando la batería.\n
     </string>
-    <string name="title_0_5_2">Inline Reply, Performance &amp; Stability</string>
-
-    <string name="changelog_0_5_1">
-        <b>Fixes &amp; Stability</b>\n
-              WhatsApp Duplicates Fixed: Resolved an issue that caused duplicate WhatsApp notifications to appear.\n
-              Notification Flicker &amp; Crashes Fixed: Fixed a crash caused by receiving multiple notifications in a short timeframe. The app now safely updates notifications normally, eliminating the notification flicker and improving stability.\n
-              Notification Intents Restored: Fixed an issue where clicking a featured notification would incorrectly route to the troubleshooting screen instead of the original app.\n\n
-        <b>Features &amp; Polish</b>\n
-              Remove Island on Dismiss: Added a new option to automatically remove the island if the original system notification is dismissed.\n
-              Featured Notifications Diagnostics: Added a new check screen during Onboarding to verify if your Xiaomi device supports Featured Notifications and if the required permissions are enabled.\n
-              Setup Health Integration: The Featured Notifications permission status is now continuously monitored and displayed inside the Setup Health screen.\n
-              Troubleshooting Screen: Added a dedicated Troubleshooting Screen that guides users on how to enable the necessary hidden system permissions (or use Shizuku) to get islands working on strict Xiaomi ROMs.\n
-              Clearer Terminology: Renamed the "Live Updates" section in the settings menu to "Notification Management" to better reflect its purpose.\n
-              Settings UI Polish: Restored the missing rounded corners on the "Permanent Island" option in the Global Settings list.\n
-              Spanish Translations: Added full Spanish translations for all the new troubleshooting dialogues, setup health checks, and notification management settings.
+    <string name="title_0_5_2">Respuesta Rápida, Rendimiento y Estabilidad</string>
+    <string name="changelog_0_5_1">        <b>Correcciones y Estabilidad</b>\n
+              Corrección de Duplicados en WhatsApp: Resuelto un problema que causaba que aparecieran notificaciones duplicadas de WhatsApp.\n
+              Corrección de Parpadeos y Cierres: Solucionado un cierre inesperado causado al recibir múltiples notificaciones en un corto período. La aplicación ahora actualiza las notificaciones de manera segura, eliminando el parpadeo y mejorando la estabilidad.\n
+              Intenciones Restauradas: Corregido un problema donde al hacer clic en una notificación destacada, la app te dirigía incorrectamente a la pantalla de solución de problemas en lugar de abrir la aplicación original.\n\n
+        <b>Características y Mejoras</b>\n
+              Eliminar Isla al Descartar: Añadida una nueva opción para eliminar automáticamente la isla si se descarta la notificación original del sistema.\n
+              Diagnóstico de Notificaciones: Añadida una nueva pantalla de verificación durante la configuración inicial para comprobar si tu dispositivo Xiaomi es compatible con las Notificaciones Destacadas.\n
+              Integración de Estado del Sistema: El estado de los permisos de Notificaciones Destacadas ahora se monitoriza continuamente y se muestra dentro de la pantalla de Estado del Sistema.\n
+              Pantalla de Solución de Problemas: Añadida una pantalla dedicada que guía a los usuarios sobre cómo habilitar los permisos ocultos del sistema (o usar Shizuku).\n
+              Terminología Más Clara: Renombrada la sección de \"Actualizaciones en Vivo\" en el menú de ajustes a \"Gestión de Notificaciones\" para reflejar mejor su propósito.\n
+              Pulido de Interfaz en Ajustes: Restauradas las esquinas redondeadas faltantes en la opción \"Isla Permanente\" en la lista de Ajustes Globales.\n
+              Traducciones al Español: Añadidas traducciones completas al español para todos los nuevos diálogos de solución de problemas, verificaciones del sistema y ajustes.
     </string>
-    <string name="title_0_5_1">Fixes &amp; Refinements</string>
-
-    <string name="changelog_0_5_0">
-        <b>CN ROM Support</b>\n
-            • Enable the new Sui &amp; Shizuku workaround to enjoy the Hyper Islands in your devices running HyperOS CN (Chinese) ROMs without native support.\n\n
-        <b>Theme Engine Improvements</b>\n
-            • Engine Selection: You can now choose animation engines per-app or globally.\n
-            • Shizuku Workaround: Toggle added directly to the Theme Editor Engine tab.\n
-            • Behavior Controls: Custom timeouts and popup logic are now fully supported.\n\n
-        <b>Intelligent Permanent Island</b>\n
-            • Always Visible: Keep the island on screen even without active notifications.\n
-            • Auto-Hide: The permanent island now automatically hides itself whenever an active widget is shown on the screen.\n\n
-        <b>Smart Icon Tinting</b>\n
-            • New detection system automatically analyzes extracted notification icons and intelligently tints them white if they are dark or monochrome.\n\n
-        <b>Downloads &amp; Progress</b>\n
-            • New Dedicated Download Layout: Separated download and progress layouts with dedicated visual designs.\n
-            • Text Progress Support: Parsed percentage text (e.g. "12%") for app updates even without native progress bars.\n
-            • Smart Filtering: Restricted text-based progress checking to store and installer downloads to prevent false triggers on other status notifications.\n\n
-        <b>Messaging Fixes</b>\n
-            • Fixed missing sender avatars in apps like Telegram (now correctly extracts "sender_person" data).\n
-            • Resolved issues with grouped notifications (chat summaries) not triggering islands.\n
-            • Fixed island disappearance bugs caused by notification update race conditions.\n\n
-        <b>System &amp; Onboarding</b>\n
-            • New Onboarding Screen: A brand new and easier setup process for critical permissions.\n
-            • Boot Fix: Service now starts immediately and reliably after restart.\n
-            • Smarter Alerts: Downloads and Media update silently, while messaging updates reliably trigger popup animations.\n
-            • Navigation: Faster and smoother app transitions.
-    </string>
-    <string name="title_0_5_0">The Live Update</string>
-    <string name="notification_went_wrong">If you are seeing this, something went wrong! Click here to see how to fix it.</string>
-    <string name="widget_went_wrong">If you are seeing this, something went wrong! The system couldn\'t show the widget</string>
-    <string name="troubleshoot_featured_notification">Troubleshoot</string>
-
-    <string name="featured_notifications_check">Featured Notifications Check</string>
-    <string name="featured_notifications_check_desc">Let\'s verify if your system is configured correctly to display Ryx Isla islands.</string>
-    <string name="featured_notifications_not_supported">Not Supported</string>
-    <string name="featured_notifications_enabled">Enabled</string>
-    <string name="featured_notifications_open_settings">Open System Settings</string>
-    <string name="featured_notifications_troubleshoot_title">Why is this not an island?</string>
-    <string name="featured_notifications_troubleshoot_desc">Your Xiaomi device intercepted the notification but failed to display it as a featured island because the permission is disabled in your system settings.\n\nTo fix this:\n1. Tap "Open System Settings"\n2. Scroll down to "Featured Notifications" (or similar)\n3. Enable it for Ryx Isla.</string>
-    <string name="featured_notifications_shizuku_alternative">Alternative: Shizuku Override</string>
-    <string name="featured_notifications_shizuku_desc">If your system doesn\'t show the setting or it\'s restricted, you can bypass the Xiaomi whitelist entirely by setting up Shizuku. Ryx Isla will use Shizuku to post islands directly.</string>
-
+    <string name="title_0_5_1">Correcciones y Mejoras</string>
+    <string name="changelog_0_5_0"><b>Soporte para ROMs CN</b>\n
+            • Habilita la nueva solución Sui &amp; Shizuku para disfrutar de Hyper Islands en tus dispositivos con ROMs HyperOS CN (China) sin soporte nativo.\n\n
+        <b>Mejoras del Motor de Temas</b>\n
+            • Selección de Motor: Ahora puedes elegir motores de animación por aplicación o globalmente.\n
+            • Solución Shizuku: Opción agregada directamente a la pestaña Motor del Editor de Temas.\n
+            • Controles de Comportamiento: Tiempos de espera personalizados y lógica de ventanas emergentes son ahora totalmente compatibles.\n\n
+        <b>Isla Permanente Inteligente</b>\n
+            • Siempre Visible: Mantén la isla en pantalla incluso sin notificaciones activas.\n
+            • Ocultar Automáticamente: La isla permanente ahora se oculta automáticamente cuando se muestra un widget activo en la pantalla.\n\n
+        <b>Tintado Inteligente de Iconos</b>\n
+            • El nuevo sistema de detección analiza automáticamente los iconos de notificación extraídos y los tiñe inteligentemente de blanco si son oscuros o monocromáticos.\n\n
+        <b>Descargas y Progreso</b>\n
+            • Nuevo Diseño Dedicado para Descargas: Diseños de descarga y progreso separados con diseños visuales dedicados.\n
+            • Soporte de Progreso de Texto: Texto de porcentaje analizado (por ejemplo, \"12%\") para actualizaciones de aplicaciones incluso sin barras de progreso nativas.\n
+            • Filtrado Inteligente: Verificación de progreso basada en texto restringida a descargas de tiendas e instaladores para evitar activaciones falsas en otras notificaciones de estado.\n\n
+        <b>Correcciones de Mensajería</b>\n
+            • Se corrigió la falta de avatares del remitente en aplicaciones como Telegram (ahora extrae correctamente los datos \"sender_person\").\n
+            • Se resolvieron problemas con notificaciones agrupadas (resúmenes de chat) que no activaban las islas.\n
+            • Se corrigieron errores de desaparición de la isla causados por condiciones de carrera en la actualización de notificaciones.\n\n
+        <b>Sistema y Configuración Inicial</b>\n
+            • Nueva Pantalla de Bienvenida: Un proceso de configuración completamente nuevo y más fácil para los permisos críticos.\n
+            • Corrección de Inicio: El servicio ahora se inicia inmediata y confiablemente después de reiniciar.\n
+            • Alertas más Inteligentes: Las descargas y medios se actualizan silenciosamente, mientras que las actualizaciones de mensajes activan animaciones emergentes de manera confiable.\n
+            • Navegación: Transiciones de aplicaciones más rápidas y fluidas    </string>
+    <string name="title_0_5_0">La actualización en vivo</string>
+    <string name="notification_went_wrong">¡Si ves esto, algo salió mal! Haz clic aquí para ver cómo solucionarlo.</string>
+    <string name="widget_went_wrong">Si estás viendo esto, algo salió mal! El sistema no puede mostrar el widget</string>
+    <string name="troubleshoot_featured_notification">Solucionar</string>
+    <string name="featured_notifications_check">Test Notificaciones Destacadas</string>
+    <string name="featured_notifications_check_desc">Vamos a verificar si tu sistema está configurado correctamente para mostrar las islas de Ryx Isla.</string>
+    <string name="featured_notifications_not_supported">No Soportado</string>
+    <string name="featured_notifications_enabled">Habilitado</string>
+    <string name="featured_notifications_open_settings">Abrir Ajustes del Sistema</string>
+    <string name="featured_notifications_troubleshoot_title">¿Por qué esto no es una isla?</string>
+    <string name="featured_notifications_troubleshoot_desc">Tu dispositivo Xiaomi interceptó la notificación pero no pudo mostrarla como una isla destacada porque el permiso está deshabilitado en los ajustes del sistema.\n\nPara solucionar esto:\n1. Toca \"Abrir Ajustes del Sistema\"\n2. Desplázate hacia abajo hasta \"Notificaciones Destacadas\" (o similar)\n3. Habilítalo para Ryx Isla.</string>
+    <string name="featured_notifications_shizuku_alternative">Alternativa: Usar Shizuku</string>
+    <string name="featured_notifications_shizuku_desc">Si tu sistema no muestra el ajuste o está restringido, puedes eludir la lista blanca de Xiaomi completamente configurando Shizuku. Ryx Isla usará Shizuku para publicar las islas directamente.</string>
     <string name="migration_title">Ryx Isla Update</string>
     <string name="migration_message">Migrating database to Device Protected storage…</string>
     <string name="migration_complete">Update Complete</string>
+    <string name="notification_management">Gestión de Notificaciones</string>
+    <string name="inline_reply_title">Respuesta rápida</string>
+    <string name="customize_inline_reply">Personalizar el diseño de la respuesta</string>
+    <string name="reply_hint">Responder...</string>
+    <string name="perm_display_title">Mostrar sobre otras aplicaciones</string>
+    <string name="perm_display_onboard_desc">Requerido para mostrar la ventana de respuesta rápida.</string>
 
-    <string name="notification_management">Notification Management</string>
-    <string name="inline_reply_title">Inline Reply</string>
-    <string name="customize_inline_reply">Customize inline reply overlay</string>
-    <string name="reply_hint">Reply...</string>
-
-    <string name="perm_display_title">Display over other apps</string>
-    <string name="perm_display_onboard_desc">Required to show the custom inline reply overlay.</string>
+    <string name="changelog_0_5_7">
+        <b>Optimizaciones y correcciones</b>\n
+              • <b>Optimización de código:</b> Actualización a la última versión del Plugin de Gradle para Android y habilitación de R8 para una app más pequeña y rápida.\n
+              • <b>Estabilidad:</b> Mejora en la sincronización de notificaciones y corrección de un error donde las notificaciones originales a veces se eliminaban prematuramente (PR #258).\n
+    </string>
+    <string name="title_0_5_7">Actualización de Rendimiento y Sincronización</string>
+    <string name="type_message">Mensajes y chats</string>
+    <string name="type_message_desc">Mensajes, chats y conversaciones</string>
 </resources>

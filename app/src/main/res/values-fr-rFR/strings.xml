@@ -37,7 +37,7 @@
     <string name="no_active_bridges_desc">Allez dans la bibliothèque pour activer les applications.</string>
     <string name="no_apps_found">Aucune application trouvée</string>
     <string name="version_template">Version %s</string>
-    <string name="developer_credit">Ryx Isla · Hyper Bridge (Apache 2.0)</string>
+    <string name="developer_credit">Creado por David Joel - Ryx Isla</string>
     <string name="group_configuration">Configuration</string>
     <string name="system_setup">Configuration du système</string>
     <string name="system_setup_subtitle">Corriger les permissions &amp; batterie</string>
@@ -47,13 +47,13 @@
     <string name="permanent_island_screen_desc">Lorsque cette option est activée, une zone de notification vide sera affichée de façon permanente sur votre écran. Elle se masquera automatiquement lorsque des notifications réelles arriveront et réapparaîtra lorsque toutes les notifications seront effacées. Elle ne sera pas visibles dans votre zone de notification.</string>
     <string name="permanent_island_width">Largeur de la zone</string>
     <string name="group_about">A propos</string>
-    <string name="developer">Développeur</string>
-    <string name="developer_subtitle">Visiter d4viddf.com</string>
+    <string name="developer">David Joel</string>
+    <string name="developer_subtitle">Creador de Ryx Isla - Perú</string>
     <string name="source_code">Code source</string>
     <string name="source_code_subtitle">Dépôt GitHub</string>
     <string name="licenses">Licences Open Source</string>
     <string name="licenses_subtitle">Logiciel tiers</string>
-    <string name="footer_made_with_love">Fabriqué avec ❤️ en Espagne</string>
+    <string name="footer_made_with_love">Fabriqué avec ❤️ au Pérou</string>
     <string name="app_health_desc">Assurez-vous que toutes les vérifications soient en vert pour que l\'application fonctionne correctement en arrière-plan.</string>
     <string name="req_permissions">Autorisations Requises</string>
     <string name="notif_access">Accès aux notifications</string>

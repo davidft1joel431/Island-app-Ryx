@@ -37,7 +37,7 @@
     <string name="no_active_bridges_desc">Prejdite do knižnice a povoľte aplikácie.</string>
     <string name="no_apps_found">Žiadne aplikácie nájdené</string>
     <string name="version_template">Verzia %s</string>
-    <string name="developer_credit">Ryx Isla · Hyper Bridge (Apache 2.0)</string>
+    <string name="developer_credit">Creado por David Joel - Ryx Isla</string>
     <string name="group_configuration">Konfigurácia</string>
     <string name="system_setup">Nastavenie systému</string>
     <string name="system_setup_subtitle">Oprava povolení &amp; batérie</string>
@@ -47,13 +47,13 @@
     <string name="permanent_island_screen_desc">When enabled, an empty Dynamic Island will be shown permanently on your screen. It will automatically hide when real notifications arrive and reappear when all notifications are cleared. It will not be visible in your notification shade.</string>
     <string name="permanent_island_width">Island Width</string>
     <string name="group_about">O nás</string>
-    <string name="developer">Vývojár</string>
-    <string name="developer_subtitle">Navštívte d4viddf.com</string>
+    <string name="developer">David Joel</string>
+    <string name="developer_subtitle">Creador de Ryx Isla - Perú</string>
     <string name="source_code">Zdrojový kód</string>
     <string name="source_code_subtitle">GitHub Repozitár</string>
     <string name="licenses">Licencie Oper Source</string>
     <string name="licenses_subtitle">Aplikácia tretích strán</string>
-    <string name="footer_made_with_love">Vytvorené s ❤️ v Španielsku</string>
+    <string name="footer_made_with_love">Vytvorené s ❤️ v Peru</string>
     <string name="app_health_desc">Uistite sa, že všetky zaškrtávacie políčka sú zelené, aby aplikácia správne fungovala na pozadí.</string>
     <string name="req_permissions">Požadované povolenia</string>
     <string name="notif_access">Prístup k upozorneniam</string>

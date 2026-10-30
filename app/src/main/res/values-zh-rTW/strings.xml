@@ -37,7 +37,7 @@
     <string name="no_active_bridges_desc">請前往「應用程式庫」以啟用 App。</string>
     <string name="no_apps_found">找不到應用程式</string>
     <string name="version_template">版本 %s</string>
-    <string name="developer_credit">Ryx Isla · Hyper Bridge (Apache 2.0)</string>
+    <string name="developer_credit">Creado por David Joel - Ryx Isla</string>
     <string name="group_configuration">設定</string>
     <string name="system_setup">系統設定</string>
     <string name="system_setup_subtitle">修正權限 &amp; 電池設定</string>
@@ -47,13 +47,13 @@
     <string name="permanent_island_screen_desc">啟用後，螢幕上將永久顯示一個空白的超級島。當收到實際通知時，它會自動隱藏；當所有通知清除後，它會自動重新出現。此超級島不會顯示在通知欄中。</string>
     <string name="permanent_island_width">超級島寬度</string>
     <string name="group_about">關於</string>
-    <string name="developer">開發者</string>
-    <string name="developer_subtitle">造訪 d4viddf.com</string>
+    <string name="developer">David Joel</string>
+    <string name="developer_subtitle">Creador de Ryx Isla - Perú</string>
     <string name="source_code">原始碼</string>
     <string name="source_code_subtitle">GitHub 儲存庫</string>
     <string name="licenses">開源授權</string>
     <string name="licenses_subtitle">第三方軟體</string>
-    <string name="footer_made_with_love">在西班牙由 ❤️ 打造</string>
+    <string name="footer_made_with_love">在秘魯用 ❤️ 打造</string>
     <string name="app_health_desc">請確保所有檢查項目皆顯示為綠色，以確保應用程式能在背景正常運作。</string>
     <string name="req_permissions">必要的權限</string>
     <string name="notif_access">通知存取權</string>

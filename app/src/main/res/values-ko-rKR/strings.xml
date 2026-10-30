@@ -37,7 +37,7 @@
     <string name="no_active_bridges_desc">라이브러리에서 앱을 활성화하세요.</string>
     <string name="no_apps_found">앱을 찾을 수 없습니다</string>
     <string name="version_template">버전 %s</string>
-    <string name="developer_credit">Ryx Isla · Hyper Bridge (Apache 2.0)</string>
+    <string name="developer_credit">Creado por David Joel - Ryx Isla</string>
     <string name="group_configuration">구성</string>
     <string name="system_setup">시스템 설정</string>
     <string name="system_setup_subtitle">권한 및 배터리 문제 해결</string>
@@ -47,13 +47,13 @@
     <string name="permanent_island_screen_desc">When enabled, an empty Dynamic Island will be shown permanently on your screen. It will automatically hide when real notifications arrive and reappear when all notifications are cleared. It will not be visible in your notification shade.</string>
     <string name="permanent_island_width">Island Width</string>
     <string name="group_about">앱 정보</string>
-    <string name="developer">개발자</string>
-    <string name="developer_subtitle">d4viddf.com 방문</string>
+    <string name="developer">David Joel</string>
+    <string name="developer_subtitle">Creador de Ryx Isla - Perú</string>
     <string name="source_code">소스 코드</string>
     <string name="source_code_subtitle">GitHub 저장소</string>
     <string name="licenses">오픈소스 라이선스</string>
     <string name="licenses_subtitle">서드파티 소프트웨어</string>
-    <string name="footer_made_with_love">스페인에서 ❤️로 제작됨</string>
+    <string name="footer_made_with_love">페루에서 ❤️를 담아 제작</string>
     <string name="app_health_desc">백그라운드 작동을 위해 모든 항목이 초록색인지 확인하세요.</string>
     <string name="req_permissions">필수 권한</string>
     <string name="notif_access">알림 접근</string>

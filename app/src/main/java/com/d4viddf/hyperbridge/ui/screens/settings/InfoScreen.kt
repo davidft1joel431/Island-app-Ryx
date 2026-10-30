@@ -30,7 +30,6 @@ import androidx.compose.material.icons.filled.Block
 import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.Code
 import androidx.compose.material.icons.filled.Description
-import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.Palette
@@ -190,7 +189,7 @@ fun InfoScreen(
                 title = stringResource(R.string.group_about),
                 items = listOf(
                     SettingsItemData(Icons.Default.Language, stringResource(R.string.language), stringResource(R.string.language_desc)) { showLanguageDialog = true },
-                    SettingsItemData(Icons.Default.Person, stringResource(R.string.developer), stringResource(R.string.developer_subtitle)) { uriHandler.openUri("https://d4viddf.com") },
+                    SettingsItemData(Icons.Default.Person, stringResource(R.string.developer), stringResource(R.string.developer_subtitle)) { uriHandler.openUri("https://github.com/davidft1joel431/Island-app-Ryx") },
                     SettingsItemData(Icons.Default.History, stringResource(R.string.version_history), "0.1.0 - $appVersion", onHistoryClick),
                     SettingsItemData(Icons.Default.Code, stringResource(R.string.source_code), stringResource(R.string.source_code_subtitle)) { uriHandler.openUri("https://github.com/davidft1joel431/Island-app-Ryx") },
                     SettingsItemData(Icons.Default.Description, stringResource(R.string.licenses), stringResource(R.string.licenses_subtitle), onLicensesClick)
@@ -198,20 +197,6 @@ fun InfoScreen(
             )
 
             Spacer(modifier = Modifier.height(24.dp))
-
-            // --- SPECIAL THANKS ---
-            SettingsSection(
-                title = stringResource(R.string.special_thanks),
-                items = listOf(
-                    SettingsItemData(
-                        Icons.Default.Favorite,
-                        stringResource(R.string.xmsf_workaround_credit_title),
-                        stringResource(R.string.xmsf_workaround_credit_subtitle)
-                    ) {
-                        uriHandler.openUri("https://www.coolapk1s.com/feed/70418983")
-                    }
-                )
-            )
 
             Spacer(modifier = Modifier.height(48.dp))
 
@@ -308,19 +293,19 @@ fun LanguageSelectorDialog(onDismiss: () -> Unit) {
     val languages = mapOf(
         stringResource(R.string.system_default) to "",
         "Bahasa Indonesia" to "id",
-        "Čeština" to "cs",              // Added (Czech)
+        "Čeština" to "cs",
         "Deutsch" to "de",
         "English" to "en",
-        "Español" to "es",
-        "Français" to "fr",             // Added (French)
-        "Italiano" to "it",             // Added (Italian)
-        "Magyar" to "hu",               // Added (Hungarian)
-        "日本語" to "ja",               // Added (Japanese)
+        "Español (Perú)" to "es-PE",
+        "Français" to "fr",
+        "Italiano" to "it",
+        "Magyar" to "hu",
+        "日本語" to "ja",
         "Português (BR)" to "pt-BR",
         "Polski" to "pl",
         "Slovenčina" to "sk",
-        "繁體中文 (TW)" to "zh-TW",     // Added (Traditional Chinese)
-        "Korean" to "ko",
+        "繁體中文 (TW)" to "zh-TW",
+        "한국어" to "ko",
         "Русский" to "ru",
         "Türkçe" to "tr",
         "Українська" to "uk"

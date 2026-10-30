@@ -37,7 +37,7 @@
     <string name="no_active_bridges_desc">Öffne die Bibliothek, um Apps zu aktivieren.</string>
     <string name="no_apps_found">Keine Apps gefunden</string>
     <string name="version_template">Version %s</string>
-    <string name="developer_credit">Ryx Isla · Hyper Bridge (Apache 2.0)</string>
+    <string name="developer_credit">Creado por David Joel - Ryx Isla</string>
     <string name="group_configuration">Konfiguration</string>
     <string name="system_setup">Systemeinrichtung</string>
     <string name="system_setup_subtitle">Berechtigungen &amp; Akku optimieren</string>
@@ -47,13 +47,13 @@
     <string name="permanent_island_screen_desc">When enabled, an empty Dynamic Island will be shown permanently on your screen. It will automatically hide when real notifications arrive and reappear when all notifications are cleared. It will not be visible in your notification shade.</string>
     <string name="permanent_island_width">Island Width</string>
     <string name="group_about">Über</string>
-    <string name="developer">Entwickler</string>
-    <string name="developer_subtitle">Besuche d4viddf.com</string>
+    <string name="developer">David Joel</string>
+    <string name="developer_subtitle">Creador de Ryx Isla - Perú</string>
     <string name="source_code">Quellcode</string>
     <string name="source_code_subtitle">GitHub-Repository</string>
     <string name="licenses">Open-Source-Lizenzen</string>
     <string name="licenses_subtitle">Software von Drittanbietern</string>
-    <string name="footer_made_with_love">Mit ❤️ in Spanien erstellt</string>
+    <string name="footer_made_with_love">Mit ❤️ in Peru erstellt</string>
     <string name="app_health_desc">Stelle sicher, dass alle Prüfungen grün sind, damit die App korrekt im Hintergrund läuft.</string>
     <string name="req_permissions">Erforderliche Berechtigungen</string>
     <string name="notif_access">Benachrichtigungszugriff</string>
@@ -214,7 +214,6 @@
         Neue Option, um Benachrichtigungen im System-Panel auszublenden, während die Island aktiv bleibt. Siehe Globale Einstellungen!\n\n
 
         <b>Neue Sprachen 🌍</b>\n
-        Besonderer Dank an unsere Community für diese Übersetzungen:\n
         • 🇧🇷 Portugiesisch (Brasilien)\n
         • 🇵🇱 Polnisch\n
         • 🇰🇷 Koreanisch\n

@@ -47,20 +47,20 @@
     <string name="no_apps_found">アプリが見つかりません</string>
 
     <string name="version_template">バージョン %s</string>
-    <string name="developer_credit">Ryx Isla · Hyper Bridge (Apache 2.0)</string>
+    <string name="developer_credit">Creado por David Joel - Ryx Isla</string>
 
     <string name="group_configuration">設定</string>
     <string name="system_setup">システム設定</string>
     <string name="system_setup_subtitle">権限とバッテリー設定を修正</string>
 
     <string name="group_about">アプリについて</string>
-    <string name="developer">開発者</string>
-    <string name="developer_subtitle">d4viddf.comにアクセス</string>
+    <string name="developer">David Joel</string>
+    <string name="developer_subtitle">Creador de Ryx Isla - Perú</string>
     <string name="source_code">ソースコード</string>
     <string name="source_code_subtitle">GitHubリポジトリ</string>
     <string name="licenses">オープンソースライセンス</string>
     <string name="licenses_subtitle">サードパーティ製ソフトウェア</string>
-    <string name="footer_made_with_love">スペインで❤️を込めて制作</string>
+    <string name="footer_made_with_love">ペルーで❤️を込めて制作</string>
 
     <string name="app_health_desc">アプリがバックグラウンドで正しく動作するには、すべての項目が緑色である必要があります。</string>
     <string name="req_permissions">必要な権限</string>
