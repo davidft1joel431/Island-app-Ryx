@@ -1,0 +1,45 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="420" viewBox="0 0 1200 420" role="img" aria-labelledby="title desc">
+  <title id="title">Compatibilidad de Ryx Isla</title>
+  <desc id="desc">Ryx Isla requiere Android 15 o posterior. El acceso a notificaciones y la superposición son necesarios. La integración nativa HyperOS es opcional.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#171208"/><stop offset="1" stop-color="#302000"/></linearGradient>
+    <linearGradient id="gold" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#FFE078"/><stop offset="1" stop-color="#E79B00"/></linearGradient>
+    <filter id="shadow" x="-15%" y="-25%" width="130%" height="160%"><feDropShadow dx="0" dy="10" stdDeviation="14" flood-color="#000" flood-opacity=".3"/></filter>
+  </defs>
+  <rect width="1200" height="420" rx="30" fill="url(#bg)"/>
+  <text x="64" y="67" fill="#FFE7A3" font-family="Arial,sans-serif" font-size="17" font-weight="700" letter-spacing="3">COMPATIBILIDAD</text>
+  <text x="64" y="112" fill="#FFF9E8" font-family="Arial,sans-serif" font-size="32" font-weight="700">Lo necesario para empezar</text>
+
+  <g filter="url(#shadow)">
+    <rect x="56" y="151" width="342" height="215" rx="24" fill="#FFF8E6"/>
+    <circle cx="111" cy="207" r="31" fill="#E8F5E9"/>
+    <path d="M102 218v-22m0 0-8 8m8-8 8 8m-8 25v-6" fill="none" stroke="#31994C" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+    <text x="158" y="198" fill="#302714" font-family="Arial,sans-serif" font-size="21" font-weight="700">Android 15+</text>
+    <text x="158" y="223" fill="#8A7955" font-family="Arial,sans-serif" font-size="14">Requisito mínimo</text>
+    <path d="M84 261h286" stroke="#E9DFC9"/>
+    <text x="84" y="296" fill="#403822" font-family="Arial,sans-serif" font-size="16">Compatible con distintas marcas y ROM.</text>
+    <text x="84" y="324" fill="#746747" font-family="Arial,sans-serif" font-size="14">La app indica qué sistema ha detectado.</text>
+  </g>
+
+  <g filter="url(#shadow)">
+    <rect x="429" y="151" width="342" height="215" rx="24" fill="#FFF8E6"/>
+    <circle cx="484" cy="207" r="31" fill="#FFF0C6"/>
+    <path d="M472 208v-6a12 12 0 0 1 24 0v6m-24 0h24v14h-24z" fill="none" stroke="#C68A00" stroke-width="3.5" stroke-linejoin="round"/>
+    <text x="531" y="198" fill="#302714" font-family="Arial,sans-serif" font-size="21" font-weight="700">Dos permisos</text>
+    <text x="531" y="223" fill="#8A7955" font-family="Arial,sans-serif" font-size="14">Se activan en los ajustes</text>
+    <path d="M457 261h286" stroke="#E9DFC9"/>
+    <circle cx="467" cy="291" r="5" fill="#D99A00"/><text x="482" y="296" fill="#403822" font-family="Arial,sans-serif" font-size="15">Acceso a notificaciones</text>
+    <circle cx="467" cy="326" r="5" fill="#D99A00"/><text x="482" y="331" fill="#403822" font-family="Arial,sans-serif" font-size="15">Mostrar sobre otras aplicaciones</text>
+  </g>
+
+  <g filter="url(#shadow)">
+    <rect x="802" y="151" width="342" height="215" rx="24" fill="#FFF8E6"/>
+    <circle cx="857" cy="207" r="31" fill="#E6F4DE"/>
+    <path d="M843 207h28m-14-14v28" stroke="#3A9C4E" stroke-width="4" stroke-linecap="round"/>
+    <text x="904" y="198" fill="#302714" font-family="Arial,sans-serif" font-size="21" font-weight="700">HyperOS</text>
+    <text x="904" y="223" fill="#8A7955" font-family="Arial,sans-serif" font-size="14">Integración adicional opcional</text>
+    <path d="M830 261h286" stroke="#E9DFC9"/>
+    <text x="830" y="296" fill="#403822" font-family="Arial,sans-serif" font-size="15">Disponible en Xiaomi, Redmi y POCO</text>
+    <text x="830" y="324" fill="#746747" font-family="Arial,sans-serif" font-size="14">cuando el firmware ofrece esa función.</text>
+  </g>
+</svg>
