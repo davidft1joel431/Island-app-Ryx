@@ -26,7 +26,7 @@ data class AppTheme(val id: String, val label: String, val accent: Int, val glow
 object Glass {
     /** Temas oscuros con acentos personalizables; el tema amarillo es el predeterminado de Ryx. */
     val THEMES = listOf(
-        AppTheme("yellow", "Miel dorada", 0xFFFFC857.toInt(), 0xFFF5A623.toInt(), 0xFFFF7B32.toInt()),
+        AppTheme("yellow", "Miel dorada", 0xFFE1A31E.toInt(), 0xFFF5A623.toInt(), 0xFFFF7B32.toInt()),
         AppTheme("onyx", "Ónix", 0xFF6366F1.toInt(), 0x1A6366F1, 0x0F4C86FF),   // índigo profundo
         AppTheme("slate", "Pizarra", 0xFF94A3B8.toInt(), 0x1594A3B8, 0x0E3B535C), // gris azulado
         AppTheme("emerald", "Esmeralda", 0xFF10B981.toInt(), 0x1510B981, 0x0B0F3B33), // verde esmeralda
@@ -41,24 +41,24 @@ object Glass {
     var ACCENT: Int = THEMES[0].accent
         private set
 
-    // Texto crema sobre superficies oscuras cálidas.
-    const val TEXT = 0xFFFFFFFF.toInt()
-    const val MUTED = 0xFF9CA3AF.toInt()
-    const val FAINT = 0xFF6B7280.toInt()
-    // Superficies grafito con un matiz cálido que deja respirar el acento dorado.
-    const val SURFACE = 0xFF0D0C09.toInt()      // fondo principal casi negro
-    const val SURFACE_HI = 0xFF15130E.toInt()   // superficie elevada
-    const val SURFACE_TOP = 0xFF1E1A11.toInt()  // superficie aún más elevada
-    /** Borde fino tenue (8 % de blanco) para tarjetas y controles minimalistas. */
-    const val HAIR = 0x14FFFFFF
+    // Texto tinta sobre superficies marfil cálidas.
+    const val TEXT = 0xFF282317.toInt()
+    const val MUTED = 0xFF766E60.toInt()
+    const val FAINT = 0xFF9A9181.toInt()
+    // Superficies claras con matices miel que mantienen legibles los controles.
+    const val SURFACE = 0xFFFFF9ED.toInt()
+    const val SURFACE_HI = 0xFFFFFDF8.toInt()
+    const val SURFACE_TOP = 0xFFFFFFFF.toInt()
+    /** Borde fino cálido para tarjetas y controles minimalistas. */
+    const val HAIR = 0x241F1608
     /** Borde algo más visible para elementos elevados. */
-    const val EDGE = 0x2AFFFFFF
+    const val EDGE = 0x38231D12
     /** Verde de estado (concedido / activo). */
-    const val GREEN = 0xFF34D399.toInt()
+    const val GREEN = 0xFF21834F.toInt()
     /** Rojo de estado (apagado / error). */
-    const val RED = 0xFFF87171.toInt()
+    const val RED = 0xFFC64B3F.toInt()
     /** Ámbar de advertencia suave. */
-    const val AMBER = 0xFFFBBF24.toInt()
+    const val AMBER = 0xFFAA6F00.toInt()
 
     fun applyTheme(c: Context) {
         theme = THEMES.firstOrNull { it.id == Prefs.appTheme(c) } ?: THEMES[0]
@@ -71,13 +71,16 @@ object Glass {
     /** El acento con una transparencia dada (0-255). */
     fun accentA(alpha: Int): Int = withA(ACCENT, alpha)
 
+    /** Tono del acento con contraste suficiente para texto e iconos sobre marfil. */
+    fun accentInk(): Int = darken(ACCENT, 0.34f)
+
     /** Color de texto legible sobre [color] (oscuro o blanco, el de más contraste). */
     fun onAccent(color: Int = ACCENT): Int {
         fun lin(v: Int): Double { val x = v / 255.0; return if (x <= 0.03928) x / 12.92 else Math.pow((x + 0.055) / 1.055, 2.4) }
         val l = 0.2126 * lin(color shr 16 and 255) + 0.7152 * lin(color shr 8 and 255) + 0.0722 * lin(color and 255)
         val vsWhite = 1.05 / (l + 0.05)
         val vsDark = (l + 0.05) / 0.054
-        return if (vsDark >= vsWhite) 0xFF0B0D12.toInt() else 0xFFFFFFFF.toInt()
+        return if (vsDark >= vsWhite) 0xFF282317.toInt() else 0xFFFFFFFF.toInt()
     }
 
     private fun dp(c: Context, v: Float) = v * c.resources.displayMetrics.density
@@ -86,18 +89,18 @@ object Glass {
     fun page(c: Context): Drawable {
         val d = c.resources.displayMetrics
         val base = GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM,
-            intArrayOf(SURFACE_TOP, SURFACE, 0xFF080704.toInt()))
+            intArrayOf(0xFFFFFCF5.toInt(), SURFACE, 0xFFFFF4DC.toInt()))
         val glow = GradientDrawable().apply {
             gradientType = GradientDrawable.RADIAL_GRADIENT
             setGradientCenter(0.9f, 0.0f)
             gradientRadius = d.widthPixels * 1.05f
-            colors = intArrayOf(withA(theme.glow1, 0x2E), withA(theme.glow1, 0x00))
+            colors = intArrayOf(withA(theme.glow1, 0x30), withA(theme.glow1, 0x00))
         }
         val glow2 = GradientDrawable().apply {
             gradientType = GradientDrawable.RADIAL_GRADIENT
             setGradientCenter(0.0f, 0.92f)
             gradientRadius = d.widthPixels * 0.95f
-            colors = intArrayOf(withA(theme.glow2, 0x1C), withA(theme.glow2, 0x00))
+            colors = intArrayOf(withA(theme.glow2, 0x24), withA(theme.glow2, 0x00))
         }
         return LayerDrawable(arrayOf(base, glow, glow2))
     }
@@ -108,34 +111,34 @@ object Glass {
      */
     fun card(c: Context, radiusDp: Float = 24f, strong: Boolean = false): Drawable =
         GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM,
-            if (strong) intArrayOf(SURFACE_TOP, SURFACE_HI, SURFACE)
-            else intArrayOf(SURFACE_HI, SURFACE, 0xFF0A0906.toInt())).apply {
+            if (strong) intArrayOf(0xFFFFFFFF.toInt(), 0xFFFFFDF8.toInt(), 0xFFFFF7E8.toInt())
+            else intArrayOf(0xFFFFFFFF.toInt(), 0xFFFFFCF5.toInt(), 0xFFFFF8EC.toInt())).apply {
             cornerRadius = dp(c, radiusDp); setStroke(maxOf(1, dp(c, 1f).toInt()), HAIR)
         }
 
     /** Tarjeta anidada: un tono por encima de [card], para filas dentro de una tarjeta. */
     fun innerCard(c: Context, radiusDp: Float = 18f): Drawable =
         GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM,
-            intArrayOf(SURFACE_TOP, SURFACE_HI)).apply {
+            intArrayOf(0xFFFFFFFF.toInt(), 0xFFFFF8EB.toInt())).apply {
             cornerRadius = dp(c, radiusDp); setStroke(maxOf(1, dp(c, 1f).toInt()), HAIR)
         }
 
     /** Cabecera destacada: la tarjeta con un velo del color [tint] que se apaga hacia el fondo. */
     fun hero(c: Context, tint: Int = ACCENT, radiusDp: Float = 28f): Drawable =
         GradientDrawable(GradientDrawable.Orientation.TL_BR,
-            intArrayOf(withA(tint, 0x30), withA(tint, 0x0F), SURFACE_TOP, SURFACE)).apply {
+            intArrayOf(blendColor(0xFFFFFFFF.toInt(), tint, 0.21f), blendColor(0xFFFFFDF8.toInt(), tint, 0.10f), 0xFFFFFDF8.toInt())).apply {
             cornerRadius = dp(c, radiusDp)
-            setStroke(maxOf(1, dp(c, 1f).toInt()), withA(tint, 0x3C))
+            setStroke(maxOf(1, dp(c, 1f).toInt()), withA(darken(tint, 0.12f), 0x36))
         }
 
     /** Fondo opaco para diálogos: el contenido de atrás no se mezcla con el texto. */
     fun solid(c: Context, radiusDp: Float = 24f): Drawable =
         GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM,
-            intArrayOf(SURFACE_TOP, SURFACE_HI, SURFACE)).apply {
+            intArrayOf(0xFFFFFFFF.toInt(), 0xFFFFF8EB.toInt(), 0xFFFFF1DD.toInt())).apply {
             cornerRadius = dp(c, radiusDp); setStroke(maxOf(1, dp(c, 1f).toInt()), EDGE)
         }
 
-    /** Hoja inferior: solo las esquinas de arriba son redondas. */
+    /** Hoja inferior marfil: solo las esquinas de arriba son redondas. */
     fun sheet(c: Context, radiusDp: Float = 28f): Drawable {
         val r = dp(c, radiusDp)
         return GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM,
@@ -147,9 +150,9 @@ object Glass {
 
     fun tile(c: Context, color: Int = SURFACE_TOP, radiusDp: Float = 13f): Drawable =
         GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM,
-            intArrayOf(lighten(color, 0.06f), color, darken(color, 0.04f))).apply {
+            intArrayOf(lighten(color, 0.84f), color, darken(color, 0.08f))).apply {
             cornerRadius = dp(c, radiusDp)
-            setStroke(maxOf(1, dp(c, 1f).toInt()), 0x16FFFFFF)
+            setStroke(maxOf(1, dp(c, 1f).toInt()), HAIR)
         }
 
     fun pill(c: Context, fill: Int, stroke: Int = 0, radiusDp: Float = 16f): Drawable =
@@ -164,7 +167,7 @@ object Glass {
      */
     fun control(c: Context, fill: Int, stroke: Int = HAIR, radiusDp: Float = 16f): Drawable =
         GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM,
-            intArrayOf(lighten(fill, 0.07f), fill, darken(fill, 0.05f))).apply {
+            intArrayOf(lighten(fill, 0.10f), fill, darken(fill, 0.04f))).apply {
             cornerRadius = dp(c, radiusDp)
             if (stroke != 0) setStroke(maxOf(1, dp(c, 1f).toInt()), stroke)
         }
@@ -172,7 +175,7 @@ object Glass {
     /** Fila de ajuste: una pastilla casi transparente, con apenas un velo y un borde de 1 dp. */
     fun row(c: Context, radiusDp: Float = 16f): Drawable =
         GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM,
-            intArrayOf(HAIR, withA(0xFFFFFFFF.toInt(), 0x08), withA(0x000000, 0x10))).apply {
+            intArrayOf(0xFFFFFEFA.toInt(), 0xFFFFFBF4.toInt(), 0xFFFFF7E9.toInt())).apply {
             cornerRadius = dp(c, radiusDp)
             setStroke(maxOf(1, dp(c, 1f).toInt()), HAIR)
         }
@@ -249,7 +252,7 @@ object Glass {
     /** Añade el destello al tocar (ondulación) sobre [base]. */
     fun ripple(c: Context, base: Drawable, radiusDp: Float): Drawable {
         val mask = GradientDrawable().apply { cornerRadius = dp(c, radiusDp); setColor(Color.WHITE) }
-        return RippleDrawable(ColorStateList.valueOf(0x26FFFFFF), base, mask)
+        return RippleDrawable(ColorStateList.valueOf(0x22000000), base, mask)
     }
 
     fun icon(c: Context, name: String, color: Int): Drawable? {
@@ -332,8 +335,8 @@ class GlassSwitch(c: Context) : View(c) {
         p.style = Paint.Style.FILL
         p.shader = LinearGradient(
             0f, 0f, 0f, h,
-            blend(0xFF333B48.toInt(), Glass.lighten(Glass.ACCENT, 0.10f), t),
-            blend(0xFF1C212A.toInt(), Glass.darken(Glass.ACCENT, 0.12f), t),
+            blend(0xFFE9E3D7.toInt(), Glass.lighten(Glass.ACCENT, 0.10f), t),
+            blend(0xFFD7CEBE.toInt(), Glass.darken(Glass.ACCENT, 0.12f), t),
             Shader.TileMode.CLAMP
         )
         cv.drawRoundRect(0f, 0f, w, h, r, r, p)
@@ -354,7 +357,7 @@ class GlassSwitch(c: Context) : View(c) {
         val cx = r + (w - h) * t
         p.color = 0x50000000
         cv.drawCircle(cx, h / 2 + 1.1f * d, kr, p)
-        p.color = blend(0xFFA7B0C0.toInt(), 0xFFFFFFFF.toInt(), t)
+        p.color = blend(0xFFFFFEFA.toInt(), 0xFFFFFFFF.toInt(), t)
         cv.drawCircle(cx, h / 2, kr, p)
         // Punto de luz en la perilla encendida.
         if (t > 0.5f) {

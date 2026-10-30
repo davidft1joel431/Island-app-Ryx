@@ -153,7 +153,10 @@ class MainActivity : Activity() {
         Thread { try { Prefs.migrateCodes(this) } catch (t: Throwable) {} }.start()
         Glass.applyTheme(this)
         window.setBackgroundDrawable(Glass.page(this))
+        window.statusBarColor = Color.TRANSPARENT
+        if (Build.VERSION.SDK_INT >= 26) window.navigationBarColor = Color.TRANSPARENT
         val rootView = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        rootView.background = Glass.page(this)
         rootView.setOnApplyWindowInsetsListener { v, insets ->
             if (Build.VERSION.SDK_INT >= 30) {
                 val b = insets.getInsets(WindowInsets.Type.systemBars() or WindowInsets.Type.displayCutout())
@@ -172,9 +175,9 @@ class MainActivity : Activity() {
         }
         val logoBox = FrameLayout(this).apply {
             setPadding(px(2), px(2), px(2), px(2))
-            background = GradientDrawable().apply {
-                shape = GradientDrawable.OVAL
-                setColor(0x00000000)
+            background = GradientDrawable(GradientDrawable.Orientation.TL_BR,
+                intArrayOf(0xFFFFE9A9.toInt(), 0xFFFFC857.toInt())).apply {
+                cornerRadius = px(17).toFloat()
                 setStroke(px(1), Glass.accentA(0x66))
             }
         }
@@ -191,9 +194,10 @@ class MainActivity : Activity() {
         nameRow.addView(label("Ryx", 22f, R.color.gold, true).apply { letterSpacing = -0.02f })
         nameRow.addView(label(" Island", 22f, R.color.text, true).apply { letterSpacing = -0.02f })
         names.addView(nameRow)
-        names.addView(label("Panel de control · por David Joel", 12f, R.color.muted))
+        names.addView(label("ISLAND STUDIO  ·  v${BuildConfig.VERSION_NAME}", 10f, R.color.muted, true).apply { letterSpacing = 0.08f })
         head.addView(names, LinearLayout.LayoutParams(0, WRAP, 1f).apply { marginStart = px(12) })
         activePill = label("", 12f, R.color.green, true).apply { setPadding(px(12), px(6), px(12), px(6)) }
+        activePill.setOnClickListener { subPage = "perms"; render() }
         head.addView(activePill)
         rootView.addView(head)
 
@@ -203,12 +207,12 @@ class MainActivity : Activity() {
         // Barra de navegación flotante (propia, separada de los bordes)
         tabBar = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
-            background = Glass.card(this@MainActivity, 30f, true)
-            setPadding(px(7), px(7), px(7), px(7))
-            elevation = px(10).toFloat()
+            background = Glass.card(this@MainActivity, 26f, true)
+            setPadding(px(6), px(6), px(6), px(6))
+            elevation = px(5).toFloat()
         }
         rootView.addView(tabBar, LinearLayout.LayoutParams(MATCH, WRAP).apply {
-            setMargins(px(16), px(6), px(16), px(10))
+            setMargins(px(14), px(5), px(14), px(8))
         })
         setContentView(rootView)
         render()
@@ -539,10 +543,10 @@ class MainActivity : Activity() {
 
     // ---------------- Navegación ----------------
 
-    // Menú inferior: Isla · Demon · Diseño · Historial · Ajustes.
-    // «Demon» e «Historial» suben aquí como pestañas propias (antes eran subpáginas de Ajustes).
+    // Navegación principal: Isla · Pruebas · Diseño · Historial · Ajustes.
+    // Pruebas e Historial son pantallas principales del estudio.
     // «Puente» desaparece: su contenido se reparte entre Diseño (iconos, conectividad) y Ventana (sistema).
-    private val tabs = listOf("bolt" to "Isla", "flash" to "Demon", "tune" to "Diseño", "history" to "Historial", "settings" to "Ajustes")
+    private val tabs = listOf("bolt" to "Isla", "flash" to "Pruebas", "tune" to "Diseño", "history" to "Historial", "settings" to "Ajustes")
 
     private fun render() {
         // Al cambiar de pantalla, el contenido entra con un fundido corto; al refrescar la misma, no parpadea
@@ -568,11 +572,11 @@ class MainActivity : Activity() {
         previewView = null; appsBox = null
         val page = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(px(18), px(6), px(18), px(24))
+            setPadding(px(16), px(5), px(16), px(26))
         }
         val sp = subPage
         if (sp != null) {
-            val heroTitle = when (sp) { "history" -> "Historial"; "demon" -> "Demon"; else -> "Permisos" }
+            val heroTitle = when (sp) { "history" -> "Historial"; "demon" -> "Pruebas"; else -> "Permisos" }
             val heroSub = when (sp) {
                 "history" -> "Todo lo que pasa por la isla, buscable y exportable"
                 "demon" -> "Pruebas de la isla, aparte del resto de la app"
@@ -643,7 +647,7 @@ class MainActivity : Activity() {
         val fixed: View? = when (tab) { 2 -> buildPreview(); else -> null }
         if (fixed != null) {
             val colm = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
-            colm.addView(fixed, LinearLayout.LayoutParams(MATCH, WRAP).apply { marginStart = px(18); marginEnd = px(18); topMargin = px(4) })
+            colm.addView(fixed, LinearLayout.LayoutParams(MATCH, WRAP).apply { marginStart = px(16); marginEnd = px(16); topMargin = px(4) })
             colm.addView(scroll, LinearLayout.LayoutParams(MATCH, 0, 1f))
             content.addView(colm)
         } else content.addView(scroll)
@@ -656,11 +660,12 @@ class MainActivity : Activity() {
         val activeTab = if (subPage == "perms") 4 else tab
         tabs.forEachIndexed { i, (ic, name) ->
             val sel = i == activeTab && (subPage == null || subPage == "perms" && i == 4)
-            val colr = if (sel) Glass.ACCENT else Glass.MUTED
+            val colr = if (sel) Glass.accentInk() else Glass.MUTED
             val b = LinearLayout(this).apply {
                 orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER
-                setPadding(0, px(8), 0, px(7))
-                background = Glass.ripple(this@MainActivity, Glass.pillCached(this@MainActivity, 0, 0, 24f), 24f)
+                setPadding(0, px(7), 0, px(6))
+                background = Glass.ripple(this@MainActivity,
+                    Glass.pillCached(this@MainActivity, if (sel) Glass.accentA(0x35) else 0, if (sel) Glass.accentA(0x48) else 0, 20f), 20f)
                 setOnClickListener {
                     performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
                     if (tab != i || subPage != null) { tab = i; subPage = null; render() }
@@ -672,9 +677,9 @@ class MainActivity : Activity() {
             }
             ind.addView(icon(ic, 22, colr), FrameLayout.LayoutParams(px(22), px(22), Gravity.CENTER))
             if (sel) { ind.scaleX = 0.88f; ind.alpha = 0.6f; ind.animate().scaleX(1f).alpha(1f).setDuration(220).start() }
-            b.addView(ind, LinearLayout.LayoutParams(px(58), px(32)))
+            b.addView(ind, LinearLayout.LayoutParams(px(52), px(30)))
             b.addView(label(name, 10.5f, R.color.text, true).apply {
-                setTextColor(if (sel) Glass.ACCENT else Glass.MUTED); gravity = Gravity.CENTER
+                setTextColor(if (sel) Glass.accentInk() else Glass.MUTED); gravity = Gravity.CENTER
             }, lp(3))
             tabBar.addView(b, LinearLayout.LayoutParams(0, WRAP, 1f).apply { marginStart = px(2); marginEnd = px(2) })
         }
@@ -693,7 +698,7 @@ class MainActivity : Activity() {
         val hDp = (maxOf(m.widthPixels, m.heightPixels) / m.density).toInt()
         val top = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
         val title = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
-        title.addView(label("ESTUDIO DE ISLAND", 10f, Glass.ACCENT, true).apply { letterSpacing = 0.12f })
+        title.addView(label("ESTUDIO DE ISLAND", 10f, Glass.accentInk(), true).apply { letterSpacing = 0.12f })
         title.addView(label("Vista previa en vivo", 16f, R.color.text, true))
         top.addView(title, LinearLayout.LayoutParams(0, WRAP, 1f))
         val live = label("● EN VIVO", 10f, R.color.green, true).apply {
@@ -742,14 +747,15 @@ class MainActivity : Activity() {
         val row = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
             background = Glass.hero(this@MainActivity, color, 26f)
-            setPadding(px(16), px(18), px(16), px(18))
+            setPadding(px(18), px(17), px(16), px(17))
         }
-        row.addView(tileIcon(iconName, Glass.withA(color, 0x3A), color),
-            LinearLayout.LayoutParams(px(50), px(50)).apply { marginEnd = px(14) })
         val t = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
-        t.addView(label(title, 26f, R.color.text, true).apply { letterSpacing = -0.025f })
-        t.addView(label(sub, 13f, R.color.muted).apply { setPadding(0, px(2), 0, 0) })
-        row.addView(t, LinearLayout.LayoutParams(0, WRAP, 1f))
+        t.addView(label("RYX  /  ISLAND STUDIO", 9.5f, Glass.accentInk(), true).apply { letterSpacing = 0.12f })
+        t.addView(label(title, 24f, R.color.text, true).apply { letterSpacing = -0.025f; setPadding(0, px(2), 0, 0) })
+        t.addView(label(sub, 12.5f, R.color.muted).apply { setPadding(0, px(2), 0, 0); maxLines = 2 })
+        row.addView(t, LinearLayout.LayoutParams(0, WRAP, 1f).apply { marginEnd = px(12) })
+        row.addView(tileIcon(iconName, Glass.withA(color, 0x32), Glass.darken(color, 0.22f)),
+            LinearLayout.LayoutParams(px(48), px(48)))
         p.addView(row, lp(6))
     }
 
@@ -913,9 +919,9 @@ class MainActivity : Activity() {
         p.addView(shortcuts, lp(8))
     }
 
-    /** Sección «Demon»: todas las pruebas de la isla, aparte del resto de la app. */
+    /** Herramientas de prueba de la isla. */
     private fun buildDemon(p: LinearLayout) {
-        pageHero(p, "flash", 0xFFFF9F0A.toInt(), "Demon", "Pruebas de la isla, aparte del resto de la app")
+        pageHero(p, "flash", Glass.ACCENT, "Pruebas", "Simula eventos y comprueba la respuesta visual")
         buildTest(p)
     }
 
@@ -968,7 +974,7 @@ class MainActivity : Activity() {
                 text = (if (chip.second) "● " else "○ ") + chip.first
                 gravity = Gravity.CENTER; textSize = 12.5f
                 setTypeface(typeface, Typeface.BOLD)
-                setTextColor(if (chip.second) 0xFF3DDC84.toInt() else Glass.MUTED)
+                setTextColor(if (chip.second) Glass.GREEN else Glass.MUTED)
                 setPadding(px(8), px(10), px(8), px(10))
                 background = Glass.ripple(this@MainActivity, Glass.pillCached(this@MainActivity,
                     if (chip.second) 0x1F3DDC84 else Glass.SURFACE_HI, if (chip.second) 0x553DDC84 else Glass.HAIR, 14f), 14f)
@@ -1039,7 +1045,7 @@ class MainActivity : Activity() {
         menuRow.addView(label("Controles de personalización", 12f, R.color.muted), LinearLayout.LayoutParams(0, WRAP, 1f).apply { marginEnd = px(8) })
         val toggle = TextView(this).apply {
             text = "Abrir todo"; textSize = 12.5f; gravity = Gravity.CENTER
-            setTextColor(Glass.ACCENT); typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+            setTextColor(Glass.accentInk()); typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
             setPadding(px(14), px(8), px(14), px(8))
             background = Glass.ripple(this@MainActivity,
                 Glass.pill(this@MainActivity, Glass.accentA(0x26), Glass.accentA(0x55), 15f), 15f)
@@ -1254,7 +1260,7 @@ class MainActivity : Activity() {
             Triple("bell", "Avisos y multimedia", "$active de $total avisos activos · fotos y stickers") to listOf("notif", "media"),
             Triple("bolt", "Movimiento y gestos", "${listOf("Relajada", "Normal", "Ágil")[Prefs.speed(this).coerceIn(0, 2)]} · animación y acciones") to listOf("animation", "gestures")
         )
-        val tones = listOf(Glass.ACCENT, 0xFF91A7FF.toInt(), 0xFF75D7B0.toInt(), 0xFFC5A0F5.toInt())
+        val tones = listOf(Glass.ACCENT, 0xFFFFD978.toInt(), 0xFFEBCB8A.toInt(), 0xFFFFE8B5.toInt())
         cells.chunked(2).forEachIndexed { rowIndex, pair ->
             val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
             pair.forEachIndexed { cellIndex, (item, keys) ->
@@ -1269,11 +1275,11 @@ class MainActivity : Activity() {
                     Glass.press(this)
                 }
                 val head = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
-                head.addView(tileIcon(iconName, Glass.withA(color, 0x32), color),
+                head.addView(tileIcon(iconName, Glass.withA(color, 0x32), Glass.darken(color, 0.22f)),
                     LinearLayout.LayoutParams(px(40), px(40)))
                 val spacer = View(this)
                 head.addView(spacer, LinearLayout.LayoutParams(0, 1, 1f))
-                head.addView(icon("arrow_right", 18, color).apply {
+                head.addView(icon("arrow_right", 18, Glass.darken(color, 0.22f)).apply {
                     background = Glass.pill(this@MainActivity, Glass.withA(color, 0x1A), 0, 18f)
                     setPadding(px(8), px(8), px(8), px(8))
                 }, LinearLayout.LayoutParams(px(34), px(34)).apply { gravity = Gravity.CENTER_VERTICAL })
@@ -1347,7 +1353,7 @@ class MainActivity : Activity() {
             views.forEachIndexed { i, tv ->
                 val c = if (i == 0) 0 else swatchColors[i - 1]
                 val on = c == sel
-                (tv.background as? android.graphics.drawable.GradientDrawable)?.setStroke(px(if (on) 2 else 1), if (on) Glass.ACCENT else 0x55FFFFFF)
+                (tv.background as? android.graphics.drawable.GradientDrawable)?.setStroke(px(if (on) 2 else 1), if (on) Glass.ACCENT else Glass.HAIR)
                 tv.text = when { c == 0 -> "Auto"; on -> "✓"; else -> "" }
                 tv.setTextColor(if (c == 0) Glass.TEXT else if (on) Glass.onAccent(c) else Color.TRANSPARENT)
                 tv.textSize = if (c == 0) 10.5f else 16f
@@ -1364,7 +1370,7 @@ class MainActivity : Activity() {
                 background = android.graphics.drawable.GradientDrawable().apply {
                     shape = android.graphics.drawable.GradientDrawable.OVAL
                     setColor(if (c == 0) 0x22FFFFFF else c)
-                    setStroke(px(if (on) 2 else 1), if (on) Glass.ACCENT else 0x55FFFFFF)
+                    setStroke(px(if (on) 2 else 1), if (on) Glass.ACCENT else Glass.HAIR)
                 }
                 setOnClickListener { paint(c); onPick(c) }
             }
@@ -1420,7 +1426,7 @@ class MainActivity : Activity() {
         cell.addView(preview, LinearLayout.LayoutParams(px(110), px(30)))
         val nameRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER }
         nameRow.addView(label(sty.label, 12f, R.color.text, true).apply {
-            gravity = Gravity.CENTER; setTextColor(if (on) Glass.ACCENT else Glass.TEXT)
+            gravity = Gravity.CENTER; setTextColor(if (on) Glass.accentInk() else Glass.TEXT)
         })
         cell.addView(nameRow, lp(8))
         return cell
@@ -1497,7 +1503,7 @@ class MainActivity : Activity() {
     /** Etiqueta pequeña para distinguir una copia clonada del original. */
     private fun cloneChip(text: String) = TextView(this).apply {
         this.text = text; textSize = 11f; gravity = Gravity.CENTER
-        setTextColor(Glass.ACCENT); typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+        setTextColor(Glass.accentInk()); typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
         setPadding(px(8), px(3), px(8), px(3))
         background = Glass.pill(this@MainActivity, Glass.accentA(0x22), 0, 10f)
     }
@@ -1532,7 +1538,7 @@ class MainActivity : Activity() {
     private fun editText(hint: String, value: String, onChange: (String) -> Unit) = EditText(this).apply {
         setText(value); this.hint = hint; setHintTextColor(Glass.MUTED); setTextColor(Glass.TEXT); textSize = 15f
         setSingleLine(true); setPadding(px(16), px(12), px(16), px(12))
-        background = Glass.control(this@MainActivity, 0xFF0E1014.toInt(), Glass.HAIR, 14f)
+        background = Glass.control(this@MainActivity, Glass.SURFACE_TOP, Glass.HAIR, 14f)
         addTextChangedListener(object : TextWatcher {
             override fun afterTextChanged(s: Editable?) { onChange(s?.toString() ?: "") }
             override fun beforeTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
@@ -1650,7 +1656,7 @@ class MainActivity : Activity() {
             val r = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
             r.addView(TextView(this).apply {
                 text = if (ok) "✔" else "○"; textSize = 15f; typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
-                setTextColor(if (ok) Glass.ACCENT else Glass.MUTED)
+                setTextColor(if (ok) Glass.accentInk() else Glass.MUTED)
                 setPadding(0, 0, px(12), 0)
             })
             r.addView(label(name, 14f, R.color.text), LinearLayout.LayoutParams(0, WRAP, 1f))
@@ -2753,7 +2759,7 @@ class MainActivity : Activity() {
         text = (if (ok) "✓ " else "• ") + name
         textSize = 11f
         gravity = Gravity.CENTER
-        setTextColor(if (ok) 0xFF3DDC84.toInt() else 0xFFF2A01F.toInt())
+        setTextColor(if (ok) Glass.GREEN else Glass.AMBER)
         typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
         setPadding(px(6), px(9), px(6), px(9))
         background = Glass.pill(this@MainActivity,
@@ -2982,7 +2988,7 @@ class MainActivity : Activity() {
             val inOwn = EditText(this).apply {
                 hint = "Nombre o número"; setHintTextColor(Glass.MUTED); setTextColor(Glass.TEXT); textSize = 15f
                 setSingleLine(true); setPadding(px(16), px(12), px(16), px(12))
-                background = Glass.control(this@MainActivity, 0xFF0E1014.toInt(), Glass.HAIR, 14f)
+                background = Glass.control(this@MainActivity, Glass.SURFACE_TOP, Glass.HAIR, 14f)
             }
             b.addView(inOwn, lp(4))
             b.addView(button("Añadir a prioritarios", false) {
@@ -3259,7 +3265,7 @@ class MainActivity : Activity() {
             setDimAmount(0.62f)
         }
         for (w in intArrayOf(AlertDialog.BUTTON_POSITIVE, AlertDialog.BUTTON_NEGATIVE, AlertDialog.BUTTON_NEUTRAL))
-            d.getButton(w)?.setTextColor(Glass.ACCENT)
+            d.getButton(w)?.setTextColor(Glass.accentInk())
         // Título con el mismo peso tipográfico que el resto de la interfaz.
         // `alertTitle` es un id interno del sistema: se resuelve en tiempo de ejecución (android.R.id.alertTitle no es público).
         val titleId = resources.getIdentifier("alertTitle", "id", "android")
@@ -3361,7 +3367,7 @@ class MainActivity : Activity() {
     }
 
     /** Cuadro redondeado con icono. Por defecto, tonal: fondo con un velo del acento e icono del acento. */
-    private fun tileIcon(name: String, bg: Int = Glass.accentA(0x26), tint: Int = Glass.ACCENT): View =
+    private fun tileIcon(name: String, bg: Int = Glass.accentA(0x26), tint: Int = Glass.accentInk()): View =
         FrameLayout(this).apply {
             background = Glass.tile(this@MainActivity, bg, 13f)
             addView(icon(name, 22, tint).apply { layoutParams = FrameLayout.LayoutParams(px(22), px(22), Gravity.CENTER) })
@@ -3548,7 +3554,7 @@ class MainActivity : Activity() {
     }
 
     private fun permRow(p: LinearLayout, title: String, sub: String, ok: Boolean, click: () -> Unit) {
-        val tone = if (ok) 0xFF3DDC84.toInt() else 0xFFF2A01F.toInt()
+        val tone = if (ok) Glass.GREEN else Glass.AMBER
         val r = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
         r.addView(tileIcon(if (ok) "shield" else "battery_alert", Glass.withA(tone, 0x26), tone),
             LinearLayout.LayoutParams(px(42), px(42)).apply { marginEnd = px(12) })
@@ -3571,7 +3577,7 @@ class MainActivity : Activity() {
         LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             // Pista con un degradado corto y borde de 1 dp: antes era un relleno plano y parecía un botón pegado.
-            background = Glass.control(this@MainActivity, 0xFF0F131A.toInt(), Glass.HAIR, 16f)
+            background = Glass.control(this@MainActivity, 0xFFF1EBDD.toInt(), Glass.HAIR, 16f)
             setPadding(px(4), px(4), px(4), px(4))
             val views = ArrayList<TextView>(opts.size)
             fun paint(sel: Int) {
@@ -3750,6 +3756,7 @@ class MainActivity : Activity() {
         orientation = LinearLayout.VERTICAL
         background = Glass.card(this@MainActivity, 24f)
         setPadding(px(18), px(16), px(18), px(16))
+        elevation = px(1).toFloat()
     }
 
     private fun makeSwitch(checked: Boolean, onChange: (Boolean) -> Unit) = GlassSwitch(this).apply {
@@ -3765,7 +3772,7 @@ class MainActivity : Activity() {
         typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
         minHeight = px(46); minimumHeight = px(46); minWidth = 0; minimumWidth = 0
         setPadding(px(18), px(11), px(18), px(11))
-        setTextColor(if (filled) Glass.onAccent() else Glass.ACCENT)
+        setTextColor(if (filled) Glass.onAccent() else Glass.accentInk())
         background = Glass.ripple(this@MainActivity,
             if (filled) Glass.accentFill(this@MainActivity, 16f)
             else Glass.control(this@MainActivity, Glass.accentA(0x20), Glass.accentA(0x3A), 16f), 16f)
