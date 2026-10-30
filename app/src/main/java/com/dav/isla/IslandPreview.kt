@@ -99,9 +99,10 @@ class IslandPreview(c: Context) : View(c) {
         path.reset(); rect.set(0f, 0f, w, h + r)
         path.addRoundRect(rect, r, r, Path.Direction.CW)
         cv.save(); cv.clipPath(path)
-        p.shader = LinearGradient(0f, 0f, w, h, intArrayOf(0xFF46705A.toInt(), 0xFF22364A.toInt(), 0xFF3A2D52.toInt()), null, Shader.TileMode.CLAMP)
+        p.shader = LinearGradient(0f, 0f, w, h,
+            intArrayOf(0xFF273127.toInt(), 0xFF19232C.toInt(), 0xFF24202F.toInt()), null, Shader.TileMode.CLAMP)
         p.style = Paint.Style.FILL; cv.drawRect(0f, 0f, w, h + r, p)
-        p.shader = RadialGradient(w * 0.8f, h * 0.9f, w * 0.6f, 0x66FFD6A0, 0x00FFD6A0, Shader.TileMode.CLAMP)
+        p.shader = RadialGradient(w * 0.78f, h * 0.85f, w * 0.55f, 0x35FFC857, 0x00FFC857, Shader.TileMode.CLAMP)
         cv.drawRect(0f, 0f, w, h + r, p); p.shader = null
 
         // Barra de estado
@@ -145,18 +146,26 @@ class IslandPreview(c: Context) : View(c) {
         p.clearShadowLayer()
         drawLook(cv, cardSpec, cr2, k, s)
 
-        // Contenido de ejemplo al abrir
+        // Notificación de ejemplo al abrir: app reconocible, texto breve y pila de avisos.
         if (progress > 0.35f) {
             val k = ((progress - 0.35f) / 0.65f).coerceIn(0f, 1f)
             val ic = u(st.iconDp.toFloat() * 0.9f)
             val ix = rect.left + u(st.padH.toFloat() + 2f); val iy = rect.top + (rect.height() - ic) / 2f
-            p.color = Glass.ACCENT; p.alpha = (255 * k).toInt()
+            p.color = 0xFF25C879.toInt(); p.alpha = (255 * k).toInt()
             val ir = RectF(ix, iy, ix + ic, iy + ic); cv.drawRoundRect(ir, u(st.iconCornerDp), u(st.iconCornerDp), p)
-            p.color = st.textColor; p.alpha = (255 * k).toInt(); p.typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+            // Burbuja de chat blanca dibujada en el icono de muestra, sin usar recursos de otra app.
+            p.color = 0xFFF7FFF9.toInt(); p.style = Paint.Style.FILL
+            val bubble = RectF(ix + ic * 0.22f, iy + ic * 0.25f, ix + ic * 0.78f, iy + ic * 0.69f)
+            cv.drawRoundRect(bubble, ic * 0.18f, ic * 0.18f, p)
+            path.reset(); path.moveTo(ix + ic * 0.34f, iy + ic * 0.64f); path.lineTo(ix + ic * 0.30f, iy + ic * 0.80f)
+            path.lineTo(ix + ic * 0.50f, iy + ic * 0.68f); path.close(); cv.drawPath(path, p)
+            p.color = 0xFF25C879.toInt()
+            for (d in 0..2) cv.drawCircle(ix + ic * (0.38f + 0.14f * d), iy + ic * 0.47f, ic * 0.035f, p)
+            p.alpha = (255 * k).toInt(); p.typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
             p.textSize = u(st.titleSp)
-            cv.drawText("Ryx Island", ix + ic + u(10f), rect.centerY() - u(1f), p)
-            p.color = st.subColor; p.typeface = Typeface.DEFAULT; p.textSize = u(st.bodySp); p.alpha = (200 * k).toInt()
-            cv.drawText("Vista previa", ix + ic + u(10f), rect.centerY() + u(st.bodySp + 1f), p)
+            cv.drawText("WhatsApp · Ana", ix + ic + u(10f), (iy + ic / 2f) - u(1f), p)
+            p.color = st.subColor; p.typeface = Typeface.DEFAULT; p.textSize = u(st.bodySp); p.alpha = (220 * k).toInt()
+            cv.drawText("¿Llegamos en 10 minutos?", ix + ic + u(10f), (iy + ic / 2f) + u(st.bodySp + 3f), p)
         }
         p.alpha = 255
 
@@ -164,11 +173,17 @@ class IslandPreview(c: Context) : View(c) {
         if (progress > 0.35f) {
             val k = ((progress - 0.35f) / 0.65f).coerceIn(0f, 1f)
             val bx = rect.right - u(st.padH.toFloat() + 12f)
+            val badgeColors = intArrayOf(0xFF7C89FF.toInt(), 0xFFFFC857.toInt(), 0xFF25C879.toInt())
+            val badgeLetters = arrayOf("M", "▶", "W")
             for (i in 2 downTo 0) {
-                p.color = intArrayOf(0xFF8AB4FF.toInt(), 0xFFFFC857.toInt(), Glass.ACCENT)[i]
+                p.color = badgeColors[i]
                 p.alpha = (255 * k).toInt()
                 cv.drawCircle(bx - u(11f) * i, rect.centerY(), u(9f), p)
+                p.color = 0xFF10130F.toInt(); p.textSize = u(7f); p.textAlign = Paint.Align.CENTER
+                p.typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+                cv.drawText(badgeLetters[i], bx - u(11f) * i, rect.centerY() + u(2.5f), p)
             }
+            p.textAlign = Paint.Align.LEFT
         } else {
             p.color = Glass.ACCENT; p.alpha = 255
             cv.drawCircle(rect.right - u(14f), rect.centerY(), u(8f), p)

@@ -37,8 +37,7 @@ jobs:
           tag_name: v${{ steps.ver.outputs.v }}
           name: Ryx Island v${{ steps.ver.outputs.v }}
           body: |
-            - Nueva identidad visual dorada con superficies oscuras cálidas, degradados más definidos y controles con mejor contraste.
-            - Se restaura el tema amarillo predeterminado que faltaba en la lista de temas; las preferencias de otros temas se conservan.
-            - La isla HyperOS adopta un borde dorado discreto y las vistas previas de fotos y stickers tienen un marco cálido.
-            - Se mantienen las imágenes y stickers animados en la isla, el Historial y el visor.
+            - Diseño renovado para Island: editor con vista previa en vivo y accesos rápidos a temas, forma, avisos y movimiento.
+            - La previsualización muestra un mensaje de ejemplo más realista, pila de avisos e identidad visual cálida.
+            - Los accesos rápidos abren directamente los controles correspondientes; se mantienen las secciones detalladas.
           files: RyxIsland.apk
