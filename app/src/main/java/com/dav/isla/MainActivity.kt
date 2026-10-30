@@ -1274,9 +1274,9 @@ class MainActivity : Activity() {
                 val spacer = View(this)
                 head.addView(spacer, LinearLayout.LayoutParams(0, 1, 1f))
                 head.addView(icon("arrow_right", 18, color).apply {
-                    gravity = Gravity.CENTER; background = Glass.pill(this@MainActivity, Glass.withA(color, 0x1A), 0, 18f)
+                    background = Glass.pill(this@MainActivity, Glass.withA(color, 0x1A), 0, 18f)
                     setPadding(px(8), px(8), px(8), px(8))
-                }, LinearLayout.LayoutParams(px(34), px(34)))
+                }, LinearLayout.LayoutParams(px(34), px(34)).apply { gravity = Gravity.CENTER_VERTICAL })
                 tile.addView(head)
                 tile.addView(label(title, 15f, R.color.text, true).apply { maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END }, lp(16))
                 tile.addView(label(summary, 11.5f, R.color.muted).apply { maxLines = 2; ellipsize = android.text.TextUtils.TruncateAt.END })
