@@ -37,6 +37,8 @@ import kotlinx.coroutines.launch
 import androidx.compose.ui.tooling.preview.Preview
 import com.d4viddf.hyperbridge.ui.theme.HyperBridgeTheme
 import com.d4viddf.hyperbridge.ui.components.PermanentIslandPreview
+import com.d4viddf.hyperbridge.util.DeviceUtils
+import com.d4viddf.hyperbridge.util.XiaomiNotificationHelper
 
 @Composable
 fun PermanentIslandConfigScreen(
@@ -49,9 +51,20 @@ fun PermanentIslandConfigScreen(
     val isEnabled by prefs.isPermanentIslandEnabledFlow.collectAsState(initial = false)
     val islandWidth by prefs.permanentIslandWidthFlow.collectAsState(initial = 0)
     val hideInLandscape by prefs.hidePermanentIslandLandscapeFlow.collectAsState(initial = false)
+    val nativeIslandSupported = androidx.compose.runtime.remember {
+        DeviceUtils.isXiaomi &&
+            XiaomiNotificationHelper.isSupportIsland() &&
+            XiaomiNotificationHelper.hasFocusPermission(context)
+    }
+    androidx.compose.runtime.LaunchedEffect(nativeIslandSupported, isEnabled) {
+        if (!nativeIslandSupported && isEnabled) {
+            prefs.setPermanentIslandEnabled(false)
+        }
+    }
 
     PermanentIslandConfigContent(
         isEnabled = isEnabled,
+        nativeIslandSupported = nativeIslandSupported,
         islandWidth = islandWidth,
         hideInLandscape = hideInLandscape,
         onEnabledChange = { checked ->
@@ -77,6 +90,7 @@ fun PermanentIslandConfigScreen(
 @Composable
 fun PermanentIslandConfigContent(
     isEnabled: Boolean,
+    nativeIslandSupported: Boolean = true,
     islandWidth: Int,
     hideInLandscape: Boolean,
     onEnabledChange: (Boolean) -> Unit,
@@ -135,7 +149,15 @@ fun PermanentIslandConfigContent(
                         }
                         Switch(
                             checked = isEnabled,
+                            enabled = nativeIslandSupported,
                             onCheckedChange = onEnabledChange
+                        )
+                    }
+                    if (!nativeIslandSupported) {
+                        Text(
+                            text = stringResource(R.string.permanent_island_native_only),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
                     
@@ -181,7 +203,10 @@ fun PermanentIslandConfigContent(
             }
             Spacer(Modifier.height(24.dp))
             Text(
-                text = stringResource(R.string.permanent_island_screen_desc),
+                text = stringResource(
+                    if (nativeIslandSupported) R.string.permanent_island_screen_desc
+                    else R.string.permanent_island_native_only
+                ),
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )

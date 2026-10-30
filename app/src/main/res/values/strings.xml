@@ -43,6 +43,7 @@
     <string name="system_setup_subtitle">Arreglar permisos y batería</string>
     <!-- Permanent Island -->
     <string name="permanent_island_title">Isla Permanente</string>
+    <string name="permanent_island_native_only">La isla permanente vacía solo funciona con la integración nativa de HyperOS. Las notificaciones normales usan la isla flotante de Ryx Isla.</string>
     <string name="permanent_island_desc">Mantener la Isla Dinámica permanentemente visible en la pantalla cuando no haya notificaciones activas.</string>
     <string name="permanent_island_screen_desc">Cuando esté activado, se mostrará una Isla Dinámica vacía de forma permanente en la pantalla. Se ocultará automáticamente cuando lleguen notificaciones reales y volverá a aparecer cuando se borren todas las notificaciones. No será visible en el panel de notificaciones.</string>
     <string name="permanent_island_width">Ancho de la Isla</string>
@@ -648,8 +649,9 @@
     <string name="notification_went_wrong">¡Si ves esto, algo salió mal! Haz clic aquí para ver cómo solucionarlo.</string>
     <string name="widget_went_wrong">Si estás viendo esto, algo salió mal! El sistema no puede mostrar el widget</string>
     <string name="troubleshoot_featured_notification">Solucionar</string>
-    <string name="featured_notifications_check">Test Notificaciones Destacadas</string>
-    <string name="featured_notifications_check_desc">Vamos a verificar si tu sistema está configurado correctamente para mostrar las islas de Ryx Isla.</string>
+    <string name="featured_notifications_check">Integración nativa de Xiaomi</string>
+    <string name="featured_notifications_check_desc">Este diagnóstico comprueba solo la isla nativa de Xiaomi. En otras ROM, Ryx Isla usa la isla flotante si tiene el permiso para mostrarse sobre otras aplicaciones.</string>
+    <string name="featured_notifications_generic_fallback">La integración nativa de Xiaomi no está disponible. Ryx Isla usará su isla flotante en esta ROM.</string>
     <string name="featured_notifications_not_supported">No Soportado</string>
     <string name="featured_notifications_enabled">Habilitado</string>
     <string name="featured_notifications_open_settings">Abrir Ajustes del Sistema</string>
@@ -687,6 +689,8 @@
     <string name="changelog_1_0_1">La configuraci&#243;n deja de exigir un dispositivo Xiaomi; muestra la ROM detectada y la versi&#243;n y API de Android. HyperOS nativo se usa cuando est&#225; disponible.</string>
     <string name="title_1_0_2">Autor&#237;a y espa&#241;ol de Per&#250;</string>
     <string name="changelog_1_0_2">Creador: David Joel, Per&#250;. Se a&#241;ade Espa&#241;ol (Per&#250;) y se actualizan los datos de autor&#237;a y pa&#237;s.</string>
+    <string name="title_1_0_4">Diagn&#243;stico y compatibilidad universal</string>
+    <string name="changelog_1_0_4">El diagn&#243;stico explica que las notificaciones destacadas son una funci&#243;n nativa de Xiaomi. Se desactiva la isla permanente vac&#237;a en sistemas sin HyperOS y se aclara el permiso de superposici&#243;n requerido por la isla flotante.</string>
     <string name="title_1_0_3">Motor universal y mejoras de compatibilidad</string>
     <string name="changelog_1_0_3">Ryx Isla muestra notificaciones en una ventana flotante cuando la ROM no dispone de HyperOS nativo. Los avisos Xiaomi solo aparecen en equipos compatibles. Se actualizan el historial y el icono.</string>
     <string name="changelog_links_title">Notas de publicaci&#243;n oficiales</string>
