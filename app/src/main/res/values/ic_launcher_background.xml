@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Ryx Isla launcher background color. -->
+    <color name="ic_launcher_background">#FFF3D6</color>
+</resources>

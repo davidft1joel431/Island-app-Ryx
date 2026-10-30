@@ -1,45 +1,92 @@
 plugins {
-    id("com.android.application")
-    id("org.jetbrains.kotlin.android")
+    alias(libs.plugins.android.application)
+    alias(libs.plugins.kotlin.compose)
+    alias(libs.plugins.ksp)
+    id("org.jetbrains.kotlin.plugin.serialization") version "2.3.21"
 }
 
 android {
-    namespace = "com.dav.isla"
-    compileSdk = 36
+    // Ryx Isla derivative metadata; upstream Hyper Bridge source is Apache-2.0.
+    namespace = "com.d4viddf.hyperbridge"
+    compileSdk {
+        version = release(36)
+    }
 
     defaultConfig {
         applicationId = "com.dav.isla"
-        minSdk = 29
-        targetSdk = 36
-        // Esquema de version: vMAYOR.MENOR.PARCHE.SUBPARCHE. El cuarto numero se usa para arreglos pequenos
-        // sobre una version ya publicada (p. ej. v0.9.43.1); las actualizaciones grandes suben el tercero.
-        versionCode = 74
-        versionName = "0.9.67"
-        // Número de la ejecución de GitHub Actions (el tag del release es v<número>); en local queda en 0
-        buildConfigField("int", "BUILD_NUMBER", (project.findProperty("buildNumber") ?: "0").toString())
-        // Campo compartido por ambas variantes. Se sobrescribe por flavor.
-        buildConfigField("String", "APP_VARIANT", "\"main\"")
-        buildConfigField("boolean", "SEND_TO_SERVER", "false")
-        buildConfigField("String", "SERVER_URL", "\"\u0022")
+        minSdk = 35
+        targetSdk = 37
+        versionCode = 100
+        versionName = "1.0.0"
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
-    buildFeatures {
-        buildConfig = true
+    buildTypes {
+        release {
+            isMinifyEnabled = true
+            isShrinkResources = true
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro"
+            )
+            optimization {
+                enable = true // Enables code and resource optimizations.
+            }
+        }
     }
-
     compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_17
-        targetCompatibility = JavaVersion.VERSION_17
+        sourceCompatibility = JavaVersion.VERSION_11
+        targetCompatibility = JavaVersion.VERSION_11
     }
-    kotlinOptions {
-        jvmTarget = "17"
+    buildFeatures {
+        compose = true
+        buildConfig = true
+        aidl = true
     }
 }
 
 dependencies {
-    // Shizuku: permite ejecutar los comandos de la ventana flotante con permisos de shell
-    implementation("dev.rikka.shizuku:api:13.1.5")
-    implementation("dev.rikka.shizuku:provider:13.1.5")
-    // Permite usar las opciones de ventana libre de Android sin Shizuku ni root
-    implementation("org.lsposed.hiddenapibypass:hiddenapibypass:6.1")
+    implementation(libs.androidx.core.ktx)
+    implementation(libs.androidx.lifecycle.runtime.ktx)
+    implementation(libs.androidx.activity.compose)
+    implementation(platform(libs.androidx.compose.bom))
+    implementation(libs.androidx.compose.ui)
+    implementation(libs.androidx.compose.ui.graphics)
+    implementation(libs.androidx.compose.ui.tooling.preview)
+    implementation(libs.androidx.compose.material3)
+    implementation(libs.androidx.compose.material.icons.extended)
+    implementation(libs.androidx.ui)
+    implementation(libs.androidx.appcompat)
+    implementation(libs.androidx.palette.ktx)
+    ksp(libs.androidx.room.compiler)
+    implementation(libs.androidx.room.runtime)
+    implementation(libs.androidx.room.ktx)
+    testImplementation(libs.junit)
+    androidTestImplementation(libs.androidx.junit)
+    androidTestImplementation(libs.androidx.espresso.core)
+    androidTestImplementation(platform(libs.androidx.compose.bom))
+    androidTestImplementation(libs.androidx.compose.ui.test.junit4)
+    debugImplementation(libs.androidx.compose.ui.tooling)
+    debugImplementation(libs.androidx.compose.ui.test.manifest)
+
+    implementation(libs.hyperisland.kit)
+    implementation(libs.haze)
+    implementation(libs.androidx.datastore.preferences)
+    implementation(libs.androidx.lifecycle.viewmodel.compose)
+
+    implementation(libs.gson)
+    implementation(libs.kotlinx.serialization.json)
+
+    // Navigation 3
+    implementation(libs.androidx.navigation3.runtime)
+    implementation(libs.androidx.navigation3.ui)
+    implementation(libs.androidx.lifecycle.viewmodel.navigation3)
+
+    // Shizuku
+    implementation(libs.api)
+    implementation(libs.provider)
+}
+
+configurations.all {
+    exclude(group = "com.intellij", module = "annotations")
 }
