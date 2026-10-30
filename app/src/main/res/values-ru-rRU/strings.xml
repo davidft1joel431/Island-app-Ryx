@@ -37,7 +37,7 @@
     <string name="no_active_bridges_desc">Перейдите в Библиотеку, чтобы включить приложения.</string>
     <string name="no_apps_found">Приложения не найдены</string>
     <string name="version_template">Версия %s</string>
-    <string name="developer_credit">Ryx Isla · Hyper Bridge (Apache 2.0)</string>
+    <string name="developer_credit">Creado por David Joel - Ryx Isla</string>
     <string name="group_configuration">Конфигурация</string>
     <string name="system_setup">Настройки системы</string>
     <string name="system_setup_subtitle">Исправить разрешения и питание</string>
@@ -47,13 +47,13 @@
     <string name="permanent_island_screen_desc">When enabled, an empty Dynamic Island will be shown permanently on your screen. It will automatically hide when real notifications arrive and reappear when all notifications are cleared. It will not be visible in your notification shade.</string>
     <string name="permanent_island_width">Island Width</string>
     <string name="group_about">О приложении</string>
-    <string name="developer">Разработчик</string>
-    <string name="developer_subtitle">Посетить d4viddf.com</string>
+    <string name="developer">David Joel</string>
+    <string name="developer_subtitle">Creador de Ryx Isla - Perú</string>
     <string name="source_code">Исходный код</string>
     <string name="source_code_subtitle">Репозиторий GitHub</string>
     <string name="licenses">Лицензии Open Source</string>
     <string name="licenses_subtitle">Стороннее программное обеспечение</string>
-    <string name="footer_made_with_love">Сделано с ❤️ в Испании</string>
+    <string name="footer_made_with_love">Сделано с ❤️ в Перу</string>
     <string name="app_health_desc">Убедитесь, что все пункты зелёные, чтобы приложение корректно работало в фоновом режиме.</string>
     <string name="req_permissions">Необходимые разрешения</string>
     <string name="notif_access">Доступ к уведомлениям</string>

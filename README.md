@@ -1,36 +1,37 @@
 # Ryx Isla
 
-Ryx Isla is an Android notification bridge based on [Hyper Bridge](https://github.com/D4vidDf/HyperBridge). It brings a customizable HyperIsland-style notification interface to Android 15+ devices. Native Xiaomi HyperOS featured notifications are an optional integration; other Android ROMs use the standard notification and overlay capabilities where available.
+Ryx Isla es una aplicación para Android basada en [Hyper Bridge](https://github.com/D4vidDf/HyperBridge). Convierte notificaciones compatibles en una isla flotante personalizable en dispositivos con Android 15 o posterior. La integración de notificaciones destacadas de Xiaomi HyperOS es opcional; en otras ROM, el funcionamiento depende de los permisos y las funciones que ofrezca cada sistema.
 
-## Version
+## Versión
 
-**Ryx Isla 1.0.1** · package `com.dav.isla` · Android 15 or newer.
+**Ryx Isla 1.0.2** · paquete `com.dav.isla` · Android 15 o posterior.
 
-The compatibility screen reports the detected ROM and Android release/API level. Some device-specific behavior, background execution rules, notification access, and overlay support depend on the manufacturer and permissions granted by the user.
+La pantalla de compatibilidad muestra la ROM detectada y la versión y API de Android. Los límites de ejecución en segundo plano, el acceso a notificaciones y la superposición pueden variar según el fabricante y los permisos concedidos.
 
-## Features
+## Funciones
 
-- Bridge selected app notifications into a floating island, with per-app controls.
-- Customize themes, colors, shapes, actions, and notification layouts.
-- Display media artwork, calls, downloads, navigation, and supported widgets.
-- Use local notification processing and Android's notification access controls.
+- Conecta notificaciones de aplicaciones seleccionadas y permite configurarlas individualmente.
+- Personaliza temas, colores, formas, acciones y diseños de notificación.
+- Muestra contenido multimedia, llamadas, descargas, navegación y widgets compatibles.
+- Procesa notificaciones en el dispositivo y utiliza los controles de acceso de Android.
 
-Ryx Isla is an independent derivative. The upstream Hyper Bridge code is licensed under Apache 2.0; its license is included in [`LICENSE`](LICENSE), and notices are listed in [`NOTICE.md`](NOTICE.md).
+Ryx Isla es un proyecto independiente derivado de Hyper Bridge. El código de origen conserva la licencia Apache 2.0, incluida en [`LICENSE`](LICENSE), y sus avisos se recogen en [`NOTICE.md`](NOTICE.md).
 
-## Build
+## Compilación
 
-Open this repository in Android Studio or run:
+Abre el repositorio en Android Studio o ejecuta:
 
 ```powershell
 .\gradlew.bat assembleDebug
 ```
 
-The project uses Gradle 9.5.0, JDK 21, and Android SDK 36.
+El proyecto utiliza Gradle 9.5.0, JDK 21 y Android SDK 36.
 
-## Upstream and attribution
+## Autoría y atribución
 
-- Upstream project: [D4vidDf/HyperBridge](https://github.com/D4vidDf/HyperBridge)
-- Upstream revision used as the rewrite base: `e19ede13b87150028d89d31106ed898660e4c145`
-- License: Apache License 2.0
+- Creador de Ryx Isla: **David Joel**, Perú.
+- Proyecto de origen: [D4vidDf/HyperBridge](https://github.com/D4vidDf/HyperBridge).
+- Revisión de Hyper Bridge usada como base: `e19ede13b87150028d89d31106ed898660e4c145`.
+- Licencia del proyecto de origen: Apache 2.0.
 
-Ryx Isla changes the app identity, package ID, branding, and release configuration. See the upstream repository for the original project and its full history.
+Ryx Isla cambia la identidad, el identificador del paquete, la imagen de marca, la paleta, los metadatos de publicación y la documentación del proyecto. Consulta el repositorio de origen para ver su historial completo.

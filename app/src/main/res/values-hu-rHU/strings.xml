@@ -37,7 +37,7 @@
     <string name="no_active_bridges_desc">Menj a Könyvtárba az alkalmazások engedélyezéséhez.</string>
     <string name="no_apps_found">Nincsenek alkalmazások</string>
     <string name="version_template">Verzió %s</string>
-    <string name="developer_credit">Ryx Isla · Hyper Bridge (Apache 2.0)</string>
+    <string name="developer_credit">Creado por David Joel - Ryx Isla</string>
     <string name="group_configuration">Konfiguráció</string>
     <string name="system_setup">Rendszerbeállítás</string>
     <string name="system_setup_subtitle">Engedélyek és akkumulátor javítása</string>
@@ -47,13 +47,13 @@
     <string name="permanent_island_screen_desc">When enabled, an empty Dynamic Island will be shown permanently on your screen. It will automatically hide when real notifications arrive and reappear when all notifications are cleared. It will not be visible in your notification shade.</string>
     <string name="permanent_island_width">Island Width</string>
     <string name="group_about">Alkalmazásról</string>
-    <string name="developer">Fejlesztő</string>
-    <string name="developer_subtitle">Keresd fel d4viddf.com</string>
+    <string name="developer">David Joel</string>
+    <string name="developer_subtitle">Creador de Ryx Isla - Perú</string>
     <string name="source_code">Forráskód</string>
     <string name="source_code_subtitle">GitHub adattároló</string>
     <string name="licenses">Nyílt forráskód licenszek</string>
     <string name="licenses_subtitle">Harmadik féltől származó szoftverek</string>
-    <string name="footer_made_with_love">❤️ készült Spanyolországban</string>
+    <string name="footer_made_with_love">❤️-tal készült Peruban</string>
     <string name="app_health_desc">Győződj meg arról, hogy minden ellenőrzés zöld, hogy az alkalmazás megfelelően működjön a háttérben.</string>
     <string name="req_permissions">Szükséges engedélyek</string>
     <string name="notif_access">Hozzáférés az értesítésekhez</string>

@@ -37,7 +37,7 @@
     <string name="no_active_bridges_desc">Ve a la Biblioteca para habilitar aplicaciones.</string>
     <string name="no_apps_found">No se encontraron apps</string>
     <string name="version_template">Versión %s</string>
-    <string name="developer_credit">Ryx Isla · Hyper Bridge (Apache 2.0)</string>
+    <string name="developer_credit">Creado por David Joel · Ryx Isla</string>
     <string name="group_configuration">Configuración</string>
     <string name="system_setup">Configuración del Sistema</string>
     <string name="system_setup_subtitle">Arreglar permisos y batería</string>
@@ -48,13 +48,13 @@
     <string name="permanent_island_width">Ancho de la Isla</string>
     <string name="permanent_island_hide_landscape">Ocultar en Horizontal</string>
     <string name="group_about">Sobre la aplicación</string>
-    <string name="developer">Desarrollador</string>
-    <string name="developer_subtitle">Visita d4viddf.com</string>
+    <string name="developer">David Joel</string>
+    <string name="developer_subtitle">Creador de Ryx Isla · Perú</string>
     <string name="source_code">Código Fuente</string>
     <string name="source_code_subtitle">Repositorio en GitHub</string>
-    <string name="licenses">Licencias Open Source</string>
+    <string name="licenses">Licencias de código abierto</string>
     <string name="licenses_subtitle">Software de terceros</string>
-    <string name="footer_made_with_love">Hecho con ❤️ en España</string>
+    <string name="footer_made_with_love">Hecho con ❤️ en Perú</string>
     <string name="app_health_desc">Asegúrate de que todo esté en verde para que la aplicación funcione correctamente en segundo plano.</string>
     <string name="req_permissions">Permisos Requeridos</string>
     <string name="notif_access">Acceso a Notificaciones</string>
@@ -452,7 +452,7 @@
         <item quantity="other">%1$d acciones personalizadas</item>
     </plurals>
     <string name="title_0_4_0">La Actualización de Personalización</string>
-    <string name="changelog_0_4_0">        <b>Theme Engine 🎨</b>\n
+    <string name="changelog_0_4_0">        <b>Motor de temas 🎨</b>\n
         ¡La actualización más grande hasta la fecha! Ahora puedes personalizar completamente la experiencia visual de la isla dinámica.\n
         • <b>Creador de temas:</b> Diseña temas directamente en tu teléfono con cambios en tiempo real.\n
         • <b>Control avanzado:</b> Elegir exactamente cómo se muestran los iconos, personalizar colores y formas de notificación de llamadas, y configurar aplicaciones individuales.\n
@@ -677,4 +677,6 @@
               • <b>Estabilidad:</b> Mejora en la sincronización de notificaciones y corrección de un error donde las notificaciones originales a veces se eliminaban prematuramente (PR #258).\n
     </string>
     <string name="title_0_5_7">Actualización de Rendimiento y Sincronización</string>
+    <string name="type_message">Mensajes y chats</string>
+    <string name="type_message_desc">Mensajes, chats y conversaciones</string>
 </resources>

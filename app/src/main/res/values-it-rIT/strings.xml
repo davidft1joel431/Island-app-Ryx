@@ -37,7 +37,7 @@
     <string name="no_active_bridges_desc">Vai alla libreria per abilitare le applicazioni.</string>
     <string name="no_apps_found">Nessuna app trovata</string>
     <string name="version_template">Versione %s</string>
-    <string name="developer_credit">Ryx Isla · Hyper Bridge (Apache 2.0)</string>
+    <string name="developer_credit">Creado por David Joel - Ryx Isla</string>
     <string name="group_configuration">Configurazione</string>
     <string name="system_setup">Impostazioni di sistema</string>
     <string name="system_setup_subtitle">Correggi i permessi &amp; batteria</string>
@@ -47,13 +47,13 @@
     <string name="permanent_island_screen_desc">When enabled, an empty Dynamic Island will be shown permanently on your screen. It will automatically hide when real notifications arrive and reappear when all notifications are cleared. It will not be visible in your notification shade.</string>
     <string name="permanent_island_width">Island Width</string>
     <string name="group_about">Informazioni</string>
-    <string name="developer">Sviluppatore</string>
-    <string name="developer_subtitle">Visita d4viddf.com</string>
+    <string name="developer">David Joel</string>
+    <string name="developer_subtitle">Creador de Ryx Isla - Perú</string>
     <string name="source_code">Codice sorgente</string>
     <string name="source_code_subtitle">GitHub</string>
     <string name="licenses">Licenze open source</string>
     <string name="licenses_subtitle">Software di terze parti</string>
-    <string name="footer_made_with_love">Fatto con ❤️ in Spagna</string>
+    <string name="footer_made_with_love">Creato con ❤️ in Perù</string>
     <string name="app_health_desc">Assicurati che tutti i controlli siano verdi perché l\'app funzioni correttamente in background.</string>
     <string name="req_permissions">Permessi richiesti</string>
     <string name="notif_access">Accesso alle notifiche</string>
