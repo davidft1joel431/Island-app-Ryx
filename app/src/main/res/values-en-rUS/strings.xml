@@ -22,7 +22,7 @@
 
     <string name="device_compatible">Device Compatible</string>
     <string name="unsupported_device">Unsupported Device</string>
-    <string name="compatible_msg">Your device appears to be running HyperOS/MIUI. You are good to go!</string>
+    <string name="compatible_msg">Android 15 or later is supported through Ryx Isla\'s universal floating island.</string>
 
     <string name="show_island">Show Island</string>
     <string name="perm_post_desc">We need permission to post the \'Island\' notification on your screen.</string>
@@ -32,8 +32,7 @@
     <string name="read_data">Read Notifications</string>
     <string name="perm_listener_desc">To bridge your apps, we need to read their notifications (Music, Maps, Timers).</string>
     <string name="open_settings">Open Settings</string>
-
-    <string name="optimization_desc">HyperOS kills background apps. Enable Autostart and No Restrictions to keep the island active.</string>
+    <string name="optimization_desc">Some manufacturers close background apps. Enable autostart and unrestricted battery use to keep the island active.</string>
     <string name="enable_autostart">Allow Autostart</string>
     <string name="set_battery_no_restrictions">Disable Restrictions</string>
 
@@ -66,7 +65,7 @@
     <string name="notif_access">Notification Access</string>
     <string name="notif_access_desc">Required to read app events</string>
     <string name="device_optimization">Device Optimization</string>
-    <string name="xiaomi_autostart">Xiaomi Autostart</string>
+    <string name="xiaomi_autostart">Autostart</string>
     <string name="battery_unrestricted">Battery Unrestricted</string>
     <string name="battery_desc">Prevent system killing app</string>
     <string name="recents_note">Note: Also lock the app in the \'Recents\' overview menu.</string>
@@ -588,10 +587,6 @@
 
     <string name="engine_preview_title">Preview</string>
     <string name="engine_design_section">Notification Design</string>
-    <string name="engine_xiaomi_title">Xiaomi Featured Design</string>
-    <string name="engine_xiaomi_desc">Modern HyperOS layout with Xiaomi intended design.</string>
-    <string name="engine_native_title">Live Update Design</string>
-    <string name="engine_native_desc">Native android notification designs, works on CN ROM.</string>
 
     <string name="engine_config_title">Engine Configuration</string>
     <string name="engine_section_design">Notification Design</string>
@@ -630,6 +625,30 @@
     <string name="onboarding_widget_desc">Add standard Android widgets to your island for quick access.</string>
     <string name="onboard_theme_desc">Fully customize colors, shapes and icons of your island.</string>
     <string name="onboard_design_desc">Expand the possibilities with different customization options</string>
+    <string name="autostart_title">Autostart</string>
+    <string name="floating_island_section">Floating Island</string>
+    <string name="compatibility_ok_desc">Ryx Isla works on Android 15 or later through its universal floating island, with no HyperOS or brand requirement.</string>
+    <string name="compatibility_unsupported_desc">Ryx Isla requires Android 15 (API 35) or later.</string>
+    <string name="check_updates">Check for updates</string>
+    <string name="check_updates_subtitle">See if a new version is available on GitHub</string>
+    <string name="update_checking">Checking for updates…</string>
+    <string name="up_to_date_title">You are up to date</string>
+    <string name="up_to_date_message">You have the latest version of Ryx Isla (%s).</string>
+    <string name="update_available_title">New version available</string>
+    <string name="update_available_message">Version %1$s is available. You have %2$s.</string>
+    <string name="update_download">Download APK</string>
+    <string name="update_later">Later</string>
+    <string name="update_error_title">Could not check</string>
+    <string name="update_error_message">Check your Internet connection and try again.</string>
+    <string name="update_release_notes">What is new</string>
+    <string name="update_no_notes">See the release page for the changes.</string>
+    <string name="update_source_note">Updates are published at github.com/davidft1joel431/Island-app-Ryx</string>
+    <string name="island_overlay_ready_title">Floating island ready</string>
+    <string name="island_overlay_ready_desc">Ryx Isla draws its own window over other apps. Android 15 or later and the overlay permission are required.</string>
+    <string name="title_1_0_5">Universal floating engine</string>
+    <string name="changelog_1_0_5">Ryx Isla now uses a single floating island engine on any Android 15+ ROM. The permanent island appears as a capsule and returns when a notification closes. The setup wizard checks the overlay permission.</string>
+    <string name="title_1_0_6">Updates and full compatibility</string>
+    <string name="changelog_1_0_6">Adds an update checker that always consults Ryx Isla\'s official GitHub repository. Removes every HyperOS/Xiaomi requirement: the floating island works on all Android 15+ devices. Improves manufacturer/ROM detection and fixes the app and notification icons.</string>
 </resources>
 
 

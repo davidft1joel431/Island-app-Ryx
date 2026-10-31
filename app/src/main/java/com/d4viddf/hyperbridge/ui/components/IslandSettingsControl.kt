@@ -133,7 +133,7 @@ fun IslandSettingsControl(
         Spacer(Modifier.height(14.dp))
 
         Text(
-            text = stringResource(R.string.xiaomi_featured_notifications),
+            text = stringResource(R.string.floating_island_section),
             style = MaterialTheme.typography.labelLarge,
             color = MaterialTheme.colorScheme.primary,
             modifier = Modifier.padding(start = 4.dp)

@@ -50,8 +50,7 @@ La información visible depende del contenido que envíe cada aplicación. La is
 | Sistema | Compatibilidad |
 | --- | --- |
 | Android 15 o posterior | Requisito mínimo de esta versión. |
-| Otras marcas y ROM | Ryx Isla dibuja la isla con una ventana flotante de Android; el ahorro de batería y las reglas en segundo plano varían según el fabricante. |
-| Xiaomi, Redmi y POCO con HyperOS | Pueden ofrecer integración nativa adicional con notificaciones destacadas. |
+| Todas las marcas y ROM Android 15+ | Un solo motor usa la ventana flotante de Ryx Isla, incluida la isla permanente. |
 | Permisos | Debes habilitar el acceso a notificaciones y permitir que Ryx Isla se muestre sobre otras aplicaciones. |
 
 Durante la configuración, la app muestra el fabricante, la ROM detectada y la versión/API de Android para que puedas revisar el estado de tu dispositivo.
@@ -83,3 +82,9 @@ Se necesita **JDK 21** y **Android SDK 36**. El APK de depuración se genera en 
 - 📜 Licencia del proyecto de origen: [Apache 2.0](LICENSE). Los avisos y cambios de Ryx Isla están en [NOTICE.md](NOTICE.md).
 
 Ryx Isla es un proyecto independiente derivado de Hyper Bridge. Conserva la atribución y licencia del código de origen.
+
+## Actualizaciones
+
+Ryx Isla comprueba automáticamente si hay una versión nueva en su repositorio oficial de GitHub al iniciar la app. También puedes lanzar la comprobación manualmente desde **Ajustes > Buscar actualizaciones**. El diálogo muestra las novedades y abre la descarga del APK publicado en [GitHub Releases](https://github.com/davidft1joel431/Island-app-Ryx/releases).
+
+La comprobación usa siempre `https://github.com/davidft1joel431/Island-app-Ryx` y no depende de HyperOS, Xiaomi ni del proyecto de origen.

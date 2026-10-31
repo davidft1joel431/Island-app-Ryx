@@ -9,6 +9,7 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.content.res.Configuration
 import android.os.Bundle
 import android.service.notification.NotificationListenerService
 import android.service.notification.StatusBarNotification
@@ -16,8 +17,8 @@ import android.util.Log
 import androidx.annotation.RequiresPermission
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
-import com.d4viddf.hyperbridge.MainActivity
 import com.d4viddf.hyperbridge.R
+import com.d4viddf.hyperbridge.MainActivity
 import com.d4viddf.hyperbridge.data.AppPreferences
 import com.d4viddf.hyperbridge.data.db.AppDatabase
 import com.d4viddf.hyperbridge.data.theme.RulesEngine
@@ -27,24 +28,11 @@ import com.d4viddf.hyperbridge.models.ActiveIsland
 import com.d4viddf.hyperbridge.models.HyperIslandData
 import com.d4viddf.hyperbridge.models.IslandConfig
 import com.d4viddf.hyperbridge.models.IslandLimitMode
-import com.d4viddf.hyperbridge.models.NavContent
 import com.d4viddf.hyperbridge.models.NotificationType
 import com.d4viddf.hyperbridge.models.WidgetConfig
 import com.d4viddf.hyperbridge.models.WidgetRenderMode
-import com.d4viddf.hyperbridge.service.translators.CallTranslator
-import com.d4viddf.hyperbridge.service.translators.LiveUpdateTranslator
-import com.d4viddf.hyperbridge.service.translators.MediaTranslator
-import com.d4viddf.hyperbridge.service.translators.MessageTranslator
-import com.d4viddf.hyperbridge.service.translators.NavTranslator
-import com.d4viddf.hyperbridge.service.translators.ProgressTranslator
-import com.d4viddf.hyperbridge.service.translators.DownloadTranslator
-import com.d4viddf.hyperbridge.service.translators.StandardTranslator
-import com.d4viddf.hyperbridge.service.translators.TimerTranslator
 import com.d4viddf.hyperbridge.service.translators.WidgetTranslator
-import com.d4viddf.hyperbridge.util.DeviceUtils
-import com.d4viddf.hyperbridge.util.XiaomiNotificationHelper
 import com.d4viddf.hyperbridge.util.ShizukuManager
-import io.github.d4viddf.hyperisland_kit.HyperIslandNotification
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -69,8 +57,6 @@ class NotificationReaderService : NotificationListenerService() {
     // --- CHANNELS ---
     private val NOTIFICATION_CHANNEL_ID = "hyper_bridge_notification_channel"
     private val WIDGET_CHANNEL_ID = "hyper_bridge_widget_channel"
-    private val LIVE_UPDATE_CHANNEL_ID = "hyper_bridge_live_update_channel"
-    private val WATCH_RELAY_CHANNEL_ID = "hyper_bridge_watch_relay_channel"
     private val serviceScope = CoroutineScope(Dispatchers.Default + Job())
 
     // --- STATE & CONFIG ---
@@ -84,15 +70,13 @@ class NotificationReaderService : NotificationListenerService() {
 
     // --- CACHES ---
     private val recentlyRemovedKeys = ConcurrentHashMap<String, Long>()
-    private val nativeIslands = ConcurrentHashMap.newKeySet<String>()
+    private val genericNotificationKeys = ConcurrentHashMap.newKeySet<String>()
     private val activeIslands = ConcurrentHashMap<String, ActiveIsland>()
     private val activeTranslations = ConcurrentHashMap<String, Int>()
     private val reverseTranslations = ConcurrentHashMap<Int, String>()
     private val processingJobs = ConcurrentHashMap<String, Job>()
-    private val timeoutJobs = ConcurrentHashMap<String, Job>()
     private val removalJobs = ConcurrentHashMap<String, Job>()
     private lateinit var permanentIslandManager: PermanentIslandManager
-    private val intentionallyRemovedKeys = ConcurrentHashMap.newKeySet<String>()
     private val widgetUpdateDebouncer = ConcurrentHashMap<Int, Long>()
     private val dismissedWidgetIds = ConcurrentHashMap.newKeySet<Int>()
     private val activeWidgets = ConcurrentHashMap.newKeySet<Int>()
@@ -101,8 +85,6 @@ class NotificationReaderService : NotificationListenerService() {
     private val MAX_ISLANDS = 9
     private val WIDGET_ID_BASE = 9000
     // Negative so these ids can never hit the >= WIDGET_ID_BASE branch in onNotificationRemoved
-    private val WATCH_RELAY_ID_BASE = -20000
-    private var watchRelaySlot = 0
     private val STANDARD_ISLAND_TIMEOUT_MS = 60_000L
 
     private lateinit var preferences: AppPreferences
@@ -112,18 +94,8 @@ class NotificationReaderService : NotificationListenerService() {
     private lateinit var rulesEngine: RulesEngine
 
     // Translators
-    private lateinit var callTranslator: CallTranslator
-    private lateinit var navTranslator: NavTranslator
-    private lateinit var timerTranslator: TimerTranslator
-    private lateinit var progressTranslator: ProgressTranslator
-    private lateinit var downloadTranslator: DownloadTranslator
-    private lateinit var standardTranslator: StandardTranslator
-    private lateinit var messageTranslator: MessageTranslator
-    private lateinit var mediaTranslator: MediaTranslator
     private lateinit var widgetTranslator: WidgetTranslator
-    private lateinit var liveUpdateTranslator: LiveUpdateTranslator
     private lateinit var genericIslandOverlay: GenericIslandOverlay
-    private var hasNativeHyperIsland = false
 
     @Volatile
     private var isScreenOn = true
@@ -188,25 +160,12 @@ class NotificationReaderService : NotificationListenerService() {
         
         preferences = AppPreferences(applicationContext)
         genericIslandOverlay = GenericIslandOverlay(this)
-        val supportsXiaomiIsland = DeviceUtils.isXiaomi && XiaomiNotificationHelper.isSupportIsland()
-        hasNativeHyperIsland = supportsXiaomiIsland && XiaomiNotificationHelper.hasFocusPermission(this)
         createChannels()
 
         // [INIT] Theme Engine
         themeRepository = ThemeRepository(this)
         rulesEngine = RulesEngine()
 
-        // Pass ThemeRepository to Translators
-        callTranslator = CallTranslator(this, themeRepository)
-        navTranslator = NavTranslator(this, themeRepository)
-        timerTranslator = TimerTranslator(this, themeRepository)
-        progressTranslator = ProgressTranslator(this, themeRepository)
-        downloadTranslator = DownloadTranslator(this, themeRepository)
-        standardTranslator = StandardTranslator(this, themeRepository)
-        messageTranslator = MessageTranslator(this, themeRepository)
-        liveUpdateTranslator = LiveUpdateTranslator(this, themeRepository)
-
-        mediaTranslator = MediaTranslator(this)
         widgetTranslator = WidgetTranslator(this)
 
         val userManager = getSystemService(USER_SERVICE) as android.os.UserManager
@@ -214,12 +173,7 @@ class NotificationReaderService : NotificationListenerService() {
             WidgetManager.init(this)
         }
 
-        permanentIslandManager = PermanentIslandManager(
-            this,
-            serviceScope,
-            preferences,
-            nativeIslandSupported = hasNativeHyperIsland
-        )
+        permanentIslandManager = PermanentIslandManager(this, serviceScope, preferences, genericIslandOverlay)
 
         serviceScope.launch { preferences.allowedPackagesFlow.collectLatest { allowedPackageSet = it } }
         serviceScope.launch { preferences.limitModeFlow.collectLatest { currentMode = it } }
@@ -294,52 +248,29 @@ class NotificationReaderService : NotificationListenerService() {
         val message = if (progress >= 100) getString(R.string.migration_complete) else getString(R.string.migration_message)
         val bridgeId = "migration_update".hashCode()
 
-        serviceScope.launch {
-            val useNative = getEffectiveEngine(packageName)
-            
-            if (useNative) {
-                val notificationBuilder = liveUpdateTranslator.translateToLiveUpdate(
-                    sbn = null,
-                    channelId = LIVE_UPDATE_CHANNEL_ID,
-                    type = NotificationType.PROGRESS,
-                    navRight = null,
-                    config = null
-                )
-                notificationBuilder.setContentTitle(title)
-                notificationBuilder.setContentText(message)
-                notificationBuilder.setProgress(100, progress, progress < 0)
-                notificationBuilder.setOngoing(progress in 0..99)
-                notificationBuilder.setSmallIcon(R.drawable.ic_launcher_foreground)
-
-                val notification = notificationBuilder.build()
-                ShizukuManager.notify(this@NotificationReaderService, bridgeId, notification)
-            } else {
-                val builder = HyperIslandNotification.Builder(this@NotificationReaderService, "migration", title)
-                builder.setProgressBar(progress, "#007AFF")
-                builder.setChatInfo(title, message, "migration_icon", packageName)
-                builder.setShowNotification(true)
-                builder.setIslandFirstFloat(true)
-
-                val data = HyperIslandData(builder.buildResourceBundle(), builder.buildJsonParam())
-
-                val notificationBuilder = NotificationCompat.Builder(this@NotificationReaderService, NOTIFICATION_CHANNEL_ID)
-                    .setSmallIcon(R.drawable.ic_launcher_foreground)
-                    .setContentTitle(title)
-                    .setContentText(message)
-                    .setPriority(NotificationCompat.PRIORITY_HIGH)
-                    .setOngoing(progress in 0..99)
-                    .setProgress(100, progress, progress < 0)
-                    .addExtras(data.resources)
-
-                val notification = notificationBuilder.build()
-                notification.extras.putString("miui.focus.param", data.jsonParam)
-
-                ShizukuManager.notify(this@NotificationReaderService, bridgeId, notification)
-            }
-
-            if (progress >= 100) {
+        val notification = NotificationCompat.Builder(this, NOTIFICATION_CHANNEL_ID)
+            .setSmallIcon(R.drawable.ic_stat_island)
+            .setContentTitle(title)
+            .setContentText(message)
+            .setPriority(NotificationCompat.PRIORITY_LOW)
+            .setOnlyAlertOnce(true)
+            .setOngoing(progress in 0..99)
+            .setProgress(100, progress, progress < 0)
+            .build()
+        NotificationManagerCompat.from(this).notify(bridgeId, notification)
+        genericIslandOverlay.show(
+            notificationKey = "migration",
+            packageName = packageName,
+            title = title,
+            text = message,
+            isOngoing = progress in 0..99,
+            timeoutSeconds = 3
+        )
+        if (progress >= 100) {
+            serviceScope.launch {
                 delay(3000)
                 NotificationManagerCompat.from(this@NotificationReaderService).cancel(bridgeId)
+                genericIslandOverlay.dismiss("migration")
             }
         }
     }
@@ -365,56 +296,27 @@ class NotificationReaderService : NotificationListenerService() {
         }
     }
 
-    private fun getEffectiveEngine(pkg: String): Boolean {
-        val activeTheme = themeRepository.activeTheme.value
-
-        // 1. Theme App Override (Creator explicitly configured this app)
-        val themeAppOverride = activeTheme?.apps?.get(pkg)?.useNativeLiveUpdates
-        if (themeAppOverride != null) return themeAppOverride
-
-        // 2. User App Override (User explicitly configured this app via Home Screen)
-        val userAppOverride = preferences.getAppEnginePreferenceSync(pkg)
-        if (userAppOverride != null) return userAppOverride
-
-        // 3. Theme Global Override (Creator explicitly forced an engine for the whole theme)
-        val themeGlobalOverride = activeTheme?.global?.useNativeLiveUpdates
-        if (themeGlobalOverride != null) return themeGlobalOverride
-
-        // 4. User Global Fallback (The main Engine Setting on the Home Screen!)
-        return preferences.useNativeLiveUpdatesSync()
-    }
-
-    private fun getEffectiveNav(pkg: String): Pair<NavContent, NavContent> {
-        return preferences.getEffectiveNavLayoutSync(pkg)
-    }
-
     // =========================================================================
     //  NOTIFICATION REMOVAL LOGIC
     // =========================================================================
 
     override fun onNotificationRemoved(sbn: StatusBarNotification?, rankingMap: RankingMap?, reason: Int) {
         sbn?.let {
-            if (nativeIslands.remove(it.key)) {
-                updatePermanentIsland()
-            }
-
             val isOurApp = it.packageName == packageName
             val notifId = it.id
             val notifKey = it.key
 
-            if (intentionallyRemovedKeys.remove(notifKey)) {
+            recentlyRemovedKeys[notifKey] = System.currentTimeMillis()
+            genericIslandOverlay.dismiss(notifKey)
+            if (genericNotificationKeys.remove(notifKey)) {
+                processingJobs[notifKey]?.cancel()
+                processingJobs.remove(notifKey)
+                cleanupCache(notifKey)
                 return
             }
 
-            genericIslandOverlay.dismiss(notifKey)
-
-            recentlyRemovedKeys[notifKey] = System.currentTimeMillis()
-
             processingJobs[notifKey]?.cancel()
             processingJobs.remove(notifKey)
-
-            timeoutJobs[notifKey]?.cancel()
-            timeoutJobs.remove(notifKey)
 
             if (isOurApp) {
                 // Only process user-initiated dismissals for our notifications. 
@@ -515,93 +417,34 @@ class NotificationReaderService : NotificationListenerService() {
         }
     }
 
+    /**
+     * Keeps the permanent island in sync with the notifications that are
+     * currently bridged. The overlay engine handles the actual rendering, so
+     * this is intentionally cheap and safe to call from any thread.
+     */
+    private fun updatePermanentIsland() {
+        permanentIslandManager.onActiveNotificationsChanged(
+            activeIslands.size + activeWidgets.size
+        )
+    }
+
+    override fun onConfigurationChanged(newConfig: Configuration) {
+        super.onConfigurationChanged(newConfig)
+        permanentIslandManager.onOrientationChanged()
+    }
+
     private fun cleanupCache(originalKey: String) {
         val hyperId = activeTranslations[originalKey]
+        if (genericNotificationKeys.remove(originalKey)) {
+            genericIslandOverlay.dismiss(originalKey)
+        }
         activeIslands.remove(originalKey)
         activeTranslations.remove(originalKey)
-        timeoutJobs[originalKey]?.cancel()
-        timeoutJobs.remove(originalKey)
 
         if (hyperId != null) {
             reverseTranslations.remove(hyperId)
         }
         updatePermanentIsland()
-    }
-
-    private fun handlePostNotificationSideEffects(originalKey: String, bridgeId: Int, config: IslandConfig, type: NotificationType, isLiveUpdate: Boolean, sbn: StatusBarNotification? = null, title: String = "", text: String = "") {
-        // 1. Remove original if enabled (EXCEPT for Media)
-        if (config.removeOriginalNotification == true && type != NotificationType.MEDIA && type != NotificationType.CALL) {
-            // Companion apps (e.g. Mi Fitness) relay notifications to watches by listening like we do;
-            // cancelling the original kills that relay, so post a silent short-lived copy they can forward.
-            if (sbn != null && !isLiveUpdate && (type == NotificationType.MESSAGE || type == NotificationType.STANDARD)) {
-                postWatchRelayNotification(sbn, title, text)
-            }
-            intentionallyRemovedKeys.add(originalKey)
-            cancelNotification(originalKey)
-        }
-
-        // 2. Schedule timeout ONLY for Live Update notifications
-        if (isLiveUpdate) {
-            val timeoutSeconds = config.timeout ?: 0
-            timeoutJobs[originalKey]?.cancel()
-            if (timeoutSeconds > 0) {
-                timeoutJobs[originalKey] = serviceScope.launch {
-                    delay((timeoutSeconds * 1000L).milliseconds)
-                    Log.d(TAG, "Timeout reached for $originalKey, removing translated notification $bridgeId")
-                    NotificationManagerCompat.from(this@NotificationReaderService).cancel(bridgeId)
-                    cleanupCache(originalKey)
-                    timeoutJobs.remove(originalKey)
-                }
-            }
-        } else if (type == NotificationType.MESSAGE || type == NotificationType.STANDARD) {
-            // HyperOS island-swipe only hides the island; the focus notification stays posted and no
-            // removal callback fires, so an untimed island blocks the permanent island forever.
-            timeoutJobs[originalKey]?.cancel()
-            timeoutJobs[originalKey] = serviceScope.launch {
-                delay(STANDARD_ISLAND_TIMEOUT_MS)
-                Log.d(TAG, "Island TTL reached for $originalKey, removing translated notification $bridgeId")
-                NotificationManagerCompat.from(this@NotificationReaderService).cancel(bridgeId)
-                cleanupCache(originalKey)
-                timeoutJobs.remove(originalKey)
-            }
-        }
-    }
-
-    private fun postWatchRelayNotification(sbn: StatusBarNotification, title: String, text: String) {
-        try {
-            val appLabel = getCachedAppLabel(sbn.packageName)
-            val relayId = WATCH_RELAY_ID_BASE - (watchRelaySlot++ and 0x0F)
-            val notification = NotificationCompat.Builder(this, WATCH_RELAY_CHANNEL_ID)
-                .setSmallIcon(R.drawable.ic_launcher_foreground)
-                .setContentTitle(if (title.isNotBlank()) "$appLabel · $title" else appLabel)
-                .setContentText(text)
-                .setSilent(true)
-                .setAutoCancel(true)
-                .setTimeoutAfter(10_000L)
-                .build()
-            NotificationManagerCompat.from(this).notify(relayId, notification)
-        } catch (e: Exception) {
-            Log.e(TAG, "Error posting watch relay notification", e)
-        }
-    }
-
-    private fun logStateChange(isLandscape: Boolean) {
-        val orientation = if (isLandscape) "Landscape" else "Portrait"
-        val isIslandExhibited = activeIslands.isNotEmpty() || activeWidgets.isNotEmpty() || nativeIslands.isNotEmpty() || permanentIslandManager.isIslandActive()
-        val islandState = if (isIslandExhibited) "Showing Island" else "No Island"
-        Log.d(TAG, "State: $orientation | $islandState")
-    }
-
-    private fun updatePermanentIsland() {
-        permanentIslandManager.onActiveNotificationsChanged(activeIslands.size + activeWidgets.size, nativeIslands.isNotEmpty())
-        val isLandscape = resources.configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
-        logStateChange(isLandscape)
-    }
-
-    override fun onConfigurationChanged(newConfig: android.content.res.Configuration) {
-        super.onConfigurationChanged(newConfig)
-        permanentIslandManager.onOrientationChanged()
-        logStateChange(newConfig.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE)
     }
 
     // =========================================================================
@@ -611,26 +454,6 @@ class NotificationReaderService : NotificationListenerService() {
     @RequiresPermission(Manifest.permission.POST_NOTIFICATIONS)
     override fun onNotificationPosted(sbn: StatusBarNotification?) {
         sbn?.let {
-            if (it.packageName != packageName) {
-                val extras = it.notification.extras
-                var isNative = false
-                if (extras != null) {
-                    if (extras.containsKey("miui.focus.param") || extras.containsKey("miui.system.focus.param")) {
-                        isNative = true
-                    }
-                    val template = extras.getString(Notification.EXTRA_TEMPLATE)
-                    if (template == "androidx.media.app.NotificationCompat\$MediaStyle" ||
-                        template == "android.app.Notification\$MediaStyle") {
-                        isNative = true
-                    }
-                }
-                if (isNative) {
-                    if (nativeIslands.add(it.key)) updatePermanentIsland()
-                } else {
-                    if (nativeIslands.remove(it.key)) updatePermanentIsland()
-                }
-            }
-
             if (shouldIgnore(it.packageName)) return
             if (!isAppAllowed(it.packageName)) return
 
@@ -647,6 +470,8 @@ class NotificationReaderService : NotificationListenerService() {
 
     @RequiresPermission(Manifest.permission.POST_NOTIFICATIONS)
     private suspend fun processStandardNotification(rawSbn: StatusBarNotification) {
+        val removedAt = recentlyRemovedKeys[rawSbn.key]
+        if (removedAt != null && System.currentTimeMillis() - removedAt < 2000) return
         val manager = getSystemService(NotificationManager::class.java)
         val isSystemDndActive = manager.currentInterruptionFilter != NotificationManager.INTERRUPTION_FILTER_ALL
         val dndActive = isDndModeEnabled || (autoDetectDnd && isSystemDndActive)
@@ -727,8 +552,6 @@ class NotificationReaderService : NotificationListenerService() {
 
                     activeIslands.remove(oldKey)
                     activeTranslations.remove(oldKey)
-                    timeoutJobs[oldKey]?.cancel()
-                    timeoutJobs.remove(oldKey)
 
                     effectiveKey = key
                     activeTranslations[effectiveKey] = bridgeId
@@ -756,8 +579,6 @@ class NotificationReaderService : NotificationListenerService() {
 
                     activeIslands.remove(oldKey)
                     activeTranslations.remove(oldKey)
-                    timeoutJobs[oldKey]?.cancel()
-                    timeoutJobs.remove(oldKey)
                     removalJobs[oldKey]?.cancel()
                     removalJobs.remove(oldKey)
 
@@ -778,129 +599,35 @@ class NotificationReaderService : NotificationListenerService() {
             val picKey = "pic_${bridgeId}"
 
             // --- LAYERED ENGINE LOGIC ---
-            val useLiveUpdates = getEffectiveEngine(sbn.packageName)
-            if (!hasNativeHyperIsland) {
-                genericIslandOverlay.show(
-                    notificationKey = sbn.key,
-                    packageName = sbn.packageName,
-                    title = effectiveTitle,
-                    text = effectiveText,
-                    isOngoing = sbn.isOngoing,
-                    timeoutSeconds = finalConfig.timeout ?: 5
-                )
-            }
-
-            if (useLiveUpdates) {
-                Log.i(TAG, " POSTING Native Live Update -> ID: $bridgeId, Type: $type")
-
-                // [FIX] Fetch the user's custom layout so the Live Update can use it!
-                val navLayout = if (type == NotificationType.NAVIGATION) getEffectiveNav(sbn.packageName) else null
-
-                // [FIX] Pass the type and the right layout to the translator
-                val builder = liveUpdateTranslator.translateToLiveUpdate(
-                    sbn = sbn,
-                    channelId = LIVE_UPDATE_CHANNEL_ID,
-                    type = type,
-                    navRight = navLayout?.second,
-                    config = finalConfig
-                )
-
-                builder.extras.putString(EXTRA_ORIGINAL_KEY, sbn.key)
-
-                val shouldAlertOnce = isUpdate && (type == NotificationType.PROGRESS || type == NotificationType.DOWNLOAD || type == NotificationType.MEDIA)
-                builder.setOnlyAlertOnce(shouldAlertOnce)
-
-                val hasPermission = !hasNativeHyperIsland || XiaomiNotificationHelper.hasFocusPermission(this)
-                if (!hasPermission && hasNativeHyperIsland) {
-                    serviceScope.launch {
-                        preferences.setFeaturedPermissionWarning(true)
-                    }
-                    val intent = Intent(this, MainActivity::class.java).apply {
-                        flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
-                        putExtra("open_troubleshoot", true)
-                    }
-                    val pendingIntent = PendingIntent.getActivity(
-                        this, 0, intent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-                    )
-                    builder.addAction(
-                        android.R.drawable.ic_dialog_info,
-                        getString(R.string.troubleshoot_featured_notification),
-                        pendingIntent
-                    )
-                }
-
-                val notification = builder.build()
-
-                val actualProgress = extras.getInt(Notification.EXTRA_PROGRESS, 0)
-                val actualMax = extras.getInt(Notification.EXTRA_PROGRESS_MAX, 0)
-                val isIndeterminate = extras.getBoolean(Notification.EXTRA_PROGRESS_INDETERMINATE, false)
-                val actionState = sbn.notification.actions?.joinToString { it.title?.toString() ?: "" } ?: ""
-
-                val newContentHash = effectiveTitle.hashCode() * 31 +
-                        effectiveText.hashCode() + actualProgress + actualMax +
-                        isIndeterminate.hashCode() + actionState.hashCode()
-
-                if (isUpdate && previous != null && previous.lastContentHash == newContentHash) return
-
-                if (!shouldAlertOnce) {
-                    ShizukuManager.notify(this, bridgeId, notification)
-                } else {
-                    NotificationManagerCompat.from(this).notify(bridgeId, notification)
-                }
-
-                activeTranslations[effectiveKey] = bridgeId
-                reverseTranslations[bridgeId] = effectiveKey
-                activeIslands[effectiveKey] = ActiveIsland(
-                    id = bridgeId, type = type, postTime = System.currentTimeMillis(),
-                    packageName = sbn.packageName, groupKey = sbn.groupKey, title = effectiveTitle, text = effectiveText,
-                    subText = "LiveUpdate", lastContentHash = newContentHash, deleteIntent = sbn.notification.deleteIntent
-                )
-                updatePermanentIsland()
-
-                handlePostNotificationSideEffects(effectiveKey, bridgeId, finalConfig, type, true, sbn, effectiveTitle, effectiveText)
-                return
-            }
-
-            // --- LAYERED CUSTOM ISLAND LOGIC ---
-            val data: HyperIslandData = when (type) {
-                NotificationType.CALL -> callTranslator.translate(sbn, picKey, finalConfig, activeTheme)
-                NotificationType.NAVIGATION -> {
-                    // --- LAYERED NAVIGATION LOGIC ---
-                    val navLayout = getEffectiveNav(sbn.packageName)
-                    navTranslator.translate(sbn, picKey, finalConfig, navLayout.first, navLayout.second, activeTheme)
-                }
-                NotificationType.TIMER -> timerTranslator.translate(sbn, picKey, finalConfig, activeTheme)
-                NotificationType.PROGRESS -> progressTranslator.translate(sbn, effectiveTitle, picKey, finalConfig, activeTheme, isUpdate)
-                NotificationType.DOWNLOAD -> downloadTranslator.translate(sbn, effectiveTitle, picKey, finalConfig, activeTheme, isUpdate)
-                NotificationType.MEDIA -> mediaTranslator.translate(sbn, picKey, finalConfig)
-                NotificationType.MESSAGE -> messageTranslator.translate(sbn, effectiveTitle, effectiveText, picKey, finalConfig, activeTheme)
-                else -> standardTranslator.translate(sbn, effectiveTitle, effectiveText, picKey, finalConfig, activeTheme)
-            }
-
-            val newContentHash = data.jsonParam.hashCode()
-            if (isUpdate && previous != null && previous.lastContentHash == newContentHash) return
-
-            kotlinx.coroutines.yield()
-
-            val removedTime = recentlyRemovedKeys[rawSbn.key]
-            if (removedTime != null && System.currentTimeMillis() - removedTime < 2000) {
-                Log.d(TAG, "Skipping post because notification was recently removed: ${rawSbn.key}")
-                return
-            }
-
-            val shouldAlertOnce = isUpdate && (type == NotificationType.PROGRESS || type == NotificationType.DOWNLOAD || type == NotificationType.MEDIA)
-
-            Log.i(TAG, " POSTING Island -> ID: $bridgeId, Type: $type, FinalTitle: '$effectiveTitle', FinalText: '$effectiveText'")
-            postStandardNotification(sbn, bridgeId, data, shouldAlertOnce)
-
-            activeIslands[effectiveKey] = ActiveIsland(
-                id = bridgeId, type = type, postTime = System.currentTimeMillis(),
-                packageName = sbn.packageName, groupKey = sbn.groupKey, title = effectiveTitle, text = effectiveText,
-                subText = "", lastContentHash = newContentHash, deleteIntent = sbn.notification.deleteIntent
+            genericIslandOverlay.show(
+                notificationKey = sbn.key,
+                packageName = sbn.packageName,
+                title = effectiveTitle,
+                text = effectiveText,
+                notificationImage = runCatching {
+                    sbn.notification.getLargeIcon()?.loadDrawable(this)
+                }.getOrNull(),
+                isOngoing = sbn.isOngoing,
+                timeoutSeconds = finalConfig.timeout ?: 5
             )
+            genericNotificationKeys.add(effectiveKey)
+            activeTranslations[effectiveKey] = bridgeId
+            reverseTranslations[bridgeId] = effectiveKey
+            activeIslands[effectiveKey] = ActiveIsland(
+                id = bridgeId,
+                type = type,
+                postTime = System.currentTimeMillis(),
+                packageName = sbn.packageName,
+                groupKey = sbn.groupKey,
+                title = effectiveTitle,
+                text = effectiveText,
+                subText = "Ryx Isla",
+                lastContentHash = effectiveTitle.hashCode() * 31 + effectiveText.hashCode(),
+                deleteIntent = sbn.notification.deleteIntent
+            )
+            NotificationManagerCompat.from(this).cancel(bridgeId)
             updatePermanentIsland()
-
-            handlePostNotificationSideEffects(effectiveKey, bridgeId, finalConfig, type, false, sbn, effectiveTitle, effectiveText)
+            return
 
         } catch (e: Exception) {
             Log.e(TAG, "💥 Error processing standard notification", e)
@@ -1049,71 +776,6 @@ class NotificationReaderService : NotificationListenerService() {
         }
     }
 
-    @RequiresPermission(Manifest.permission.POST_NOTIFICATIONS)
-    private fun postStandardNotification(sbn: StatusBarNotification, bridgeId: Int, data: HyperIslandData, shouldAlertOnce: Boolean) {
-        val builder = NotificationCompat.Builder(this, NOTIFICATION_CHANNEL_ID)
-            .setSmallIcon(R.drawable.ic_launcher_foreground)
-            .setContentTitle(getString(R.string.app_name))
-            .setContentText(getString(R.string.notification_went_wrong))
-            .setPriority(NotificationCompat.PRIORITY_HIGH)
-            .setOngoing(true)
-            .setOnlyAlertOnce(shouldAlertOnce)
-
-        val extras = Bundle()
-        extras.putString(EXTRA_ORIGINAL_KEY, sbn.key)
-        builder.addExtras(extras)
-        builder.addExtras(data.resources)
-
-        val hasPermission = !hasNativeHyperIsland || XiaomiNotificationHelper.hasFocusPermission(this)
-        if (hasNativeHyperIsland && !hasPermission) {
-            val intent = Intent(this, MainActivity::class.java).apply {
-                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
-                putExtra("open_troubleshoot", true)
-            }
-            val pendingIntent = PendingIntent.getActivity(
-                this, 0, intent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-            )
-            builder.setContentIntent(pendingIntent)
-            builder.addAction(
-                android.R.drawable.ic_dialog_info,
-                getString(R.string.troubleshoot_featured_notification),
-                pendingIntent
-            )
-        } else {
-            sbn.notification.contentIntent?.let { originalIntent ->
-                if (detectNotificationType(sbn) == NotificationType.MESSAGE) {
-                    val clickIntent = Intent("com.d4viddf.hyperbridge.ISLAND_CLICKED").apply {
-                        setPackage(packageName)
-                        putExtra("sbn_key", sbn.key)
-                        putExtra("bridge_id", bridgeId)
-                        putExtra("original_intent", originalIntent)
-                    }
-                    val clickPendingIntent = PendingIntent.getBroadcast(
-                        this,
-                        bridgeId,
-                        clickIntent,
-                        PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-                    )
-                    builder.setContentIntent(clickPendingIntent)
-                } else {
-                    builder.setContentIntent(originalIntent)
-                }
-            }
-        }
-
-        val notification = builder.build()
-        notification.extras.putString("miui.focus.param", data.jsonParam)
-
-        if (!shouldAlertOnce) {
-            ShizukuManager.notifyWithCancel(this, bridgeId, notification)
-        } else {
-            NotificationManagerCompat.from(this).notify(bridgeId, notification)
-        }
-
-        activeTranslations[sbn.key] = bridgeId
-        reverseTranslations[bridgeId] = sbn.key
-    }
-
     // =========================================================================
     //  HELPERS & SETUP
     // =========================================================================
@@ -1130,15 +792,7 @@ class NotificationReaderService : NotificationListenerService() {
         }
         manager.createNotificationChannel(widgetChannel)
 
-        val liveUpdateChannel = NotificationChannel(LIVE_UPDATE_CHANNEL_ID, getString(R.string.channel_live_updates), NotificationManager.IMPORTANCE_DEFAULT).apply {
-            setSound(null, null); enableVibration(false); setShowBadge(false)
-        }
-        manager.createNotificationChannel(liveUpdateChannel)
 
-        val watchRelayChannel = NotificationChannel(WATCH_RELAY_CHANNEL_ID, "Watch Relay", NotificationManager.IMPORTANCE_LOW).apply {
-            setSound(null, null); enableVibration(false); setShowBadge(false)
-        }
-        manager.createNotificationChannel(watchRelayChannel)
     }
 
     private fun shouldProcessWidgetUpdate(widgetId: Int, config: WidgetConfig): Boolean {
@@ -1163,7 +817,7 @@ class NotificationReaderService : NotificationListenerService() {
     @RequiresPermission(Manifest.permission.POST_NOTIFICATIONS)
     private fun postWidgetNotification(notificationId: Int, data: HyperIslandData) {
         val builder = NotificationCompat.Builder(this, WIDGET_CHANNEL_ID)
-            .setSmallIcon(R.drawable.ic_launcher_foreground)
+            .setSmallIcon(R.drawable.ic_stat_island)
             .setContentTitle("Widget Overlay").setContentText(getString(R.string.widget_went_wrong))
             .setPriority(NotificationCompat.PRIORITY_LOW).setOngoing(true)
             .setOnlyAlertOnce(true).addExtras(data.resources)
@@ -1173,7 +827,6 @@ class NotificationReaderService : NotificationListenerService() {
         builder.setContentIntent(pendingIntent)
 
         val notification = builder.build()
-        notification.extras.putString("miui.focus.param", data.jsonParam)
         ShizukuManager.notify(this, notificationId, notification)
     }
 
@@ -1297,36 +950,6 @@ class NotificationReaderService : NotificationListenerService() {
                 val currentNotifications = activeNotifications ?: return@launch
                 val systemNotificationKeys = currentNotifications.map { it.key }.toSet()
 
-                var nativeChanged = false
-                for (sbn in currentNotifications) {
-                    if (sbn.packageName != packageName) {
-                        val extras = sbn.notification.extras
-                        var isNative = false
-                        if (extras != null) {
-                            if (extras.containsKey("miui.focus.param") || extras.containsKey("miui.system.focus.param")) {
-                                isNative = true
-                            }
-                            val template = extras.getString(Notification.EXTRA_TEMPLATE)
-                            if (template == "androidx.media.app.NotificationCompat\$MediaStyle" ||
-                                template == "android.app.Notification\$MediaStyle") {
-                                isNative = true
-                            }
-                        }
-                        if (isNative) {
-                            if (nativeIslands.add(sbn.key)) nativeChanged = true
-                        } else {
-                            if (nativeIslands.remove(sbn.key)) nativeChanged = true
-                        }
-                    }
-                }
-                val currentNatives = nativeIslands.toList()
-                for (key in currentNatives) {
-                    if (!systemNotificationKeys.contains(key)) {
-                        if (nativeIslands.remove(key)) nativeChanged = true
-                    }
-                }
-                if (nativeChanged) updatePermanentIsland()
-
                 val currentKeys = currentNotifications.map { it.key }.toSet()
                 
                 val keysToRemove = mutableListOf<String>()
@@ -1369,7 +992,6 @@ class NotificationReaderService : NotificationListenerService() {
                     val id = sbn.id
                     if (id == PermanentIslandManager.PERMANENT_BRIDGE_ID) continue
                     if (id >= WIDGET_ID_BASE) continue
-                    if (id in (WATCH_RELAY_ID_BASE - 0x0F)..WATCH_RELAY_ID_BASE) continue
                     if ((sbn.notification.flags and Notification.FLAG_GROUP_SUMMARY) != 0) continue
                     if (reverseTranslations.containsKey(id)) continue
                     if (System.currentTimeMillis() - sbn.postTime < 5000) continue
@@ -1384,7 +1006,7 @@ class NotificationReaderService : NotificationListenerService() {
                 }
                 permanentIslandManager.reconcile(
                     activeIslands.size + activeWidgets.size,
-                    nativeIslands.isNotEmpty(),
+                    false,
                     islandPresent,
                     refresh
                 )
@@ -1396,7 +1018,7 @@ class NotificationReaderService : NotificationListenerService() {
 
     override fun onDestroy() {
         super.onDestroy()
-        genericIslandOverlay.dismiss()
+        genericIslandOverlay.shutdown()
         unregisterReceiver(systemReceiver)
         unregisterReceiver(islandClickReceiver)
         syncJob?.cancel()

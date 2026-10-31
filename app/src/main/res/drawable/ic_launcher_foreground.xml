@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Official Ryx Island artwork supplied by the project owner. -->
+<!-- Ryx Isla adaptive icon foreground: logo scaled into the safe zone. -->
 <bitmap xmlns:android="http://schemas.android.com/apk/res/android"
-    android:src="@drawable/ryx_isla_icon"
-    android:gravity="center" />
+    android:src="@drawable/ryx_isla_foreground"
+    android:gravity="fill" />

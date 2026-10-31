@@ -16,7 +16,6 @@ import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
@@ -41,6 +40,7 @@ import androidx.navigation3.ui.NavDisplay
 import com.d4viddf.hyperbridge.data.AppPreferences
 import com.d4viddf.hyperbridge.data.db.AppDatabase
 import com.d4viddf.hyperbridge.ui.components.ChangelogSheet
+import com.d4viddf.hyperbridge.ui.components.UpdateDialog
 import com.d4viddf.hyperbridge.ui.navigation.Navigator
 import com.d4viddf.hyperbridge.ui.navigation.Screen
 import com.d4viddf.hyperbridge.ui.navigation.mainNavGraph
@@ -48,6 +48,7 @@ import com.d4viddf.hyperbridge.ui.navigation.rememberNavigationState
 import com.d4viddf.hyperbridge.ui.navigation.toEntries
 import com.d4viddf.hyperbridge.ui.theme.HyperBridgeTheme
 import com.d4viddf.hyperbridge.util.BackupManager
+import com.d4viddf.hyperbridge.util.UpdateChecker
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 
@@ -125,11 +126,17 @@ private fun MainNavigationContent(
     val lastSeenVersion by preferences.lastSeenVersion.collectAsState(initial = -1)
 
     var showChangelog by remember { mutableStateOf(false) }
-    
-    // Check for Troubleshoot Intent
-    val activity = context as? AppCompatActivity
-    val shouldOpenTroubleshoot = activity?.intent?.getBooleanExtra("open_troubleshoot", false) ?: false
-    var showTroubleshootDialog by remember { mutableStateOf(shouldOpenTroubleshoot) }
+    var updateInfo by remember { mutableStateOf<UpdateChecker.UpdateInfo?>(null) }
+
+    LaunchedEffect(isSetupComplete) {
+        if (!isSetupComplete) return@LaunchedEffect
+        val result = UpdateChecker.checkForUpdate(context, force = false)
+        if (result is UpdateChecker.Result.Available &&
+            UpdateChecker.shouldPrompt(context, result.info)
+        ) {
+            updateInfo = result.info
+        }
+    }
 
     val initialStartRoute = remember(isSetupComplete) { if (isSetupComplete) Screen.Home else Screen.Onboarding }
     val allPossibleTopLevel = remember(isSetupComplete) { setOf(Screen.Onboarding, Screen.Home) }
@@ -212,7 +219,7 @@ private fun MainNavigationContent(
     if (showChangelog) {
         ChangelogSheet(
             currentVersionName = currentVersionName,
-            changelogText = stringResource(R.string.changelog_0_5_7),
+            changelogText = stringResource(R.string.changelog_1_0_6),
             onDismiss = {
                 showChangelog = false
                 scope.launch {
@@ -222,45 +229,30 @@ private fun MainNavigationContent(
         )
     }
 
-    if (showTroubleshootDialog) {
-        androidx.compose.material3.AlertDialog(
-            onDismissRequest = { showTroubleshootDialog = false },
-            title = {
-                androidx.compose.material3.Text(stringResource(R.string.featured_notifications_troubleshoot_title))
+    val pendingUpdate = updateInfo
+    if (pendingUpdate != null && !showChangelog) {
+        UpdateDialog(
+            info = pendingUpdate,
+            currentVersion = currentVersionName,
+            onDismiss = {
+                UpdateChecker.markPrompted(context, pendingUpdate)
+                updateInfo = null
             },
-            text = {
-                androidx.compose.foundation.layout.Column {
-                    androidx.compose.material3.Text(stringResource(R.string.featured_notifications_troubleshoot_desc))
-                    androidx.compose.foundation.layout.Spacer(Modifier.height(16.dp))
-                    androidx.compose.material3.Text(
-                        stringResource(R.string.featured_notifications_shizuku_alternative),
-                        style = MaterialTheme.typography.titleSmall
+            onDownload = {
+                UpdateChecker.markPrompted(context, pendingUpdate)
+                updateInfo = null
+                try {
+                    context.startActivity(
+                        android.content.Intent(
+                            android.content.Intent.ACTION_VIEW,
+                            android.net.Uri.parse(pendingUpdate.apkUrl)
+                        )
                     )
-                    androidx.compose.foundation.layout.Spacer(Modifier.height(4.dp))
-                    androidx.compose.material3.Text(
-                        stringResource(R.string.featured_notifications_shizuku_desc),
-                        style = MaterialTheme.typography.bodySmall
-                    )
-                }
-            },
-            confirmButton = {
-                androidx.compose.material3.TextButton(
-                    onClick = {
-                        val intent = android.content.Intent(android.provider.Settings.ACTION_APP_NOTIFICATION_SETTINGS).apply {
-                            putExtra(android.provider.Settings.EXTRA_APP_PACKAGE, context.packageName)
-                        }
-                        context.startActivity(intent)
-                        showTroubleshootDialog = false
-                    }
-                ) {
-                    androidx.compose.material3.Text(stringResource(R.string.featured_notifications_open_settings))
-                }
-            },
-            dismissButton = {
-                androidx.compose.material3.TextButton(onClick = { showTroubleshootDialog = false }) {
-                    androidx.compose.material3.Text(stringResource(android.R.string.ok))
+                } catch (_: Exception) {
+                    // El navegador no está disponible; el usuario puede abrir el release manualmente.
                 }
             }
         )
     }
+
 }

@@ -495,10 +495,6 @@ Továbbfejlesztett felismerési logika a VoIP- és tárcsázóalkalmazások szé
     <string name="channel_live_updates">Natív élő frissítések</string>
     <string name="engine_preview_title">Előnézet</string>
     <string name="engine_design_section">Értesítés kinézete</string>
-    <string name="engine_xiaomi_title">Xiaomi kiemelt kinézet</string>
-    <string name="engine_xiaomi_desc">Modern HyperOS elrendezés a Xiaomi-nak a tervezett kinézete.</string>
-    <string name="engine_native_title">Élő frissítéses kinézet</string>
-    <string name="engine_native_desc">Natív android értesítés kinézet, Kínai ROM-on működik.</string>
     <string name="engine_config_title">Motor beállítás</string>
     <string name="engine_section_design">Értesítés kinézete</string>
     <string name="good_to_know">Érdemes tudni</string>
@@ -627,7 +623,6 @@ Továbbfejlesztett felismerési logika a VoIP- és tárcsázóalkalmazások szé
     <string name="troubleshoot_featured_notification">Troubleshoot</string>
     <string name="featured_notifications_check">Featured Notifications Check</string>
     <string name="featured_notifications_check_desc">Let\'s verify if your system is configured correctly to display Ryx Isla islands.</string>
-    <string name="featured_notifications_not_supported">Not Supported</string>
     <string name="featured_notifications_enabled">Enabled</string>
     <string name="featured_notifications_open_settings">Open System Settings</string>
     <string name="featured_notifications_troubleshoot_title">Why is this not an island?</string>

@@ -36,6 +36,7 @@ import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Save
 import androidx.compose.material.icons.filled.SettingsSuggest
+import androidx.compose.material.icons.filled.SystemUpdate
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -58,6 +59,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -75,7 +77,10 @@ import androidx.compose.ui.unit.dp
 import androidx.core.graphics.drawable.toBitmap
 import androidx.core.os.LocaleListCompat
 import com.d4viddf.hyperbridge.R
+import com.d4viddf.hyperbridge.ui.components.UpdateDialog
+import com.d4viddf.hyperbridge.util.UpdateChecker
 import com.d4viddf.hyperbridge.util.parseBold
+import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterial3ExpressiveApi::class)
 @Composable
@@ -91,9 +96,13 @@ fun InfoScreen(
 ) {
     val context = LocalContext.current
     val uriHandler = LocalUriHandler.current
+    val scope = rememberCoroutineScope()
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
 
     var showLanguageDialog by remember { mutableStateOf(false) }
+    var isCheckingUpdate by remember { mutableStateOf(false) }
+    var updateInfo by remember { mutableStateOf<UpdateChecker.UpdateInfo?>(null) }
+    var updateMessage by remember { mutableStateOf<Pair<String, String>?>(null) }
 
     val appVersion = remember {
         try { context.packageManager.getPackageInfo(context.packageName, 0).versionName ?: "1.0.0" }
@@ -188,6 +197,29 @@ fun InfoScreen(
             SettingsSection(
                 title = stringResource(R.string.group_about),
                 items = listOf(
+                    SettingsItemData(Icons.Default.SystemUpdate, stringResource(R.string.check_updates), if (isCheckingUpdate) stringResource(R.string.update_checking) else stringResource(R.string.check_updates_subtitle)) {
+                        if (!isCheckingUpdate) {
+                            isCheckingUpdate = true
+                            scope.launch {
+                                when (val result = UpdateChecker.checkForUpdate(context, force = true)) {
+                                    is UpdateChecker.Result.Available -> {
+                                        UpdateChecker.markPrompted(context, result.info)
+                                        updateInfo = result.info
+                                    }
+                                    UpdateChecker.Result.UpToDate -> {
+                                        updateMessage = context.getString(R.string.up_to_date_title) to
+                                            context.getString(R.string.up_to_date_message, appVersion)
+                                    }
+                                    is UpdateChecker.Result.Error -> {
+                                        updateMessage = context.getString(R.string.update_error_title) to
+                                            context.getString(R.string.update_error_message)
+                                    }
+                                    UpdateChecker.Result.Skipped -> Unit
+                                }
+                                isCheckingUpdate = false
+                            }
+                        }
+                    },
                     SettingsItemData(Icons.Default.Language, stringResource(R.string.language), stringResource(R.string.language_desc)) { showLanguageDialog = true },
                     SettingsItemData(Icons.Default.Person, stringResource(R.string.developer), stringResource(R.string.developer_subtitle)) { uriHandler.openUri("https://github.com/davidft1joel431/Island-app-Ryx") },
                     SettingsItemData(Icons.Default.History, stringResource(R.string.version_history), "0.1.0 - $appVersion", onHistoryClick),
@@ -211,6 +243,35 @@ fun InfoScreen(
 
     if (showLanguageDialog) {
         LanguageSelectorDialog(onDismiss = { showLanguageDialog = false})
+    }
+
+    updateInfo?.let { info ->
+        UpdateDialog(
+            info = info,
+            currentVersion = appVersion,
+            onDismiss = {
+                UpdateChecker.markPrompted(context, info)
+                updateInfo = null
+            },
+            onDownload = {
+                UpdateChecker.markPrompted(context, info)
+                updateInfo = null
+                uriHandler.openUri(info.apkUrl)
+            }
+        )
+    }
+
+    updateMessage?.let { (title, message) ->
+        AlertDialog(
+            onDismissRequest = { updateMessage = null },
+            title = { Text(title) },
+            text = { Text(message) },
+            confirmButton = {
+                TextButton(onClick = { updateMessage = null }) {
+                    Text(stringResource(android.R.string.ok))
+                }
+            }
+        )
     }
 }
 
