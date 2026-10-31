@@ -203,10 +203,7 @@ fun AppThemeEditor(viewModel: ThemeViewModel) {
                         })
                     }
                     AppEditorRoute.BEHAVIOR_ENGINE -> Box(Modifier.fillMaxSize()) {
-                        EngineThemeContent(
-                            isNative = viewModel.appUseNativeLiveUpdates,
-                            onEngineChange = { viewModel.appUseNativeLiveUpdates = it }
-                        )
+                        EngineThemeContent()
                     }
                     AppEditorRoute.BEHAVIOR_ISLAND -> Box(Modifier.fillMaxSize()) {
                         ThemeBehaviourContent() // Still uses standard island behavior
@@ -598,10 +595,7 @@ fun PreviewEngineThemeContentDefault() {
         Box(modifier = Modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)) {
-            EngineThemeContent(
-                isNative = null, // Demonstrates the Default option selected
-                onEngineChange = {}
-            )
+            EngineThemeContent()
         }
     }
 }
@@ -613,10 +607,7 @@ fun PreviewEngineThemeContentNativeDark() {
         Box(modifier = Modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)) {
-            EngineThemeContent(
-                isNative = true, // Demonstrates the Native option selected
-                onEngineChange = {}
-            )
+            EngineThemeContent()
         }
     }
 }
@@ -628,10 +619,7 @@ fun PreviewEngineThemeContentXiaomiLight() {
         Box(modifier = Modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)) {
-            EngineThemeContent(
-                isNative = false, // Demonstrates the Xiaomi option selected
-                onEngineChange = {}
-            )
+            EngineThemeContent()
         }
     }
 }

@@ -121,7 +121,6 @@ fun ThemeCreatorScreen(
 ) {
     val viewModel: ThemeViewModel = viewModel()
     val activeThemeId by viewModel.activeThemeId.collectAsState()
-    val isNative by viewModel.useNativeLiveUpdates.collectAsState()
 
     if (viewModel.editingAppPackage != null) {
         AppThemeEditor(
@@ -247,11 +246,7 @@ fun ThemeCreatorScreen(
                             BehaviourMenuContent(onNavigate = { currentRoute = it })
                         }
                         CreatorRoute.BEHAVIOR_ENGINE -> {
-                            EngineThemeContent(
-                                isNative = isNative,
-                                showDefaultOption = false,
-                                onEngineChange = { viewModel.setUseNativeLiveUpdates(it ?: false) }
-                            )
+                            EngineThemeContent()
                         }
                         CreatorRoute.BEHAVIOR_ISLAND -> Box(Modifier.fillMaxSize()) {
                             ThemeBehaviourContent()

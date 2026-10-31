@@ -19,7 +19,7 @@
     <string name="beta_warning">Nota: Esta app está en Beta. Puedes encontrar errores o información visual incorrecta.</string>
     <string name="device_compatible">Dispositivo Compatible</string>
     <string name="unsupported_device">Android no compatible</string>
-    <string name="compatible_msg">Android 15 o superior es compatible. La integración nativa HyperOS aparece cuando el dispositivo la admite.</string>
+    <string name="compatible_msg">Android 15 o superior es compatible mediante la isla flotante universal de Ryx Isla.</string>
     <string name="show_island">Mostrar Isla</string>
     <string name="perm_post_desc">Necesitamos permiso para mostrar la notificación \'Isla\' en tu pantalla.</string>
     <string name="perm_granted">Permiso Concedido</string>
@@ -27,7 +27,7 @@
     <string name="read_data">Leer Notificaciones</string>
     <string name="perm_listener_desc">Para conectar tus aplicaciones, necesitamos leer sus notificaciones (Música, Mapas, Temporizadores).</string>
     <string name="open_settings">Abrir Ajustes</string>
-    <string name="optimization_desc">HyperOS cierra aplicaciones en segundo plano. Habilita el Inicio Automático y Sin Restricciones para mantener la isla activa.</string>
+    <string name="optimization_desc">Algunos fabricantes cierran aplicaciones en segundo plano. Habilita el inicio automático y la batería sin restricciones para mantener la isla activa.</string>
     <string name="enable_autostart">1. Activar Inicio Automático</string>
     <string name="set_battery_no_restrictions">2. Batería \'Sin Restricciones\'</string>
     <string name="tab_active">Activos</string>
@@ -43,9 +43,9 @@
     <string name="system_setup_subtitle">Arreglar permisos y batería</string>
     <!-- Permanent Island -->
     <string name="permanent_island_title">Isla Permanente</string>
-    <string name="permanent_island_native_only">La isla permanente vacía solo funciona con la integración nativa de HyperOS. Las notificaciones normales usan la isla flotante de Ryx Isla.</string>
+
     <string name="permanent_island_desc">Mantener la Isla Dinámica permanentemente visible en la pantalla cuando no haya notificaciones activas.</string>
-    <string name="permanent_island_screen_desc">Cuando esté activado, se mostrará una Isla Dinámica vacía de forma permanente en la pantalla. Se ocultará automáticamente cuando lleguen notificaciones reales y volverá a aparecer cuando se borren todas las notificaciones. No será visible en el panel de notificaciones.</string>
+    <string name="permanent_island_screen_desc">Mantiene una c&#225;psula vac&#237;a en la pantalla. Al llegar una notificaci&#243;n, muestra su informaci&#243;n y vuelve a la c&#225;psula al cerrarse o terminar su tiempo.</string>
     <string name="permanent_island_width">Ancho de la Isla</string>
     <string name="permanent_island_hide_landscape">Ocultar en Horizontal</string>
     <string name="group_about">Sobre la aplicación</string>
@@ -61,7 +61,7 @@
     <string name="notif_access">Acceso a Notificaciones</string>
     <string name="notif_access_desc">Necesario para leer eventos</string>
     <string name="device_optimization">Optimización del Dispositivo</string>
-    <string name="xiaomi_autostart">Inicio Automático Xiaomi</string>
+    <string name="xiaomi_autostart">Inicio Automático</string>
     <string name="battery_unrestricted">Batería Sin Restricciones</string>
     <string name="battery_desc">Evita que el sistema cierre la aplicación</string>
     <string name="recents_note">Nota: Bloquea también la aplicación en el menú de \'Recientes\'.</string>
@@ -498,11 +498,10 @@
     <string name="channel_live_updates">Actualizaciones nativas en vivo</string>
     <string name="engine_preview_title">Vista previa</string>
     <string name="engine_design_section">Diseño de notificaciones</string>
-    <string name="engine_xiaomi_title">Isla flotante universal</string>
-    <string name="engine_xiaomi_desc">Funciona en ROM Android 15+. Usa la presentación nativa de HyperOS cuando está disponible y una ventana flotante en los demás sistemas.</string>
-    <string name="engine_native_title">Actualizaciones en vivo de Android</string>
-    <string name="engine_native_desc">Usa el formato nativo cuando Android 16 o HyperOS lo admite; si no, Ryx Isla muestra una ventana flotante.</string>
-    <string name="engine_config_title">Configuración del motor</string>
+    <string name="engine_universal_title">Motor universal de Ryx Isla</string>
+    <string name="engine_universal_desc">Muestra la isla flotante directamente sobre Android y funciona en cualquier marca y ROM compatible.</string>
+
+    <string name="engine_config_title">Configuraci&#243;n del motor</string>
     <string name="engine_section_design">Diseño de notificaciones</string>
     <string name="good_to_know">Debe saber que</string>
     <string name="nav_layout_info">• Los diseños de navegación se integrarán completamente en el Motor de Temas en una próxima actualización.\n• Al usar el motor nativo de Live Updates, solo el contenido del Lado Derecho es visible.</string>
@@ -510,7 +509,7 @@
     <string name="island_behavior_title">Comportamiento de la Isla</string>
     <string name="island_behavior_desc"><![CDATA[Tiempos de espera, duplicados y visibilidad]]></string>
     <string name="engine">Motor</string>
-    <string name="engine_desc">Elige entre la presentación nativa del sistema y la isla flotante de Ryx Isla.</string>
+    <string name="engine_desc">Un &#250;nico motor de Ryx Isla muestra las notificaciones y la isla permanente en cualquier ROM compatible.</string>
     <string name="dnd_mode_title">No molestar</string>
     <string name="dnd_mode_desc">Gestionar la visibilidad de la isla durante No molestar</string>
     <string name="dnd_manual_toggle">Pausar islas</string>
@@ -655,8 +654,7 @@
     <string name="troubleshoot_featured_notification">Solucionar</string>
     <string name="featured_notifications_check">Integración nativa de Xiaomi</string>
     <string name="featured_notifications_check_desc">Este diagnóstico comprueba solo la isla nativa de Xiaomi. En otras ROM, Ryx Isla usa la isla flotante si tiene el permiso para mostrarse sobre otras aplicaciones.</string>
-    <string name="featured_notifications_generic_fallback">La integración nativa de Xiaomi no está disponible. Ryx Isla usará su isla flotante en esta ROM.</string>
-    <string name="featured_notifications_not_supported">No Soportado</string>
+
     <string name="featured_notifications_enabled">Habilitado</string>
     <string name="featured_notifications_open_settings">Abrir Ajustes del Sistema</string>
     <string name="featured_notifications_troubleshoot_title">¿Por qué esto no es una isla?</string>
@@ -700,4 +698,28 @@
     <string name="changelog_upstream_link">Versiones del proyecto Hyper Bridge</string>
     <string name="changelog_ryx_section">Ryx Isla</string>
     <string name="changelog_source_section">Historial del proyecto de origen</string>
+    <string name="island_overlay_ready_title">Isla flotante lista</string>
+    <string name="island_overlay_ready_desc">Ryx Isla usa su propia ventana sobre otras aplicaciones. Android 15 o posterior y el permiso de superposici&#243;n son necesarios.</string>
+    <string name="title_1_0_5">Motor flotante universal</string>
+    <string name="changelog_1_0_5">Se usa un solo motor de isla flotante de Ryx Isla en cualquier ROM Android 15+. La isla permanente se muestra como una c&#225;psula y vuelve al cerrarse una notificaci&#243;n. El asistente comprueba el permiso de superposici&#243;n.</string>
+    <string name="autostart_title">Inicio Automático</string>
+    <string name="floating_island_section">Isla Flotante</string>
+    <string name="compatibility_ok_desc">Ryx Isla funciona en Android 15 o superior mediante su isla flotante universal, sin depender de HyperOS ni de una marca concreta.</string>
+    <string name="compatibility_unsupported_desc">Ryx Isla necesita Android 15 (API 35) o superior.</string>
+    <string name="check_updates">Buscar actualizaciones</string>
+    <string name="check_updates_subtitle">Comprueba si hay una versión nueva en GitHub</string>
+    <string name="update_checking">Buscando actualizaciones…</string>
+    <string name="up_to_date_title">Estás al día</string>
+    <string name="up_to_date_message">Tienes la última versión de Ryx Isla (%s).</string>
+    <string name="update_available_title">Nueva versión disponible</string>
+    <string name="update_available_message">La versión %1$s ya está disponible. Tienes la %2$s.</string>
+    <string name="update_download">Descargar APK</string>
+    <string name="update_later">Más tarde</string>
+    <string name="update_error_title">No se pudo comprobar</string>
+    <string name="update_error_message">Revisa tu conexión a Internet e inténtalo de nuevo.</string>
+    <string name="update_release_notes">Novedades</string>
+    <string name="update_no_notes">Consulta la página de la versión para ver los cambios.</string>
+    <string name="update_source_note">Las actualizaciones se publican en github.com/davidft1joel431/Island-app-Ryx</string>
+    <string name="title_1_0_6">Actualizaciones y compatibilidad total</string>
+    <string name="changelog_1_0_6">Se añade un comprobador de actualizaciones que consulta siempre el repositorio oficial de Ryx Isla en GitHub. Se elimina cualquier requisito de HyperOS o Xiaomi: la isla flotante funciona en todos los dispositivos Android 15+. Se mejora la detección de fabricante y ROM, y se corrigen el icono de la app y el icono de las notificaciones.</string>
 </resources>

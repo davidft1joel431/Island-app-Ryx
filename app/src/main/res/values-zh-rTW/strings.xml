@@ -492,10 +492,6 @@
     <string name="channel_live_updates">原生即時更新</string>
     <string name="engine_preview_title">預覽</string>
     <string name="engine_design_section">通知設計</string>
-    <string name="engine_xiaomi_title">小米特色設計</string>
-    <string name="engine_xiaomi_desc">現代HyperOS介面，採用小米的設計理念。</string>
-    <string name="engine_native_title">即時更新設計</string>
-    <string name="engine_native_desc">原生安卓通知設計，適用於中國版 ROM。</string>
     <string name="engine_config_title">儲存配置</string>
     <string name="engine_section_design">通知設計</string>
     <string name="good_to_know">太好了</string>
@@ -622,7 +618,6 @@
     <string name="troubleshoot_featured_notification">故障排除</string>
     <string name="featured_notifications_check">精選通知檢查</string>
     <string name="featured_notifications_check_desc">讓我們驗證一下您的系統是否已正確配置以顯示 Ryx Isla 超級島。</string>
-    <string name="featured_notifications_not_supported">不支援</string>
     <string name="featured_notifications_enabled">啟用</string>
     <string name="featured_notifications_open_settings">開啟系統設定</string>
     <string name="featured_notifications_troubleshoot_title">為什麼沒有超級島？</string>

@@ -595,10 +595,6 @@
 
     <string name="engine_preview_title">プレビュー</string>
     <string name="engine_design_section">通知デザイン</string>
-    <string name="engine_xiaomi_title">Xiaomi Featuredデザイン</string>
-    <string name="engine_xiaomi_desc">Xiaomiの意図に沿った、モダンなHyperOSレイアウトです。</string>
-    <string name="engine_native_title">ライブアップデートデザイン</string>
-    <string name="engine_native_desc">Android標準の通知デザインで、CN ROMでも動作します。</string>
 
     <string name="engine_config_title">エンジン設定</string>
     <string name="engine_section_design">通知デザイン</string>

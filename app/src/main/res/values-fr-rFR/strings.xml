@@ -496,10 +496,6 @@
     <string name="channel_live_updates">Notifications natives en temps réel</string>
     <string name="engine_preview_title">Aperçu</string>
     <string name="engine_design_section">Design des notifications</string>
-    <string name="engine_xiaomi_title">Design standard de Xiaomi</string>
-    <string name="engine_xiaomi_desc">Mise en page HyperOS moderne avec le design de Xiaomi.</string>
-    <string name="engine_native_title">Design natif</string>
-    <string name="engine_native_desc">Design de notification natives Android, fonctionne avec les ROM CN.</string>
     <string name="engine_config_title">Configurations du moteur</string>
     <string name="engine_section_design">Design des notifications</string>
     <string name="good_to_know">Bon à savoir</string>
@@ -633,7 +629,6 @@
     <string name="troubleshoot_featured_notification">Résolution des problèmes</string>
     <string name="featured_notifications_check">Vérification des notifications recommandées</string>
     <string name="featured_notifications_check_desc">Vérifions si votre système est correctement configuré pour afficher les notifications Ryx Isla.</string>
-    <string name="featured_notifications_not_supported">Non pris en charge</string>
     <string name="featured_notifications_enabled">Activé</string>
     <string name="featured_notifications_open_settings">Ouvrir les paramètres système</string>
     <string name="featured_notifications_troubleshoot_title">Pourquoi ce n\'est pas une bulle de notification ?</string>

@@ -487,10 +487,6 @@ Penulisan ulang total logika inti untuk stabilitas yang lebih baik.\n
     <string name="channel_live_updates">Pembaruan Langsung Asli</string>
     <string name="engine_preview_title">Pratinjau</string>
     <string name="engine_design_section">Desain Notifikasi</string>
-    <string name="engine_xiaomi_title">Desain Utama Xiaomi</string>
-    <string name="engine_xiaomi_desc">Tata letak HyperOS modern dengan desain khas Xiaomi.</string>
-    <string name="engine_native_title">Desain Pembaruan Langsung</string>
-    <string name="engine_native_desc">Desain notifikasi Android asli, hanya bekerja di ROM China (CN).</string>
     <string name="engine_config_title">Konfigurasi mesin</string>
     <string name="engine_section_design">Desain Notifikasi</string>
     <string name="good_to_know">Bagus untuk diketahui</string>
@@ -619,7 +615,6 @@ Penulisan ulang total logika inti untuk stabilitas yang lebih baik.\n
     <string name="troubleshoot_featured_notification">Pemecahan Masalah</string>
     <string name="featured_notifications_check">Pemeriksaan Pemberitahuan Unggulan</string>
     <string name="featured_notifications_check_desc">Mari kita periksa apakah sistem Anda sudah dikonfigurasi dengan benar untuk menampilkan Ryx Isla islands.</string>
-    <string name="featured_notifications_not_supported">Tidak Didukung</string>
     <string name="featured_notifications_enabled">Diaktifkan</string>
     <string name="featured_notifications_open_settings">Buka Pengatran Sistem</string>
     <string name="featured_notifications_troubleshoot_title">Mengapa ini bukan island?</string>

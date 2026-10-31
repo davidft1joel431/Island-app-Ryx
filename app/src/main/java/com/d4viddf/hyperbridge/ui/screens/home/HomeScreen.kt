@@ -17,14 +17,11 @@ import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Apps
 import androidx.compose.material.icons.filled.Brush
 import androidx.compose.material.icons.filled.ToggleOn
-import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material.icons.outlined.Apps
 import androidx.compose.material.icons.outlined.Brush
 import androidx.compose.material.icons.outlined.ToggleOff
@@ -139,54 +136,6 @@ fun HomeScreen(
                     .padding(bottom = padding.calculateBottomPadding())
                     .fillMaxSize()
             ) {
-                val prefs = remember { com.d4viddf.hyperbridge.data.AppPreferences(context) }
-                val showWarning by prefs.featuredPermissionWarningFlow.collectAsState(initial = false)
-
-                if (showWarning) {
-                    androidx.compose.material3.Card(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(16.dp),
-                        colors = androidx.compose.material3.CardDefaults.cardColors(
-                            containerColor = MaterialTheme.colorScheme.errorContainer
-                        ),
-                        onClick = {
-                            val intent =
-                                Intent(android.provider.Settings.ACTION_APP_NOTIFICATION_SETTINGS).apply {
-                                    putExtra(
-                                        android.provider.Settings.EXTRA_APP_PACKAGE,
-                                        context.packageName
-                                    )
-                                }
-                            context.startActivity(intent)
-                        }
-                    ) {
-                        androidx.compose.foundation.layout.Row(
-                            modifier = Modifier.padding(16.dp),
-                            verticalAlignment = androidx.compose.ui.Alignment.CenterVertically
-                        ) {
-                            Icon(
-                                Icons.Default.Warning,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.onErrorContainer
-                            )
-                            androidx.compose.foundation.layout.Spacer(Modifier.width(12.dp))
-                            androidx.compose.foundation.layout.Column(modifier = Modifier.weight(1f)) {
-                                Text(
-                                    stringResource(R.string.featured_notifications_troubleshoot_title),
-                                    style = MaterialTheme.typography.titleSmall,
-                                    color = MaterialTheme.colorScheme.onErrorContainer
-                                )
-                                Text(
-                                    stringResource(R.string.featured_notifications_troubleshoot_desc),
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onErrorContainer
-                                )
-                            }
-                        }
-                    }
-                }
-
                 Box(modifier = Modifier.weight(1f)) {
                     when (selectedTab) {
                         0 -> {

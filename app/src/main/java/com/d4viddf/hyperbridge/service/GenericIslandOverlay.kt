@@ -20,7 +20,7 @@ import android.util.Log
 import android.view.ViewGroup
 import android.graphics.drawable.Drawable
 
-/** Renders a small Android overlay for devices without Xiaomi's native HyperIsland renderer. */
+/** Renders Ryx Isla directly with Android's application overlay window. */
 class GenericIslandOverlay(private val context: Context) {
     private val mainHandler = Handler(Looper.getMainLooper())
     private val windowManager = context.getSystemService(Context.WINDOW_SERVICE) as WindowManager
@@ -28,23 +28,51 @@ class GenericIslandOverlay(private val context: Context) {
     private var activeNotificationKey: String? = null
     private var dismissTask: Runnable? = null
     private var touchStartY = 0f
+    private var permanentEnabled = false
+    private var permanentWidth = 0
+    private var hidePermanentInLandscape = false
+    @Volatile private var permanentVisible = false
+
+    fun setPermanentIsland(enabled: Boolean, width: Int, hideInLandscape: Boolean) {
+        mainHandler.post {
+            permanentEnabled = enabled
+            permanentWidth = width.coerceIn(0, 20)
+            hidePermanentInLandscape = hideInLandscape
+            if (activeNotificationKey == null) {
+                if (shouldShowPermanent()) showPermanentView() else removeCurrentView()
+            }
+        }
+    }
+
+    fun isPermanentIslandVisible(): Boolean = permanentVisible
+
+    fun onOrientationChanged() {
+        mainHandler.post {
+            if (activeNotificationKey == null) {
+                if (shouldShowPermanent()) showPermanentView() else removeCurrentView()
+            }
+        }
+    }
 
     fun show(
         notificationKey: String,
         packageName: String,
         title: String,
         text: String,
+        notificationImage: Drawable? = null,
         isOngoing: Boolean,
         timeoutSeconds: Int
     ) {
         mainHandler.post {
             if (!Settings.canDrawOverlays(context)) return@post
 
+            dismissTask?.let(mainHandler::removeCallbacks)
+            dismissTask = null
             removeCurrentView()
             activeNotificationKey = notificationKey
 
             val appLabel = getApplicationLabel(packageName)
-            val icon = getNotificationIcon(packageName)
+            val icon = notificationImage ?: getNotificationIcon(packageName)
             val container = createIslandView(appLabel, title.ifBlank { appLabel }, text, icon)
             container.contentDescription = "$appLabel. ${title.ifBlank { appLabel }}. $text"
             container.setOnClickListener {
@@ -111,6 +139,7 @@ class GenericIslandOverlay(private val context: Context) {
                     mainHandler.postDelayed(it, visibleFor)
                 }
             }
+            permanentVisible = false
         }
     }
 
@@ -121,6 +150,88 @@ class GenericIslandOverlay(private val context: Context) {
             dismissTask = null
             removeCurrentView()
             activeNotificationKey = null
+            if (shouldShowPermanent()) showPermanentView()
+        }
+    }
+
+    fun shutdown() {
+        mainHandler.post {
+            dismissTask?.let(mainHandler::removeCallbacks)
+            dismissTask = null
+            activeNotificationKey = null
+            permanentVisible = false
+            removeCurrentView()
+        }
+    }
+
+    private fun shouldShowPermanent(): Boolean {
+        val isLandscape = context.resources.configuration.orientation ==
+            android.content.res.Configuration.ORIENTATION_LANDSCAPE
+        return permanentEnabled && Settings.canDrawOverlays(context) &&
+            !(hidePermanentInLandscape && isLandscape)
+    }
+
+    private fun showPermanentView() {
+        removeCurrentView()
+        val capsule = LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER
+            setPadding(dp(14), 0, dp(14), 0)
+            background = GradientDrawable(
+                GradientDrawable.Orientation.LEFT_RIGHT,
+                intArrayOf(Color.rgb(27, 24, 17), Color.rgb(47, 37, 16))
+            ).apply {
+                cornerRadius = dp(30).toFloat()
+                setStroke(dp(1), Color.rgb(221, 177, 54))
+            }
+            elevation = dp(10).toFloat()
+            contentDescription = context.getString(com.d4viddf.hyperbridge.R.string.permanent_island_title)
+        }
+        val indicator = View(context).apply {
+            background = GradientDrawable().apply {
+                shape = GradientDrawable.OVAL
+                setColor(Color.rgb(242, 193, 68))
+            }
+        }
+        capsule.addView(indicator, LinearLayout.LayoutParams(dp(8), dp(8)).apply {
+            marginEnd = dp(8)
+        })
+        capsule.addView(TextView(context).apply {
+            text = context.getString(com.d4viddf.hyperbridge.R.string.app_name)
+            setTextColor(Color.WHITE)
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f)
+            setTypeface(typeface, android.graphics.Typeface.BOLD)
+            maxLines = 1
+        })
+        capsule.setOnClickListener {
+            runCatching {
+                context.packageManager.getLaunchIntentForPackage(context.packageName)?.let { intent ->
+                    intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    context.startActivity(intent)
+                }
+            }
+        }
+        val width = dp((84 + permanentWidth * 6).coerceIn(84, 204))
+        val params = WindowManager.LayoutParams(
+            width,
+            dp(36),
+            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
+                WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
+            PixelFormat.TRANSLUCENT
+        ).apply {
+            gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL
+            y = statusBarHeight() + dp(8)
+        }
+        try {
+            windowManager.addView(capsule, params)
+            root = capsule
+            permanentVisible = true
+        } catch (error: Exception) {
+            Log.w(TAG, "Could not show the permanent island overlay", error)
+            root = null
+            permanentVisible = false
         }
     }
 
@@ -200,6 +311,7 @@ class GenericIslandOverlay(private val context: Context) {
     private fun removeCurrentView() {
         root?.let { view -> runCatching { windowManager.removeView(view) } }
         root = null
+        permanentVisible = false
     }
 
     private fun statusBarHeight(): Int {

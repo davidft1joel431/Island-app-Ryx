@@ -4,7 +4,6 @@ import android.Manifest
 import android.annotation.SuppressLint
 import android.content.Context
 import android.content.Intent
-import android.os.Build
 import android.provider.Settings
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -57,7 +56,6 @@ import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Smartphone
-import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material.icons.filled.WifiOff
 import androidx.compose.material.icons.rounded.Devices
 import androidx.compose.material.icons.rounded.Notifications
@@ -110,6 +108,7 @@ import com.d4viddf.hyperbridge.models.IslandLimitMode
 import com.d4viddf.hyperbridge.models.NotificationType
 import com.d4viddf.hyperbridge.ui.components.EngineOptionCard
 import com.d4viddf.hyperbridge.ui.components.EnginePreview
+import com.d4viddf.hyperbridge.ui.components.ListOptionCard
 import com.d4viddf.hyperbridge.ui.components.PermanentIslandPreview
 import com.d4viddf.hyperbridge.ui.components.formatSeconds
 import com.d4viddf.hyperbridge.ui.components.timeoutSteps
@@ -117,27 +116,20 @@ import com.d4viddf.hyperbridge.ui.theme.HyperBridgeTheme
 import com.d4viddf.hyperbridge.util.DeviceUtils
 import com.d4viddf.hyperbridge.util.isNotificationServiceEnabled
 import com.d4viddf.hyperbridge.util.isPostNotificationsEnabled
+import com.d4viddf.hyperbridge.util.openAutoStartSettings
+import com.d4viddf.hyperbridge.util.openBatterySettings
 import kotlinx.coroutines.launch
 import kotlin.time.Duration.Companion.milliseconds
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun OnboardingScreen(onFinish: () -> Unit) {
-    val isXiaomi = remember { DeviceUtils.isXiaomi }
-    val isCN = remember { isXiaomi && DeviceUtils.isCNRom }
     val isCompatibleOS = remember { DeviceUtils.isCompatibleOS() }
-    // Continue on any Android 15+ device; Xiaomi-specific island integration is optional.
     val canProceedCompat = isCompatibleOS
     
     val context = LocalContext.current
     val prefs = remember { AppPreferences(context) }
-    val useNativeLiveUpdates by prefs.useNativeLiveUpdates.collectAsState(initial = false)
-    val needsShizuku = !useNativeLiveUpdates && isCN
-
-    val isShizukuWorkaroundEnabled by prefs.isShizukuWorkaroundEnabled.collectAsState(initial = false)
-    val isShizukuPermissionGranted by com.d4viddf.hyperbridge.util.ShizukuManager.isPermissionGranted.collectAsState()
-
-    val totalPages = if (needsShizuku) 18 else 17
+    val totalPages = 17
     val pagerState = rememberPagerState(pageCount = { totalPages })
     val scope = rememberCoroutineScope()
 
@@ -204,26 +196,12 @@ fun OnboardingScreen(onFinish: () -> Unit) {
                         )
                     }
                 } else {
-                    val canProceed = if (needsShizuku) {
-                        when (currentPage) {
-                            1 -> canProceedCompat || BuildConfig.DEBUG
-                            2 -> isPostGranted
-                            3 -> isListenerGranted
-                            4 -> isOverlayGranted
-                            12 -> {
-                                // If they turn the workaround off, they can proceed without permission
-                                !isShizukuWorkaroundEnabled || isShizukuPermissionGranted || BuildConfig.DEBUG
-                            }
-                            else -> true
-                        }
-                    } else {
-                        when (currentPage) {
-                            1 -> canProceedCompat || BuildConfig.DEBUG
-                            2 -> isPostGranted
-                            3 -> isListenerGranted
-                            4 -> isOverlayGranted
-                            else -> true
-                        }
+                    val canProceed = when (currentPage) {
+                        1 -> canProceedCompat || BuildConfig.DEBUG
+                        2 -> isPostGranted
+                        3 -> isListenerGranted
+                        4 -> isOverlayGranted
+                        else -> true
                     }
 
                     if (currentPage > 1) {
@@ -277,12 +255,7 @@ fun OnboardingScreen(onFinish: () -> Unit) {
                 .fillMaxSize(),
             userScrollEnabled = false
         ) { page ->
-            val adjustedPage = if (needsShizuku && page > 12) page - 1 else page
-            
-            if (needsShizuku && page == 12) {
-                ShizukuPage(prefs)
-            } else {
-                when (adjustedPage) {
+            when (page) {
                     0 -> WelcomePage()
                     1 -> CompatibilityPage()
                     2 -> PostPermissionPage(
@@ -293,19 +266,18 @@ fun OnboardingScreen(onFinish: () -> Unit) {
                     )
                     3 -> ListenerPermissionPage(context, isListenerGranted)
                     4 -> OverlayPermissionPage(context, isOverlayGranted)
-                    5 -> FeaturedNotificationCheckPage(context)
+                    5 -> IslandOverlayCheckPage(context)
                     6 -> OptimizationPage(context)
                     7 -> ExplanationPage()
                     8 -> PrivacyPage()
                     9 -> CustomizationPage()
                     10 -> TriggersConfigPage(prefs)
-                    11 -> EngineConfigPage(prefs)
+                    11 -> EngineConfigPage()
                     12 -> PriorityEducationPage(prefs)
                     13 -> BehaviorConfigPage(prefs)
                     14 -> DndConfigPage(prefs)
                     15 -> AutoHideConfigPage(prefs)
                     16 -> PermanentIslandConfigPage(prefs)
-                }
             }
         }
     }
@@ -974,32 +946,20 @@ fun OnboardingPageLayout(
 }
 
 @Composable
-fun EngineConfigPage(prefs: AppPreferences) {
-    val useNative by prefs.useNativeLiveUpdates.collectAsState(initial = false)
-    val scope = rememberCoroutineScope()
-
+fun EngineConfigPage() {
     OnboardingPageLayout(
         title = stringResource(R.string.engine_config_title),
         description = stringResource(R.string.engine_desc)
     ) {
-        EnginePreview(isNative = useNative)
+        EnginePreview(isNative = false)
 
         Spacer(modifier = Modifier.height(24.dp))
 
         EngineOptionCard(
-            title = stringResource(R.string.engine_xiaomi_title),
-            description = stringResource(R.string.engine_xiaomi_desc),
-            isSelected = !useNative,
-            onClick = { scope.launch { prefs.setUseNativeLiveUpdates(false) } }
-        )
-
-        Spacer(modifier = Modifier.height(12.dp))
-
-        EngineOptionCard(
-            title = stringResource(R.string.engine_native_title),
-            description = stringResource(R.string.engine_native_desc),
-            isSelected = useNative,
-            onClick = { scope.launch { prefs.setUseNativeLiveUpdates(true) } }
+            title = stringResource(R.string.engine_universal_title),
+            description = stringResource(R.string.engine_universal_desc),
+            isSelected = true,
+            onClick = {}
         )
 
         Spacer(modifier = Modifier.height(24.dp))
@@ -1044,16 +1004,12 @@ fun PrivacyPage() {
 
 @Composable
 fun CompatibilityPage() {
-    val isXiaomi = DeviceUtils.isXiaomi
-    val isCompatibleOS = DeviceUtils.isCompatibleOS()
-    val isCN = DeviceUtils.isCNRom
-    val osVersion = DeviceUtils.getHyperOSVersion()
-    val deviceName = DeviceUtils.getDeviceMarketName()
-
-    val (icon, color, titleRes, descRes) = when {
-        !isCompatibleOS -> Quad(Icons.Rounded.Devices, MaterialTheme.colorScheme.error, R.string.unsupported_device, R.string.req_hyperos)
-        else -> Quad(Icons.Rounded.Devices, Color(0xFF34C759), R.string.device_compatible, R.string.compatible_msg)
-    }
+    val deviceInfo = DeviceUtils.getDeviceInfo()
+    val isCompatibleOS = deviceInfo.isCompatible
+    val icon = Icons.Rounded.Devices
+    val color = if (isCompatibleOS) Color(0xFF34C759) else MaterialTheme.colorScheme.error
+    val titleRes = if (isCompatibleOS) R.string.device_compatible else R.string.unsupported_device
+    val descRes = if (isCompatibleOS) R.string.compatibility_ok_desc else R.string.compatibility_unsupported_desc
 
     OnboardingPageLayout(
         title = stringResource(titleRes),
@@ -1063,8 +1019,8 @@ fun CompatibilityPage() {
     ) {
         Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
             ListOptionCard(
-                title = "${Build.MANUFACTURER} · ${DeviceUtils.getSystemName()}",
-                subtitle = deviceName,
+                title = "${deviceInfo.manufacturer} · ${DeviceUtils.getSystemName()}",
+                subtitle = deviceInfo.marketName.ifBlank { deviceInfo.model },
                 icon = Icons.Default.Smartphone,
                 shape = RoundedCornerShape(24.dp, 24.dp, 4.dp, 4.dp),
                 onClick = {},
@@ -1072,163 +1028,58 @@ fun CompatibilityPage() {
             )
             ListOptionCard(
                 title = stringResource(R.string.system_version),
-                subtitle = osVersion,
+                subtitle = deviceInfo.androidVersion,
                 icon = Icons.Default.Info,
                 shape = RoundedCornerShape(4.dp, 4.dp, 24.dp, 24.dp),
                 onClick = {},
                 trailingContent = {}
             )
-
-            if (isCN && isXiaomi) {
-                Card(
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer),
-                    shape = RoundedCornerShape(24.dp),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Default.Warning, null, tint = MaterialTheme.colorScheme.error)
-                        Spacer(Modifier.width(12.dp))
-                        Text(
-                            stringResource(R.string.warning_cn_rom_title),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onErrorContainer,
-                            fontWeight = FontWeight.Bold
-                        )
-                    }
-                }
-            }
         }
     }
 }
 
 @Composable
-fun ShizukuPage(prefs: AppPreferences) {
-    val context = LocalContext.current
-    val scope = rememberCoroutineScope()
-    
-    val isShizukuInstalled = remember { com.d4viddf.hyperbridge.util.ShizukuManager.isShizukuInstalled(context) }
-    val isShizukuRunning by com.d4viddf.hyperbridge.util.ShizukuManager.isShizukuRunning.collectAsState()
-    val isPermissionGranted by com.d4viddf.hyperbridge.util.ShizukuManager.isPermissionGranted.collectAsState()
-    val isWorkaroundEnabled by prefs.isShizukuWorkaroundEnabled.collectAsState(initial = false)
+fun IslandOverlayCheckPage(context: Context) {
+    var isGranted by remember { mutableStateOf(false) }
+    androidx.compose.runtime.LaunchedEffect(Unit) {
+        while (true) {
+            isGranted = Settings.canDrawOverlays(context)
+            kotlinx.coroutines.delay(1000.milliseconds)
+        }
+    }
 
     OnboardingPageLayout(
-        title = stringResource(R.string.shizuku_workaround_title),
-        description = stringResource(R.string.shizuku_workaround_desc),
-        icon = Icons.Default.Construction,
+        title = stringResource(R.string.island_overlay_ready_title),
+        description = stringResource(R.string.island_overlay_ready_desc),
+        icon = Icons.Default.Layers,
         iconColor = MaterialTheme.colorScheme.primary
     ) {
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
-        ) {
+        if (isGranted) {
             Text(
-                text = stringResource(R.string.shizuku_enable_workaround),
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold
+                stringResource(R.string.perm_granted),
+                color = MaterialTheme.colorScheme.primary,
+                style = MaterialTheme.typography.titleMedium
             )
-            Switch(
-                checked = isWorkaroundEnabled,
-                onCheckedChange = { scope.launch { prefs.setShizukuWorkaroundEnabled(it) } },
-                enabled = isShizukuInstalled
-            )
-        }
-
-        Spacer(modifier = Modifier.height(16.dp))
-
-        if (!isShizukuInstalled) {
-            Card(
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer),
-                shape = RoundedCornerShape(16.dp),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Default.Warning, null, tint = MaterialTheme.colorScheme.error)
-                    Spacer(Modifier.width(12.dp))
-                    Text(
-                        stringResource(R.string.shizuku_not_installed),
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onErrorContainer,
-                    )
-                }
-            }
-        } else if (isWorkaroundEnabled) {
-            ListOptionCard(
-                title = stringResource(if (isPermissionGranted) R.string.shizuku_permission_granted else R.string.shizuku_status_running),
-                subtitle = stringResource(if (isPermissionGranted) R.string.shizuku_status_running else R.string.shizuku_permission_denied),
-                icon = if (isPermissionGranted) Icons.Default.Security else Icons.Default.Warning,
-                shape = RoundedCornerShape(24.dp),
-                onClick = {},
-                trailingContent = {}
-            )
-        }
-
-        if (isShizukuInstalled && isWorkaroundEnabled) {
-            Spacer(modifier = Modifier.height(24.dp))
+        } else {
             Button(
-                onClick = { 
-                    if (!isPermissionGranted) {
-                        com.d4viddf.hyperbridge.util.ShizukuManager.requestPermission(context, 1)
+                onClick = {
+                    val intent = Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION).apply {
+                        data = android.net.Uri.parse("package:" + context.packageName)
                     }
+                    context.startActivity(intent)
                 },
-                enabled = !isPermissionGranted,
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(56.dp),
                 shape = RoundedCornerShape(16.dp),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = MaterialTheme.colorScheme.primary,
-                )
+                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
             ) {
-                Text(
-                    stringResource(if (isPermissionGranted) R.string.perm_granted else R.string.shizuku_request_permission),
-                    style = MaterialTheme.typography.titleMedium
-                )
+                Text(stringResource(R.string.open_settings), style = MaterialTheme.typography.titleMedium)
             }
         }
     }
 }
 
-@Composable
-fun ListOptionCard(
-    title: String,
-    subtitle: String,
-    icon: ImageVector,
-    shape: Shape,
-    onClick: () -> Unit,
-    trailingContent: (@Composable () -> Unit)? = null
-) {
-    Card(
-        onClick = onClick,
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
-        shape = shape,
-        modifier = Modifier
-            .fillMaxWidth()
-            .defaultMinSize(minHeight = 88.dp)
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(horizontal = 20.dp, vertical = 16.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Icon(icon, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
-            Spacer(Modifier.width(20.dp))
-            Column(modifier = Modifier.weight(1f)) {
-                Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Medium)
-                Text(subtitle, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-            if (trailingContent != null) {
-                trailingContent()
-            }
-        }
-    }
-}
-
-// Helper
-data class Quad<A, B, C, D>(val first: A, val second: B, val third: C, val fourth: D)
-
-// --- 5. POST PERMISSION PAGE ---
 @Composable
 fun PostPermissionPage(isGranted: Boolean, onRequest: () -> Unit) {
     OnboardingPageLayout(
@@ -1291,88 +1142,6 @@ fun ListenerPermissionPage(context: Context, isGranted: Boolean) {
 }
 
 @Composable
-fun FeaturedNotificationCheckPage(context: Context) {
-    val isXiaomi = remember { DeviceUtils.isXiaomi }
-    val isSupported = remember {
-        isXiaomi && com.d4viddf.hyperbridge.util.XiaomiNotificationHelper.isSupportIsland()
-    }
-    
-    // We want to re-check when returning to this page, so we use a LaunchedEffect
-    var isGranted by remember { mutableStateOf(false) }
-    
-    androidx.compose.runtime.LaunchedEffect(isSupported) {
-        if (!isSupported) {
-            isGranted = false
-            return@LaunchedEffect
-        }
-        while (true) {
-            isGranted = com.d4viddf.hyperbridge.util.XiaomiNotificationHelper.hasFocusPermission(context)
-            kotlinx.coroutines.delay(1000.milliseconds)
-        }
-    }
-
-    OnboardingPageLayout(
-        title = stringResource(R.string.featured_notifications_check),
-        description = stringResource(R.string.featured_notifications_check_desc),
-        icon = Icons.Default.Info,
-        iconColor = MaterialTheme.colorScheme.tertiary
-    ) {
-        if (!isSupported) {
-            Text(
-                stringResource(R.string.featured_notifications_generic_fallback),
-                color = MaterialTheme.colorScheme.primary,
-                style = MaterialTheme.typography.titleMedium
-            )
-        } else {
-            Button(
-                onClick = {
-                    if (!isGranted) {
-                        val intent = Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).apply {
-                            putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName)
-                        }
-                        context.startActivity(intent)
-                    }
-                },
-                enabled = !isGranted,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(56.dp),
-                shape = RoundedCornerShape(16.dp),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = MaterialTheme.colorScheme.primary,
-                )
-            ) {
-                Text(
-                    stringResource(if (isGranted) R.string.featured_notifications_enabled else R.string.featured_notifications_open_settings),
-                    style = MaterialTheme.typography.titleMedium
-                )
-            }
-
-            if (!isGranted) {
-                Spacer(modifier = Modifier.height(16.dp))
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
-                    shape = RoundedCornerShape(12.dp)
-                ) {
-                    Column(modifier = Modifier.padding(16.dp)) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Default.Architecture, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text(stringResource(R.string.featured_notifications_shizuku_alternative), style = MaterialTheme.typography.titleSmall)
-                        }
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Text(stringResource(R.string.featured_notifications_shizuku_desc), style = MaterialTheme.typography.bodySmall)
-                    }
-                }
-            }
-        }
-    }
-}
-
-// --- 7. OPTIMIZATION PAGE ---
-@SuppressLint("BatteryLife")
-@Composable
 fun OptimizationPage(context: Context) {
     OnboardingPageLayout(
         title = stringResource(R.string.optimization_title),
@@ -1381,16 +1150,7 @@ fun OptimizationPage(context: Context) {
         iconColor = MaterialTheme.colorScheme.secondary
     ) {
         Button(
-            onClick = {
-                try {
-                    val intent = Intent()
-                    intent.component = android.content.ComponentName(
-                        "com.miui.securitycenter",
-                        "com.miui.permcenter.autostart.AutoStartManagementActivity"
-                    )
-                    context.startActivity(intent)
-                } catch (_: Exception) { }
-            },
+            onClick = { openAutoStartSettings(context) },
             modifier = Modifier
                 .fillMaxWidth()
                 .height(56.dp),
@@ -1402,14 +1162,7 @@ fun OptimizationPage(context: Context) {
         Spacer(modifier = Modifier.height(12.dp))
 
         Button(
-            onClick = {
-                try {
-                    val intent = Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).apply {
-                        data = "package:${context.packageName}".toUri()
-                    }
-                    context.startActivity(intent)
-                } catch (_: Exception) { }
-            },
+            onClick = { openBatterySettings(context) },
             modifier = Modifier
                 .fillMaxWidth()
                 .height(56.dp),
@@ -1512,7 +1265,7 @@ fun CustomizationPagePreview() {
 @Composable
 fun EngineConfigPagePreview() {
     HyperBridgeTheme {
-        EngineConfigPage(prefs = AppPreferences(LocalContext.current))
+        EngineConfigPage()
     }
 }
 
@@ -1534,12 +1287,6 @@ fun AutoHidePagePreview(){
 
 @Composable
 fun PermanentIslandConfigPage(prefs: AppPreferences) {
-    val context = LocalContext.current
-    val nativeIslandSupported = remember {
-        DeviceUtils.isXiaomi &&
-            com.d4viddf.hyperbridge.util.XiaomiNotificationHelper.isSupportIsland() &&
-            com.d4viddf.hyperbridge.util.XiaomiNotificationHelper.hasFocusPermission(context)
-    }
     val isEnabled by prefs.isPermanentIslandEnabledFlow.collectAsState(initial = false)
     val islandWidth by prefs.permanentIslandWidthFlow.collectAsState(initial = 0)
     
@@ -1576,17 +1323,9 @@ fun PermanentIslandConfigPage(prefs: AppPreferences) {
                     }
                     Switch(
                         checked = isEnabled,
-                        enabled = nativeIslandSupported,
                         onCheckedChange = { checked ->
                             scope.launch { prefs.setPermanentIslandEnabled(checked) }
                         }
-                    )
-                }
-                if (!nativeIslandSupported) {
-                    Text(
-                        text = stringResource(R.string.permanent_island_native_only),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
                 

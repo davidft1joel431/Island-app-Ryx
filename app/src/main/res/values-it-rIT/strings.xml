@@ -496,10 +496,6 @@
     <string name="channel_live_updates">Aggiornamenti Live Nativi Android</string>
     <string name="engine_preview_title">Anteprima</string>
     <string name="engine_design_section">Design Notifiche</string>
-    <string name="engine_xiaomi_title">Xiaomi Design In Evidenza</string>
-    <string name="engine_xiaomi_desc">Grafica HyperOS con design Xiaomi.</string>
-    <string name="engine_native_title">Design live update</string>
-    <string name="engine_native_desc">Grafica nativa Android, funziona con ROM CN.</string>
     <string name="engine_config_title">Configurazione Motore</string>
     <string name="engine_section_design">Design Notifiche</string>
     <string name="good_to_know">Informazioni utili</string>
@@ -628,7 +624,6 @@
     <string name="troubleshoot_featured_notification">Troubleshoot</string>
     <string name="featured_notifications_check">Featured Notifications Check</string>
     <string name="featured_notifications_check_desc">Let\'s verify if your system is configured correctly to display Ryx Isla islands.</string>
-    <string name="featured_notifications_not_supported">Not Supported</string>
     <string name="featured_notifications_enabled">Enabled</string>
     <string name="featured_notifications_open_settings">Open System Settings</string>
     <string name="featured_notifications_troubleshoot_title">Why is this not an island?</string>

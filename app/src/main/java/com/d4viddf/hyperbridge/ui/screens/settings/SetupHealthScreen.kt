@@ -65,7 +65,6 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import com.d4viddf.hyperbridge.R
 import com.d4viddf.hyperbridge.util.DeviceUtils
-import com.d4viddf.hyperbridge.util.XiaomiNotificationHelper
 import com.d4viddf.hyperbridge.util.isNotificationServiceEnabled
 import com.d4viddf.hyperbridge.util.isPostNotificationsEnabled
 import com.d4viddf.hyperbridge.util.openAutoStartSettings
@@ -85,7 +84,6 @@ fun SetupHealthScreen(onBack: () -> Unit) {
     var isPostGranted by remember { mutableStateOf(isPostNotificationsEnabled(context)) }
     var isOverlayGranted by remember { mutableStateOf(Settings.canDrawOverlays(context)) }
     var isBatteryOptimized by remember { mutableStateOf(isIgnoringBatteryOptimizations(context)) }
-    var isFeaturedGranted by remember { mutableStateOf(false) }
 
     // --- LIFECYCLE ---
     val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
@@ -96,7 +94,6 @@ fun SetupHealthScreen(onBack: () -> Unit) {
                 isPostGranted = isPostNotificationsEnabled(context)
                 isOverlayGranted = Settings.canDrawOverlays(context)
                 isBatteryOptimized = isIgnoringBatteryOptimizations(context)
-                isFeaturedGranted = XiaomiNotificationHelper.hasFocusPermission(context)
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
@@ -104,11 +101,9 @@ fun SetupHealthScreen(onBack: () -> Unit) {
     }
 
     // --- DEVICE CHECKS ---
-    val isXiaomi = DeviceUtils.isXiaomi
-    val isCompatibleOS = DeviceUtils.isCompatibleOS()
-    val osVersionString = DeviceUtils.getHyperOSVersion()
-    val isCN = DeviceUtils.isCNRom
-    val deviceModel = android.os.Build.MODEL
+    val deviceInfo = DeviceUtils.getDeviceInfo()
+    val isCompatibleOS = deviceInfo.isCompatible
+    val osVersionString = deviceInfo.summary
 
     Scaffold(
         modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection), // FIX: Connects scrolling
@@ -162,9 +157,9 @@ fun SetupHealthScreen(onBack: () -> Unit) {
             HealthGroupCard {
                 // Device
                 StatusRow(
-                    title = android.os.Build.MANUFACTURER.uppercase(),
-                    subtitle = deviceModel,
-                    // OEM-specific island APIs are optional; generic Android bridging is supported.
+                    title = deviceInfo.manufacturer.uppercase(),
+                    subtitle = deviceInfo.marketName.ifBlank { deviceInfo.model },
+                    // Ryx Isla works on every Android 15+ device through its own overlay.
                     isSuccess = true,
                     icon = Icons.Default.Smartphone
                 )
@@ -223,23 +218,6 @@ fun SetupHealthScreen(onBack: () -> Unit) {
                         } catch (_: Exception) { }
                     }
                 )
-
-                val isSupported = XiaomiNotificationHelper.isSupportIsland()
-                if (isXiaomi && isSupported) {
-                    HorizontalDivider(modifier = Modifier.padding(horizontal = 20.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(0.2f))
-                    HealthItem(
-                        title = stringResource(R.string.xiaomi_featured_notifications),
-                        subtitle = stringResource(R.string.featured_notifications_open_settings),
-                        icon = Icons.Default.Smartphone,
-                        isGranted = isFeaturedGranted,
-                        onClick = {
-                            val intent = Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).apply {
-                                putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName)
-                            }
-                            context.startActivity(intent)
-                        }
-                    )
-                }
             }
             Spacer(modifier = Modifier.height(24.dp))
 
@@ -248,7 +226,7 @@ fun SetupHealthScreen(onBack: () -> Unit) {
             HealthGroupCard {
                 // Autostart
                 HealthItem(
-                    title = stringResource(R.string.xiaomi_autostart),
+                    title = stringResource(R.string.autostart_title),
                     subtitle = stringResource(R.string.autostart_manual_check),
                     icon = Icons.Default.RestartAlt,
                     isGranted = false,
@@ -265,34 +243,6 @@ fun SetupHealthScreen(onBack: () -> Unit) {
                     isGranted = isBatteryOptimized,
                     onClick = { openBatterySettings(context) }
                 )
-            }
-
-            // --- 4. WARNINGS ---
-            if (isCN && isXiaomi) {
-                Spacer(Modifier.height(32.dp))
-                Card(
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer),
-                    shape = RoundedCornerShape(24.dp)
-                ) {
-                    Row(Modifier.padding(20.dp), verticalAlignment = Alignment.Top) {
-                        Icon(Icons.Default.Warning, null, tint = MaterialTheme.colorScheme.error)
-                        Spacer(Modifier.width(16.dp))
-                        Column {
-                            Text(
-                                text = stringResource(R.string.warning_cn_rom_title),
-                                style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.onErrorContainer
-                            )
-                            Spacer(Modifier.height(4.dp))
-                            Text(
-                                text = stringResource(R.string.warning_cn_rom_desc),
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onErrorContainer
-                            )
-                        }
-                    }
-                }
             }
 
             Spacer(modifier = Modifier.height(16.dp))
