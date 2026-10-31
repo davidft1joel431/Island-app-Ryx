@@ -278,8 +278,8 @@
         • 詳細な端末情報を表示するよう、互換性チェック画面を改善しました。
     </string>
 
-    <string name="privacy_title">完全オフライン＆セキュア</string>
-    <string name="privacy_desc">Ryx Islaはすべての処理をスマートフォンのプロセッサ上で直接行います。\n\nインターネット接続を必要としないため、通知や個人データが端末の外に送信されることはありません。</string>
+    <string name="privacy_title">プライバシー・バイ・デザイン</string>
+    <string name="privacy_desc">Ryx Islaはすべての処理をスマートフォンのプロセッサ上で直接行います。通知や個人データが端末の外に送信されることはありません。インターネット接続は、公式GitHubリポジトリの更新を確認するためだけに使用されます。</string>
 
     <string name="language">言語</string>
     <string name="language_desc">アプリの言語を変更</string>

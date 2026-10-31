@@ -227,8 +227,8 @@
         • Memperbaiki notifikasi yang kadang menampilkan nama paket mentah (mis. \"com.google...\") alih-alih konten.\n
         • Mendesain ulang lembar Konfigurasi Aplikasi untuk penggunaan yang lebih baik.\n
         • Meningkatkan layar Cek Kompatibilitas dengan info perangkat yang detail.</string>
-    <string name="privacy_title">100% Offline &amp; Aman</string>
-    <string name="privacy_desc">Ryx Isla memproses semuanya langsung di prosesor ponsel Anda.\n\nIni TIDAK memerlukan akses internet, artinya notifikasi dan data pribadi Anda tidak pernah meninggalkan perangkat Anda.</string>
+    <string name="privacy_title">Privasi sejak awal</string>
+    <string name="privacy_desc">Ryx Isla memproses semuanya langsung di prosesor ponsel Anda. Notifikasi dan data pribadi Anda tidak pernah meninggalkan perangkat. Satu-satunya koneksi internet digunakan untuk memeriksa pembaruan di repositori GitHub resmi.</string>
     <string name="language">Bahasa</string>
     <string name="language_desc">Ubah bahasa aplikasi</string>
     <string name="system_default">Default Sistem</string>

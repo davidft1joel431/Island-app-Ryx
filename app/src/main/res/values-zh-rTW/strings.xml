@@ -230,8 +230,8 @@
         • 重新設計 App 配置頁面以提升易用性。\n
         • 優化相容性檢查畫面，提供更詳細的裝置資訊。
     </string>
-    <string name="privacy_title">100% 離線 &amp; 安全</string>
-    <string name="privacy_desc">Ryx Isla 直接在您的手機處理器上處理所有資訊。\n\n它完全不需連接網路，這意味著您的通知與個人資料絕不會離開您的裝置。</string>
+    <string name="privacy_title">隱私優先設計</string>
+    <string name="privacy_desc">Ryx Isla 直接在您的手機處理器上處理所有資訊。您的通知與個人資料絕不會離開裝置。唯一的網路連線用於檢查官方 GitHub 儲存庫的更新。</string>
     <string name="language">語言</string>
     <string name="language_desc">變更應用程式語言</string>
     <string name="system_default">系統預設</string>

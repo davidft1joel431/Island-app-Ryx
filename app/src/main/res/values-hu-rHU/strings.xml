@@ -230,8 +230,8 @@ Továbbfejlesztett felismerési logika a VoIP- és tárcsázóalkalmazások szé
         • Átalakítva az alkalmazás konfigurációs lapja a jobb használhatóság érdekében.\n
         • Javítva a kompatibilitás-ellenőrző képernyő részletes eszközadatokkal.
     </string>
-    <string name="privacy_title">100% offline és biztonságos</string>
-    <string name="privacy_desc">A Ryx Isla mindent közvetlenül a telefon processzorán dolgoz fel.\n\nNem igényel internet-hozzáférést, vagyis az értesítések és a személyes adatok soha nem hagyják el az eszközt.</string>
+    <string name="privacy_title">Adatvédelem a tervezésből</string>
+    <string name="privacy_desc">A Ryx Isla mindent közvetlenül a telefon processzorán dolgoz fel. Az értesítések és a személyes adatok soha nem hagyják el az eszközt. Az egyetlen internetkapcsolatot a hivatalos GitHub-tároló frissítéseinek ellenőrzésére használjuk.</string>
     <string name="language">Nyelv</string>
     <string name="language_desc">Alkalmazás nyelvének kiválasztása</string>
     <string name="system_default">Rendszer nyelvének használata</string>
