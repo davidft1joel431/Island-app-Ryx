@@ -232,10 +232,8 @@ Novas notificações substituem as mais antigas automaticamente.</string>
         • As configurações do app foram redesenhadas para melhor usabilidade.\n
         • Melhorada a tela de verificação de compatibilidade com informações detalhadas do aparelho.
     </string>
-    <string name="privacy_title">100% Offline e Seguro</string>
-    <string name="privacy_desc">O Ryx Isla processa tudo diretamente no processador do seu telefone.
-
-NÃO requer acesso à internet, o que significa que suas notificações e dados pessoais nunca saem do seu dispositivo.</string>
+    <string name="privacy_title">Privacidade por design</string>
+    <string name="privacy_desc">O Ryx Isla processa tudo diretamente no processador do seu telefone. Suas notificações e dados pessoais nunca saem do dispositivo. A única conexão com a internet é usada para verificar atualizações no repositório oficial do GitHub.</string>
     <string name="language">Idioma</string>
     <string name="language_desc">Alterar idioma do aplicativo</string>
     <string name="system_default">Padrão do Sistema</string>

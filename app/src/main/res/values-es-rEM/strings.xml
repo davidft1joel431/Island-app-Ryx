@@ -219,8 +219,8 @@
         • Rediseñado el panel de Configuración de App.\n
         • Mejorada la pantalla de Comprobación de Compatibilidad con info detallada.
     </string>
-    <string name="privacy_title">100% Offline y Seguro</string>
-    <string name="privacy_desc">Ryx Isla procesa todo directamente en el procesador de tu teléfono.\n\nNO requiere acceso a internet, lo que significa que tus notificaciones y datos personales nunca salen de tu dispositivo.</string>
+    <string name="privacy_title">Privacidad por diseño</string>
+    <string name="privacy_desc">Ryx Isla procesa todo directamente en el procesador de tu teléfono. Tus notificaciones y datos personales nunca salen del dispositivo. La única conexión a internet se usa para comprobar si hay actualizaciones en el repositorio oficial de GitHub.</string>
     <string name="language">Idioma</string>
     <string name="language_desc">Cambiar idioma de la aplicación</string>
     <string name="system_default">Predeterminado del sistema</string>

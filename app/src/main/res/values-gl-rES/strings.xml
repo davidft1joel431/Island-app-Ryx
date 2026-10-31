@@ -218,8 +218,8 @@
         • Redesigned App Configuration sheet for better usability.\n
         • Improved Compatibility Check screen with detailed device info.
     </string>
-    <string name="privacy_title">100% Offline &amp; Secure</string>
-    <string name="privacy_desc">Ryx Isla processes everything directly on your phone\'s processor.\n\nIt does NOT require internet access, meaning your notifications and personal data never leave your device.</string>
+    <string name="privacy_title">Privacidade por deseño</string>
+    <string name="privacy_desc">Ryx Isla procesa todo directamente no procesador do teu teléfono. As túas notificacións e datos persoais nunca saen do dispositivo. A única conexión a internet úsase para comprobar se hai actualizacións no repositorio oficial de GitHub.</string>
     <string name="language">Language</string>
     <string name="language_desc">Change application language</string>
     <string name="system_default">System Default</string>

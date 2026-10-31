@@ -230,8 +230,8 @@
         • Prepracovaný hárok konfigurácie aplikácie pre lepšiu použiteľnosť.\n
         • Vylepšená obrazovka kontroly kompatibility s podrobnými informáciami o zariadení.
     </string>
-    <string name="privacy_title">100% Offline &amp; Bezpečný</string>
-    <string name="privacy_desc">Ryx Isla spracováva všetko priamo na procesore vášho telefónu.\n\nNEVYŽADUJE prístup na internet, čo znamená, že vaše upozornenia a osobné údaje nikdy neopustia vaše zariadenie.</string>
+    <string name="privacy_title">Súkromie už od návrhu</string>
+    <string name="privacy_desc">Ryx Isla spracováva všetko priamo na procesore vášho telefónu. Vaše upozornenia a osobné údaje nikdy neopúšťajú zariadenie. Jediné pripojenie na internet slúži na kontrolu aktualizácií v oficiálnom repozitári GitHub.</string>
     <string name="language">Jazyk</string>
     <string name="language_desc">Zmeniť jazyk aplikácie</string>
     <string name="system_default">Predvolené nastavenie systému</string>

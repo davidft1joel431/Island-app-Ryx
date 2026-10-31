@@ -230,8 +230,8 @@
         • Feuille de configuration de l\'application repensée pour une meilleure convivialité.\n
         • Écran de vérification de compatibilité amélioré avec des informations détaillées sur l\'appareil
     </string>
-    <string name="privacy_title">100% hors ligne &amp; sécurisé</string>
-    <string name="privacy_desc">Ryx Isla traite tout directement via le processeur de votre téléphone.\n\nIl ne nécessite PAS d\'accès à Internet, ce qui signifie que vos notifications et vos données personnelles ne quittent jamais votre appareil.</string>
+    <string name="privacy_title">Confidentialité dès la conception</string>
+    <string name="privacy_desc">Ryx Isla traite tout directement via le processeur de votre téléphone. Vos notifications et données personnelles ne quittent jamais votre appareil. La seule connexion Internet sert à vérifier les mises à jour dans le dépôt GitHub officiel.</string>
     <string name="language">Langue</string>
     <string name="language_desc">Changer la langue de l\'application</string>
     <string name="system_default">Par défaut (Système)</string>

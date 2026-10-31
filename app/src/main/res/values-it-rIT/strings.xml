@@ -230,8 +230,8 @@
         • Scheda di configurazione dell\'app ridisegnata per una migliore usabilità.\n
         • Migliorata la compatibilità Controlla lo schermo con informazioni dettagliate sul dispositivo.
     </string>
-    <string name="privacy_title">100% Offline &amp; Sicuro</string>
-    <string name="privacy_desc">Ryx Isla elabora tutto direttamente sul processore del telefono.\n\nNON richiede l\'accesso a Internet, il che significa che le notifiche e i dati personali non lasciano mai il tuo dispositivo.</string>
+    <string name="privacy_title">Privacy by design</string>
+    <string name="privacy_desc">Ryx Isla elabora tutto direttamente sul processore del telefono. Le notifiche e i dati personali non lasciano mai il dispositivo. L\'unica connessione a Internet viene usata per verificare gli aggiornamenti nel repository GitHub ufficiale.</string>
     <string name="language">Lingua</string>
     <string name="language_desc">Cambia lingua applicazione</string>
     <string name="system_default">Predefinita di Sistema</string>

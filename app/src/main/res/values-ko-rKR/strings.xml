@@ -225,8 +225,8 @@
                 • 앱 구성 패널 디자인 개선\n
                 • 기기 정보를 포함한 호환성 검사 화면 개선\n
     </string>
-    <string name="privacy_title">100% 오프라인 &amp; 보안</string>
-    <string name="privacy_desc">Ryx Isla는 모든 작업을 휴대폰의 프로세서에서 직접 처리합니다.\n\n인터넷 연결이 필요하지 않으며, 이는 알림과 개인 데이터가 절대 기기를 떠나지 않음을 의미합니다.</string>
+    <string name="privacy_title">설계부터 개인정보 보호</string>
+    <string name="privacy_desc">Ryx Isla는 모든 작업을 휴대폰의 프로세서에서 직접 처리합니다. 알림과 개인 데이터는 절대 기기를 떠나지 않습니다. 인터넷 연결은 공식 GitHub 저장소의 업데이트를 확인하는 데만 사용됩니다.</string>
     <string name="language">언어</string>
     <string name="language_desc">애플리케이션 언어 변경</string>
     <string name="system_default">시스템 기본값</string>
