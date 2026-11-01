@@ -387,8 +387,10 @@ private fun IslandTuningCard(
         if (!isDragging) sliderValue = positionY.toFloat()
     }
 
+    val previewFraction = (sliderValue - AppPreferences.MIN_POSITION_Y) /
+        (AppPreferences.MAX_POSITION_Y - AppPreferences.MIN_POSITION_Y).toFloat()
     val previewOffset by animateDpAsState(
-        targetValue = (14 + sliderValue).dp,
+        targetValue = (8f + previewFraction * 72f).dp,
         animationSpec = spring(dampingRatio = 0.78f, stiffness = Spring.StiffnessLow),
         label = "islandPreviewOffset"
     )
@@ -494,7 +496,7 @@ private fun IslandTuningCard(
                         onPositionChange(sliderValue.roundToInt())
                     },
                     valueRange = AppPreferences.MIN_POSITION_Y.toFloat()..AppPreferences.MAX_POSITION_Y.toFloat(),
-                    steps = 23,
+                    steps = 35,
                     modifier = Modifier.weight(1f).padding(horizontal = 6.dp)
                 )
                 Icon(

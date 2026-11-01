@@ -653,7 +653,7 @@ class AppPreferences(context: Context) {
     }
 
     companion object {
-        const val MIN_POSITION_Y = -8
-        const val MAX_POSITION_Y = 40
+        const val MIN_POSITION_Y = -24
+        const val MAX_POSITION_Y = 48
     }
 }
