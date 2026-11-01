@@ -489,7 +489,7 @@ private fun PermanentIslandContent(animationsEnabled: Boolean) {
         Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
             SystemFunctionBadge(R.drawable.ic_system_flashlight, 18.dp)
             SystemFunctionBadge(R.drawable.ic_system_hotspot, 18.dp, badge = 2)
-            SystemFunctionBadge(R.drawable.ic_system_wifi, 18.dp)
+            SystemFunctionBadge(R.drawable.ic_system_bluetooth, 18.dp)
         }
     }
 }
@@ -556,8 +556,8 @@ private fun ExpandedIslandContent() {
         Row(horizontalArrangement = Arrangement.spacedBy(5.dp)) {
             SystemFunctionBadge(R.drawable.ic_system_flashlight, 24.dp)
             SystemFunctionBadge(R.drawable.ic_system_hotspot, 24.dp, badge = 2)
-            SystemFunctionBadge(R.drawable.ic_system_wifi, 24.dp)
-            SystemFunctionBadge(R.drawable.ic_system_data, 24.dp)
+            SystemFunctionBadge(R.drawable.ic_system_bluetooth, 24.dp)
+            SystemFunctionBadge(R.drawable.ic_system_recorder, 24.dp)
             SystemFunctionBadge(R.drawable.ic_system_music, 24.dp)
         }
     }

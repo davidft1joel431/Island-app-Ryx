@@ -1,8 +1,5 @@
 package com.d4viddf.hyperbridge.service
 
-import android.bluetooth.BluetoothAdapter
-import android.bluetooth.BluetoothManager
-import android.content.BroadcastReceiver
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
@@ -13,9 +10,6 @@ import android.media.AudioRecordingConfiguration
 import android.media.session.MediaController
 import android.media.session.MediaSessionManager
 import android.media.session.PlaybackState
-import android.net.ConnectivityManager
-import android.net.Network
-import android.net.NetworkCapabilities
 import android.net.wifi.WifiManager
 import android.os.Handler
 import android.os.Looper
@@ -24,9 +18,10 @@ import com.d4viddf.hyperbridge.R
 
 /**
  * Reads the live state of the system functions HyperOS shows in its island:
- * flashlight, hotspot, Wi-Fi, mobile data, internet, Bluetooth, recorder and
- * music. Everything is read-only and guarded, so a denied permission simply
- * hides that indicator instead of breaking the island.
+ * flashlight, hotspot, Bluetooth, recorder and music. Everything is read-only
+ * and guarded, so a denied permission simply hides that indicator instead of
+ * breaking the island. Connectivity indicators (Wi-Fi, mobile data, internet)
+ * are intentionally not included: the status bar already shows them.
  *
  * Updates are event driven (broadcasts, network/audio/media callbacks and the
  * torch callback) instead of polling, so the indicators react instantly.
@@ -75,19 +70,10 @@ class SystemStatusReader(
         }
     }
 
-    private val stateReceiver = object : BroadcastReceiver() {
+    private val stateReceiver = object : android.content.BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
             scheduleEmit()
         }
-    }
-
-    private val networkCallback = object : ConnectivityManager.NetworkCallback() {
-        override fun onAvailable(network: Network) = scheduleEmit()
-        override fun onLost(network: Network) = scheduleEmit()
-        override fun onCapabilitiesChanged(
-            network: Network,
-            networkCapabilities: NetworkCapabilities
-        ) = scheduleEmit()
     }
 
     private val recordingCallback = object : AudioManager.AudioRecordingCallback() {
@@ -112,10 +98,8 @@ class SystemStatusReader(
         runCatching { cameraManager?.registerTorchCallback(torchCallback, mainHandler) }
 
         val filter = IntentFilter().apply {
-            addAction(WifiManager.WIFI_STATE_CHANGED_ACTION)
             addAction(WIFI_AP_STATE_CHANGED)
-            addAction(BluetoothAdapter.ACTION_STATE_CHANGED)
-            addAction(Intent.ACTION_AIRPLANE_MODE_CHANGED)
+            addAction(android.bluetooth.BluetoothAdapter.ACTION_STATE_CHANGED)
         }
         runCatching {
             ContextCompat.registerReceiver(
@@ -124,11 +108,6 @@ class SystemStatusReader(
                 filter,
                 ContextCompat.RECEIVER_EXPORTED
             )
-        }
-
-        runCatching {
-            val cm = appContext.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
-            cm?.registerDefaultNetworkCallback(networkCallback, mainHandler)
         }
 
         runCatching {
@@ -159,10 +138,6 @@ class SystemStatusReader(
         runCatching { cameraManager?.unregisterTorchCallback(torchCallback) }
         runCatching { appContext.unregisterReceiver(stateReceiver) }
         runCatching {
-            val cm = appContext.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
-            cm?.unregisterNetworkCallback(networkCallback)
-        }
-        runCatching {
             val audioManager = appContext.getSystemService(Context.AUDIO_SERVICE) as? AudioManager
             audioManager?.unregisterAudioRecordingCallback(recordingCallback)
         }
@@ -182,13 +157,7 @@ class SystemStatusReader(
     fun snapshot(): List<Function> {
         val active = mutableListOf<Function>()
 
-        if (torchOn) {
-            active += Function("flashlight", R.drawable.ic_system_flashlight, "Linterna")
-        }
-
         val wifiManager = appContext.getSystemService(Context.WIFI_SERVICE) as? WifiManager
-        val wifiOn = runCatching { wifiManager?.isWifiEnabled == true }.getOrDefault(false)
-
         if (isHotspotEnabled(wifiManager)) {
             active += Function(
                 "hotspot",
@@ -198,37 +167,16 @@ class SystemStatusReader(
             )
         }
 
-        if (wifiOn) {
-            active += Function("wifi", R.drawable.ic_system_wifi, "Wi-Fi")
-        }
-
-        val capabilities = runCatching {
-            val cm = appContext.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
-            cm?.getNetworkCapabilities(cm.activeNetwork)
-        }.getOrNull()
-
-        if (capabilities?.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) == true) {
-            active += Function("data", R.drawable.ic_system_data, "Datos móviles")
-        }
-
-        if (capabilities?.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) == true) {
-            active += Function("internet", R.drawable.ic_system_wifi, "Internet")
+        if (torchOn) {
+            active += Function("flashlight", R.drawable.ic_system_flashlight, "Linterna")
         }
 
         val bluetoothOn = runCatching {
-            val manager = appContext.getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager
+            val manager = appContext.getSystemService(Context.BLUETOOTH_SERVICE) as? android.bluetooth.BluetoothManager
             manager?.adapter?.isEnabled == true
         }.getOrDefault(false)
         if (bluetoothOn) {
             active += Function("bluetooth", R.drawable.ic_system_bluetooth, "Bluetooth")
-        }
-
-        val recording = runCatching {
-            val audioManager = appContext.getSystemService(Context.AUDIO_SERVICE) as? AudioManager
-            audioManager?.activeRecordingConfigurations?.isNotEmpty() == true
-        }.getOrDefault(false)
-        if (recording) {
-            active += Function("recorder", R.drawable.ic_system_recorder, "Grabadora")
         }
 
         val musicPlaying = mediaCallbacks.values.any { (controller, _) ->
@@ -238,6 +186,14 @@ class SystemStatusReader(
         }
         if (musicPlaying) {
             active += Function("music", R.drawable.ic_system_music, "Música")
+        }
+
+        val recording = runCatching {
+            val audioManager = appContext.getSystemService(Context.AUDIO_SERVICE) as? AudioManager
+            audioManager?.activeRecordingConfigurations?.isNotEmpty() == true
+        }.getOrDefault(false)
+        if (recording) {
+            active += Function("recorder", R.drawable.ic_system_recorder, "Grabadora")
         }
 
         return active

@@ -9,7 +9,7 @@ package com.d4viddf.hyperbridge.models
  * status bar, exactly like HyperOS. The expanded card grows from that capsule.
  */
 object HyperIslandSpec {
-    const val COLLAPSED_WIDTH_DP = 120
+    const val COLLAPSED_WIDTH_DP = 132
     const val COLLAPSED_HEIGHT_DP = 32
     const val EXPANDED_HEIGHT_DP = 68
     const val EXPANDED_MAX_WIDTH_DP = 380
@@ -28,6 +28,12 @@ object HyperIslandSpec {
     /** Simulated status-bar height used when a real inset is unavailable. */
     const val PREVIEW_STATUS_BAR_DP = 34
 
+    // Capsule width extras for collapsed presentations.
+    const val DOMINANT_FUNCTION_WIDTH_EXTRA_DP = 28
+    const val COUNTER_WIDTH_EXTRA_DP = 16
+    const val PENDING_STACK_WIDTH_EXTRA_DP = 20
+    const val NOTIFICATION_WIDTH_EXTRA_DP = 22
+
     // HyperOS-style palette: black glass, white copy and a dark camera lens.
     val COLOR_BLACK = 0xFF000000.toInt()
     val COLOR_BLACK_SOFT = 0xFF08080A.toInt()
@@ -43,6 +49,31 @@ object HyperIslandSpec {
     val COLOR_BRAND = 0xFFFFC83D.toInt()
     val COLOR_BRAND_GREEN = 0xFF35D07A.toInt()
     val COLOR_LIVE = 0xFF4ADE80.toInt()
+
+    // HyperOS-style accents used by the live system functions.
+    val COLOR_ACCENT_BLUE = 0xFF4C9AFF.toInt()
+    val COLOR_ACCENT_RED = 0xFFFF5A5F.toInt()
+    val COLOR_ACCENT_ORANGE = 0xFFFF6900.toInt()
+    val COLOR_ACCENT_CYAN = 0xFF3EDDD2.toInt()
+    val COLOR_ACCENT_GREEN = 0xFF3ED16B.toInt()
+
+    private fun Int.coerceToMutedTile(): Int = when {
+        this == COLOR_BLACK || this == COLOR_BLACK_SOFT -> COLOR_ICON_TILE
+        this == COLOR_TEXT_PRIMARY || this == COLOR_TEXT_SECONDARY || this == COLOR_TEXT_TERTIARY -> COLOR_ICON_TILE
+        else -> this
+    }
+
+    fun systemFunctionColor(id: String): Int = when (id) {
+        "hotspot" -> COLOR_ACCENT_GREEN
+        "flashlight" -> COLOR_BRAND
+        "bluetooth" -> COLOR_ACCENT_BLUE
+        "recorder" -> COLOR_ACCENT_RED
+        "music" -> COLOR_ACCENT_ORANGE
+        else -> COLOR_LIVE
+    }
+
+    fun systemFunctionColorWithBadge(badge: Int, default: Int): Int =
+        if (badge > 0) default else COLOR_ICON_TILE
 
     /** Width of the expanded island in dp for the current screen width. */
     fun expandedWidthDp(screenWidthDp: Int): Int {
@@ -63,4 +94,12 @@ object HyperIslandSpec {
 
     /** The island is always a stadium: the radius follows the animated height. */
     fun cornerRadiusPx(heightPx: Float): Float = heightPx.coerceAtLeast(0f) / 2f
+
+    companion object {
+        private const val GESTURE_DISMISS_DP = 14
+        private const val GESTURE_DISMISS_MIN_DP = 10
+        private const val GESTURE_CYCLE_DP = 90
+        private const val GESTURE_CYCLE_MIN_DP = 70
+        const val MAX_STACKED_ITEMS = 12
+    }
 }

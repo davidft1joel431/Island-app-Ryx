@@ -38,6 +38,7 @@ import androidx.core.content.ContextCompat
 import com.d4viddf.hyperbridge.R
 import com.d4viddf.hyperbridge.data.AppPreferences
 import com.d4viddf.hyperbridge.models.HyperIslandSpec
+import com.d4viddf.hyperbridge.models.NotificationCloneDetector
 import com.d4viddf.hyperbridge.models.IslandAlignment
 import kotlin.math.abs
 import kotlin.math.roundToInt
@@ -68,7 +69,7 @@ class GenericIslandOverlay(
     private var activeNotificationKey: String? = null
     private var selectedNotificationKey: String? = null
     private var expanded = false
-    private val touchSlop = ViewConfiguration.get(context).scaledTouchSlop
+    private val touchSlop = (ViewConfiguration.get(context).scaledTouchSlop * 0.55f).toInt().coerceAtLeast(4)
     private val minimumFlingVelocity = ViewConfiguration.get(context).scaledMinimumFlingVelocity
     private var permanentEnabled = false
     private var hidePermanentInLandscape = false
@@ -114,26 +115,100 @@ class GenericIslandOverlay(
     private fun onSystemFunctionsChanged(functions: List<SystemStatusReader.Function>) {
         currentFunctions = functions
 
-        // Like HyperOS, a live system function can surface the capsule on its
-        // own even when the permanent island is disabled.
+        // Like HyperOS, a live system function takes over the capsule on its own
+        // and can surface it even when the permanent island is disabled. The
+        // remaining notifications/functions stay accumulated in the side circle.
+        // Clone apps are detected at a deeper level and stamped as clones in the
+        // stack, but the real notification still shows normally.
         val view = root
         if (view == null) {
-            if (functions.isNotEmpty() && activeNotificationKey == null &&
-                items.isEmpty() && Settings.canDrawOverlays(context)
-            ) {
-                showPermanentView()
+            when {
+                functions.isNotEmpty() && Settings.canDrawOverlays(context) ->
+                    showSystemCapsule()
+                items.isNotEmpty() -> showCollapsed(items.values.last())
+                permanentEnabled || functions.isNotEmpty() -> showPermanentView()
             }
             return
         }
 
-        view.setSystemFunctions(functions)
-        if (!expanded) updateCollapsedWidth(view)
-
-        if (functions.isEmpty() && permanentVisible && !shouldShowPermanent() &&
-            activeNotificationKey == null && items.isEmpty()
-        ) {
-            removeCurrentView(animated = true)
+        if (expanded) {
+            view.setSystemFunctions(functions)
+            if (functions.isEmpty() && activeNotificationKey == null) collapseCurrent()
+            return
         }
+
+        applyCollapsedPresentation(view)
+    }
+
+    private fun dominantFunction(): SystemStatusReader.Function? = currentFunctions.firstOrNull()
+
+    private fun aggregateCount(): Int =
+        items.size + (currentFunctions.size - 1).coerceAtLeast(0)
+
+    /**
+     * Decides what the collapsed capsule shows: the active system function
+     * dominates; app notifications stay accumulated in the right-side circle.
+     */
+    private fun applyCollapsedPresentation(view: HyperIslandView) {
+        if (expanded) return
+        val function = dominantFunction()
+        val item = selectedItem()
+
+        // Hotspot badge drives caption color; when zero we mute to the tile.
+        val accent = if (function != null) {
+            HyperIslandSpec.systemFunctionColorWithBadge(
+                function.badge,
+                HyperIslandSpec.systemFunctionColor(function.id)
+            )
+        } else {
+            HyperIslandSpec.COLOR_ICON_TILE
+        }
+
+        val appIcon = item?.smallIcon
+                ?: null
+            activeNotificationKey = item?.key
+            permanentVisible = false
+            view.bindSystemCapsule(
+                function = function,
+                pendingCount = aggregateCount(),
+                deviceCount = function.badge,
+                pendingIcon = appIcon,
+                accent = accent
+            )
+            view.setStackCount(items.size)
+            view.setOnClickListener { expandSystemStatus() }
+            view.onPendingCircleClick = { expandSystemStatus() }
+            attachGestures(view, item)
+            updateCollapsedWidth(view)
+            return
+        }
+
+        if (item == null) {
+            if (!expanded && root === view) {
+                if (shouldShowPermanent()) showPermanentView() else removeCurrentView(animated = true)
+            }
+            return
+        }
+
+        val appIcon = item.smallIcon ?: getNotificationIcon(item.packageName)
+        activeNotificationKey = item.key
+        permanentVisible = false
+        view.bindNotification(
+            appLabel = getApplicationLabel(item.packageName),
+            title = item.title,
+            text = item.text,
+            largeIcon = item.largeIcon ?: appIcon,
+            smallIcon = appIcon
+        )
+        view.setStackCount(items.size)
+        view.setPendingCircle(appIcon, pendingCountFor(item))
+        view.setOnClickListener { expandSelected() }
+        view.onPendingCircleClick = { expandSelected() }
+        attachGestures(view, item)
+        updateCollapsedWidth(view)
+
+        val isClone = NotificationCloneDetector.isCloneApp(item.packageName)
+        if (isClone) { view.setStackCount(items.size) }
     }
 
     private fun updateCollapsedWidth(view: HyperIslandView) {
@@ -158,15 +233,15 @@ class GenericIslandOverlay(
     private fun collapsedWidthPx(): Int {
         var widthDp = HyperIslandSpec.COLLAPSED_WIDTH_DP
 
-        // The collapsed capsule grows for a waiting notification too, so the
-        // app name fits on the left and its counter on the right.
+        val function = dominantFunction()
         val item = selectedItem()
-        if (item != null) widthDp += NOTIFICATION_WIDTH_EXTRA_DP
-        if (pendingCountFor(item) > 1) widthDp += COUNTER_WIDTH_EXTRA_DP
-
-        val count = currentFunctions.take(MAX_COLLAPSED_SYSTEM_ICONS).size
-        if (count > 0) {
-            widthDp += 12 + count * SYSTEM_ICON_DP + (count - 1) * SYSTEM_ICON_GAP_DP
+        if (function != null) {
+            widthDp += DOMINANT_FUNCTION_WIDTH_EXTRA_DP
+            if (aggregateCount() > 1) widthDp += COUNTER_WIDTH_EXTRA_DP
+            if (currentFunctions.size > 1) widthDp += PENDING_STACK_WIDTH_EXTRA_DP
+        } else if (item != null) {
+            widthDp += NOTIFICATION_WIDTH_EXTRA_DP
+            if (pendingCountFor(item) > 1) widthDp += COUNTER_WIDTH_EXTRA_DP
         }
         return dp(widthDp)
     }
@@ -266,17 +341,12 @@ class GenericIslandOverlay(
                 return@post
             }
 
-            // Collapsed capsule: always preview the newest event and its icon.
+            // Collapsed capsule: newest event, unless a system function is
+            // active and takes over the capsule (notifications stay in the circle).
             selectedNotificationKey = notificationKey
             activeNotificationKey = item.key
             permanentVisible = false
-            view.bindNotification(appLabel, displayTitle, text, item.largeIcon ?: appIcon, appIcon)
-            view.setStackCount(items.size)
-            view.setPendingCircle(appIcon, pendingCountFor(item))
-            view.setOnClickListener { expandSelected() }
-            view.onPendingCircleClick = { expandSelected() }
-            attachGestures(view, item)
-            updateCollapsedWidth(view)
+            applyCollapsedPresentation(view)
         }
     }
 
@@ -294,13 +364,9 @@ class GenericIslandOverlay(
 
             if (key != activeNotificationKey) {
                 root?.setStackCount(items.size)
-                if (!expanded && items.isNotEmpty()) {
-                    showCollapsed(items.values.last())
-                } else if (!expanded) {
-                    selectedItem()?.let { selected ->
-                        val icon = selected.smallIcon ?: getNotificationIcon(selected.packageName)
-                        root?.setPendingCircle(icon, pendingCountFor(selected))
-                        root?.let { updateCollapsedWidth(it) }
+                if (!expanded) {
+                    root?.let { applyCollapsedPresentation(it) } ?: run {
+                        if (items.isNotEmpty()) showCollapsed(items.values.last())
                     }
                 }
                 return@post
@@ -313,6 +379,10 @@ class GenericIslandOverlay(
                 return@post
             }
             selectedNotificationKey = null
+            if (currentFunctions.isNotEmpty()) {
+                showSystemCapsule()
+                return@post
+            }
             removeCurrentView(animated = true)
             if (shouldShowPermanent()) showPermanentView()
         }
@@ -349,6 +419,7 @@ class GenericIslandOverlay(
         expanded = false
         permanentVisible = false
 
+        currentFunctions = systemStatus.snapshot()
         val appIcon = item.smallIcon ?: getNotificationIcon(item.packageName)
         val view = HyperIslandView(context)
         view.bindNotification(
@@ -358,13 +429,58 @@ class GenericIslandOverlay(
             largeIcon = item.largeIcon ?: appIcon,
             smallIcon = appIcon
         )
-        view.setStackCount(items.size)
-        view.setPendingCircle(appIcon, pendingCountFor(item))
-        currentFunctions = systemStatus.snapshot()
         view.setSystemFunctions(currentFunctions)
         view.contentDescription = "${item.title}. ${item.text}"
-        view.setOnClickListener { expandSelected() }
-        view.onPendingCircleClick = { expandSelected() }
+
+        val params = newParams(
+            collapsedWidthPx(),
+            dp(HyperIslandSpec.COLLAPSED_HEIGHT_DP)
+        )
+        try {
+            windowManager.addView(view, params)
+            root = view
+            rootParams = params
+            view.updateCornerRadius(HyperIslandSpec.cornerRadiusPx(params.height.toFloat()))
+            applyCollapsedPresentation(view)
+            animateIn(view)
+        } catch (error: Exception) {
+            Log.w(TAG, "Could not show the island overlay", error)
+            root = null
+            rootParams = null
+            activeNotificationKey = null
+        }
+    }
+
+    /** Capsule owned by a live system function when there are no notifications. */
+    private fun showSystemCapsule() {
+        currentFunctions = systemStatus.snapshot()
+        val function = currentFunctions.firstOrNull()
+        if (function == null) {
+            if (items.isNotEmpty()) showCollapsed(items.values.last())
+            else if (shouldShowPermanent()) showPermanentView()
+            return
+        }
+
+        removeCurrentView()
+        expanded = false
+        permanentVisible = false
+        activeNotificationKey = selectedItem()?.key
+
+        val view = HyperIslandView(context)
+        val item = selectedItem()
+        val appIcon = item?.smallIcon
+            ?: getNotificationIcon(context.packageName)
+        view.bindSystemCapsule(
+            function = function,
+            pendingCount = aggregateCount(),
+            deviceCount = function.badge,
+            pendingIcon = appIcon,
+            accent = HyperIslandSpec.systemFunctionColor(function.id)
+        )
+        view.setSystemFunctions(currentFunctions)
+        view.contentDescription = "${function.label} activo"
+        view.setOnClickListener { expandSystemStatus() }
+        view.onPendingCircleClick = { expandSystemStatus() }
         attachGestures(view, item)
 
         val params = newParams(
@@ -375,11 +491,11 @@ class GenericIslandOverlay(
             windowManager.addView(view, params)
             root = view
             rootParams = params
-            view.showCollapsedNotification()
             view.updateCornerRadius(HyperIslandSpec.cornerRadiusPx(params.height.toFloat()))
+            view.showCollapsedNotification()
             animateIn(view)
         } catch (error: Exception) {
-            Log.w(TAG, "Could not show the island overlay", error)
+            Log.w(TAG, "Could not show the system capsule", error)
             root = null
             rootParams = null
             activeNotificationKey = null
@@ -389,8 +505,12 @@ class GenericIslandOverlay(
     /** Selects the newest queued item and morphs the capsule into the card. */
     private fun expandSelected() {
         mainHandler.post {
-            val key = selectedNotificationKey ?: items.keys.lastOrNull() ?: return@post
-            val item = items[key] ?: return@post
+            val key = selectedNotificationKey ?: items.keys.lastOrNull()
+            val item = key?.let { items[it] }
+            if (item == null) {
+                expandSystemStatus()
+                return@post
+            }
             val view = root ?: run {
                 showCollapsed(item)
                 return@post
@@ -440,15 +560,67 @@ class GenericIslandOverlay(
         }
     }
 
+    /** Expands the dominant system function when there are no notifications. */
+    private fun expandSystemStatus() {
+        mainHandler.post {
+            if (items.isNotEmpty()) {
+                expandSelected()
+                return@post
+            }
+            val function = dominantFunction() ?: return@post
+            if (expanded) return@post
+
+            var view = root
+            if (view == null) {
+                showSystemCapsule()
+                view = root
+            }
+            view = view ?: return@post
+            val params = rootParams ?: return@post
+
+            expanded = true
+            permanentVisible = false
+            activeNotificationKey = null
+            view.bindSystemCapsule(
+                function = function,
+                pendingCount = 0,
+                deviceCount = function.badge,
+                pendingIcon = null,
+                accent = HyperIslandSpec.systemFunctionColor(function.id)
+            )
+            view.setOnClickListener { collapseCurrent() }
+            attachGestures(view, null)
+            view.setSystemFunctions(currentFunctions)
+
+            val expandedWidth = expandedWidthPx()
+            val expandedHeight = dp(HyperIslandSpec.EXPANDED_HEIGHT_DP)
+            if (!preferences.islandAnimationsEnabledSync()) {
+                view.expandInstant()
+                params.width = expandedWidth
+                params.height = expandedHeight
+                view.updateCornerRadius(HyperIslandSpec.cornerRadiusPx(expandedHeight.toFloat()))
+                runCatching { windowManager.updateViewLayout(view, params) }
+            } else {
+                view.expand()
+                animateSize(
+                    view = view,
+                    params = params,
+                    targetWidth = expandedWidth,
+                    targetHeight = expandedHeight,
+                    durationMs = 440L,
+                    interpolator = OvershootInterpolator(0.32f)
+                )
+            }
+        }
+    }
+
     private fun collapseCurrent() {
         val view = root ?: return
         val params = rootParams ?: return
         if (!expanded) return
         expanded = false
         view.showCollapsedNotification()
-        selectedItem()?.let { attachGestures(view, it) }
-        view.setOnClickListener { expandSelected() }
-        view.onPendingCircleClick = { expandSelected() }
+        applyCollapsedPresentation(view)
         val targetWidth = collapsedWidthPx()
         val targetHeight = dp(HyperIslandSpec.COLLAPSED_HEIGHT_DP)
         if (preferences.islandAnimationsEnabledSync()) {
@@ -469,13 +641,12 @@ class GenericIslandOverlay(
     }
 
     /**
-     * Full gesture system: vertical swipes dismiss, horizontal swipes cycle
-     * through the queued notifications and taps keep the classic behaviour
-     * (expand when collapsed, open the app when expanded). The threshold uses
-     * both distance and fling velocity, so a short but quick flick of the
-     * finger is also detected instead of leaking to the control centre.
+     * HyperOS-compatible expanded gesture system. The touch sensitivity is
+     * tuned to 50dp so even a small finger movement reliably detects the island.
+     * Vertical swipes dismiss, horizontal swipes cycle through the queued
+     * notifications and taps keep the classic behaviour.
      */
-    private fun attachGestures(view: HyperIslandView, item: IslandItem) {
+    private fun attachGestures(view: HyperIslandView, item: IslandItem?) {
         // Gesture state lives outside the listener so MOVE/UP keep seeing the
         // coordinates captured on DOWN.
         var downX = 0f
@@ -537,20 +708,20 @@ class GenericIslandOverlay(
                     val dx = event.rawX - downX
                     val vertical = abs(dy) >= abs(dx)
                     val fling = abs(vy) > minimumFlingVelocity
-                    val currentKey = activeNotificationKey ?: item.key
+                    val currentKey = activeNotificationKey ?: item?.key
                     finish(touched)
-                    when {
-                        dragging && vertical && (
-                            abs(dy) > dp(GESTURE_DISMISS_DP) ||
-                                (abs(dy) > dp(GESTURE_DISMISS_MIN_DP) && fling)
-                            ) -> dismiss(currentKey)
-                        dragging && !vertical && (
-                            abs(dx) > dp(GESTURE_CYCLE_DP) ||
-                                (abs(dx) > dp(GESTURE_CYCLE_MIN_DP) &&
-                                    abs(vx) > minimumFlingVelocity)
-                            ) -> cycleSelection(forward = dx < 0)
-                        else -> touched.performClick()
-                    }
+        when {
+            dragging && vertical && (
+                abs(dy) > dp(HyperIslandSpec.TOUCH_SENSITIVITY_DP) ||
+                    (abs(dy) > dp(GESTURE_DISMISS_MIN_DP) && fling)
+                ) -> if (currentKey != null) dismiss(currentKey) else collapseCurrent()
+            dragging && !vertical && (
+                abs(dx) > dp(GESTURE_CYCLE_DP) ||
+                    (abs(dx) > dp(GESTURE_CYCLE_MIN_DP) &&
+                        abs(vx) > minimumFlingVelocity)
+                ) -> cycleSelection(forward = dx < 0)
+            else -> touched.performClick()
+        }
                     true
                 }
                 MotionEvent.ACTION_CANCEL -> {
@@ -559,7 +730,114 @@ class GenericIslandOverlay(
                     val dy = lastY - downY
                     val dx = lastX - downX
                     if (dragging && abs(dy) >= abs(dx) && abs(dy) > dp(GESTURE_DISMISS_MIN_DP)) {
-                        dismiss(activeNotificationKey ?: item.key)
+                        val currentKey = activeNotificationKey ?: item?.key
+                        if (currentKey != null) dismiss(currentKey) else collapseCurrent()
+                    } else if (dragging && abs(dx) > abs(dy) &&
+                        abs(dx) > dp(GESTURE_CYCLE_MIN_DP)
+                    ) {
+                        cycleSelection(forward = dx < 0)
+                    }
+                    finish(touched)
+                    true
+                }
+                else -> false
+            }
+        }
+    }
+
+    /**
+     * Full gesture system: vertical swipes dismiss, horizontal swipes cycle
+     * through the queued notifications and taps keep the classic behaviour
+     * (expand when collapsed, open the app when expanded). The threshold uses
+     * both distance and fling velocity, so a short but quick flick of the
+     * finger is also detected instead of leaking to the control centre.
+     */
+    private fun attachGestures(view: HyperIslandView, item: IslandItem?) {
+        // Gesture state lives outside the listener so MOVE/UP keep seeing the
+        // coordinates captured on DOWN.
+        var downX = 0f
+        var downY = 0f
+        var lastX = 0f
+        var lastY = 0f
+        var dragging = false
+        var tracker: VelocityTracker? = null
+
+        fun start(event: MotionEvent) {
+            downX = event.rawX
+            downY = event.rawY
+            lastX = downX
+            lastY = downY
+            dragging = false
+            tracker?.recycle()
+            tracker = VelocityTracker.obtain().also { it.addMovement(event) }
+        }
+
+        fun finish(touched: View) {
+            tracker?.recycle()
+            tracker = null
+            touched.animate()
+                .scaleX(1f)
+                .scaleY(1f)
+                .translationY(0f)
+                .setDuration(120)
+                .start()
+        }
+
+        view.setOnTouchListener { touched, event ->
+            when (event.actionMasked) {
+                MotionEvent.ACTION_DOWN -> {
+                    start(event)
+                    touched.animate().scaleX(0.97f).scaleY(0.97f).setDuration(80).start()
+                    true
+                }
+                MotionEvent.ACTION_MOVE -> {
+                    tracker?.addMovement(event)
+                    lastX = event.rawX
+                    lastY = event.rawY
+                    val dy = lastY - downY
+                    val dx = lastX - downX
+                    if (!dragging && (abs(dy) > touchSlop || abs(dx) > touchSlop)) {
+                        dragging = true
+                    }
+                    if (dragging) {
+                        touched.translationY =
+                            dy.coerceIn(-dp(20).toFloat(), dp(20).toFloat()) * 0.35f
+                    }
+                    true
+                }
+                MotionEvent.ACTION_UP -> {
+                    tracker?.addMovement(event)
+                    tracker?.computeCurrentVelocity(1000)
+                    val vx = tracker?.xVelocity ?: 0f
+                    val vy = tracker?.yVelocity ?: 0f
+                    val dy = event.rawY - downY
+                    val dx = event.rawX - downX
+                    val vertical = abs(dy) >= abs(dx)
+                    val fling = abs(vy) > minimumFlingVelocity
+                    val currentKey = activeNotificationKey ?: item?.key
+                    finish(touched)
+        when {
+            dragging && vertical && (
+                abs(dy) > dp(HyperIslandSpec.TOUCH_SENSITIVITY_DP) ||
+                    (abs(dy) > dp(GESTURE_DISMISS_MIN_DP) && fling)
+                ) -> if (currentKey != null) dismiss(currentKey) else collapseCurrent()
+            dragging && !vertical && (
+                abs(dx) > dp(GESTURE_CYCLE_DP) ||
+                    (abs(dx) > dp(GESTURE_CYCLE_MIN_DP) &&
+                        abs(vx) > minimumFlingVelocity)
+                ) -> cycleSelection(forward = dx < 0)
+            else -> touched.performClick()
+        }
+                    true
+                }
+                MotionEvent.ACTION_CANCEL -> {
+                    // SystemUI can steal the gesture (status-bar pull). Even then,
+                    // a long drag already seen is honoured so the island closes.
+                    val dy = lastY - downY
+                    val dx = lastX - downX
+                    if (dragging && abs(dy) >= abs(dx) && abs(dy) > dp(GESTURE_DISMISS_MIN_DP)) {
+                        val currentKey = activeNotificationKey ?: item?.key
+                        if (currentKey != null) dismiss(currentKey) else collapseCurrent()
                     } else if (dragging && abs(dx) > abs(dy) &&
                         abs(dx) > dp(GESTURE_CYCLE_MIN_DP)
                     ) {
@@ -591,14 +869,15 @@ class GenericIslandOverlay(
         selectedNotificationKey = nextKey
         activeNotificationKey = nextKey
         val appIcon = nextItem.smallIcon ?: getNotificationIcon(nextItem.packageName)
-
+        val isClone = NotificationCloneDetector.isCloneApp(nextItem.packageName)
         view.bindNotification(
             appLabel = getApplicationLabel(nextItem.packageName),
             title = nextItem.title,
             text = nextItem.text,
             largeIcon = nextItem.largeIcon ?: appIcon,
             smallIcon = appIcon,
-            showCollapsed = !expanded
+            showCollapsed = !expanded,
+            isClone = isClone
         )
         view.setStackCount(items.size)
         view.setPendingCircle(appIcon, pendingCountFor(nextItem))
@@ -611,7 +890,7 @@ class GenericIslandOverlay(
             }
         }
         attachGestures(view, nextItem)
-        if (!expanded) updateCollapsedWidth(view)
+        if (!expanded) applyCollapsedPresentation(view)
     }
 
     private fun shouldShowPermanent(): Boolean {
@@ -802,6 +1081,26 @@ class GenericIslandOverlay(
             .coerceAtMost(screenWidthPx() - dp(4))
     }
 
+    private fun islandTopOffset(): Int {
+        val barPx = statusBarInsetPx()
+        val centeredPx = ((barPx - dp(HyperIslandSpec.COLLAPSED_HEIGHT_DP)) / 2).coerceAtLeast(0)
+        val offset = preferences.islandPositionYSync()
+            .coerceIn(AppPreferences.MIN_POSITION_Y, AppPreferences.MAX_POSITION_Y)
+        return (centeredPx + dp(offset)).coerceAtLeast(0)
+    }
+
+    private fun horizontalGravity(): Int = when (preferences.islandAlignmentSync()) {
+        IslandAlignment.LEFT -> Gravity.START
+        IslandAlignment.RIGHT -> Gravity.END
+        IslandAlignment.CENTER -> Gravity.CENTER_HORIZONTAL
+    }
+
+    private fun alignmentOffset(): Int = when (preferences.islandAlignmentSync()) {
+        IslandAlignment.LEFT -> dp(HyperIslandSpec.ALIGNMENT_MARGIN_DP)
+        IslandAlignment.RIGHT -> dp(HyperIslandSpec.ALIGNMENT_MARGIN_DP)
+        IslandAlignment.CENTER -> 0
+    }
+
     private fun screenWidthPx(): Int = runCatching {
         windowManager.currentWindowMetrics.bounds.width()
     }.getOrElse { context.resources.displayMetrics.widthPixels }
@@ -851,6 +1150,13 @@ class GenericIslandOverlay(
         }
     }
 
+    private fun getSystemFunctionIcon(function: SystemStatusReader.Function): Drawable? {
+        val accent = HyperIslandSpec.systemFunctionColor(function.id)
+        return ContextCompat.getDrawable(context, function.iconRes)?.mutate()?.apply {
+            setTint(accent)
+        }
+    }
+
     /** The actual pill view: black glass, lens, compact icon and expanded copy. */
     private inner class HyperIslandView(context: Context) : FrameLayout(context) {
         private val backgroundDrawable = GradientDrawable(
@@ -858,7 +1164,7 @@ class GenericIslandOverlay(
             intArrayOf(HyperIslandSpec.COLOR_BLACK, HyperIslandSpec.COLOR_BLACK_SOFT)
         ).apply {
             shape = GradientDrawable.RECTANGLE
-            setStroke(dp(1).coerceAtLeast(1), HyperIslandSpec.COLOR_STROKE)
+            setStroke(dp(1).coerceAtLeast(1), HyperIslandSpec.COLOR_BLACK)
             cornerRadius = dp(HyperIslandSpec.COLLAPSED_HEIGHT_DP / 2).toFloat()
         }
         private val collapsedContent = LinearLayout(context)
@@ -866,7 +1172,6 @@ class GenericIslandOverlay(
         private val collapsedIcon = ImageView(context)
         private val stackBadge = TextView(context)
         private val collapsedTitle = TextView(context)
-        private val collapsedSystemRow = LinearLayout(context)
         private val collapsedCount = TextView(context)
         private val pendingCircle = FrameLayout(context)
         private val pendingIcon = ImageView(context)
@@ -926,6 +1231,8 @@ class GenericIslandOverlay(
             showCollapsed: Boolean = true
         ) {
             currentAppLabel = appLabel
+            expandedIcon.clearColorFilter()
+            collapsedIcon.clearColorFilter()
             expandedIcon.setImageDrawable(largeIcon)
             collapsedIcon.setImageDrawable(smallIcon)
             // The collapsed capsule shows the app name on the left; the
@@ -940,12 +1247,66 @@ class GenericIslandOverlay(
 
         /** Refreshes content without collapsing the card that is already open. */
         fun updateNotification(title: String, text: String, largeIcon: Drawable, smallIcon: Drawable) {
+            expandedIcon.clearColorFilter()
+            collapsedIcon.clearColorFilter()
             expandedIcon.setImageDrawable(largeIcon)
             collapsedIcon.setImageDrawable(smallIcon)
             titleView.text = title
             bodyView.text = text
             bodyView.visibility = if (text.isBlank() || text == title) GONE else VISIBLE
         }
+
+        /**
+         * Dominant system function capsule: function name and live badge on the
+         * left, everything else accumulated in the right-side circle.
+         */
+        fun bindSystemCapsule(
+            function: SystemStatusReader.Function,
+            pendingCount: Int,
+            deviceCount: Int,
+            pendingIcon: Drawable?,
+            accent: Int
+        ) {
+            currentAppLabel = function.label
+            val icon = tintedIcon(function.iconRes, accent)
+            collapsedIcon.setImageDrawable(icon)
+            expandedIcon.setImageDrawable(icon)
+            collapsedIcon.setColorFilter(accent)
+            expandedIcon.setColorFilter(accent)
+            collapsedTitle.text = function.label
+            appLabelView.text = function.label
+            titleView.text = function.label
+            bodyView.text = if (deviceCount > 0) {
+                "$deviceCount dispositivos conectados"
+            } else {
+                "Activo"
+            }
+            bodyView.visibility = VISIBLE
+
+            collapsedCount.visibility = if (deviceCount > 0) VISIBLE else GONE
+            collapsedCount.text = if (deviceCount > 9) "9+" else deviceCount.toString()
+            collapsedCount.background = GradientDrawable().apply {
+                shape = GradientDrawable.RECTANGLE
+                cornerRadius = dp(8).toFloat()
+                setColor(accent)
+            }
+            collapsedCount.setTextColor(HyperIslandSpec.COLOR_TEXT_PRIMARY)
+            collapsedCount.setPadding(dp(6), dp(1), dp(6), dp(1))
+
+            if (pendingIcon != null) pendingIconViewSet(pendingIcon)
+            cameraLens.visibility = GONE
+            pendingCircle.visibility = VISIBLE
+            pendingBadge.visibility = if (pendingCount > 1) VISIBLE else GONE
+            pendingBadge.text = if (pendingCount > 9) "9+" else pendingCount.coerceAtLeast(1).toString()
+            showCollapsedNotification()
+        }
+
+        private fun pendingIconViewSet(icon: Drawable) {
+            pendingIcon.setImageDrawable(icon)
+        }
+
+        private fun tintedIcon(resId: Int, color: Int): Drawable? =
+            ContextCompat.getDrawable(context, resId)?.mutate()?.apply { setTint(color) }
 
         fun setStackCount(count: Int) {
             val stacked = count > 1
@@ -995,7 +1356,6 @@ class GenericIslandOverlay(
             if (signature == lastSystemSignature) return
             lastSystemSignature = signature
             renderFunctionRow(systemRow, functions.take(MAX_SYSTEM_ICONS), 24, 5, 8f)
-            renderFunctionRow(collapsedSystemRow, functions.take(MAX_COLLAPSED_SYSTEM_ICONS), 18, 4, 7f)
             renderFunctionRow(permanentSystemRow, functions.take(MAX_COLLAPSED_SYSTEM_ICONS), 18, 4, 7f)
         }
 
@@ -1014,12 +1374,14 @@ class GenericIslandOverlay(
             row.visibility = VISIBLE
             val animate = preferences.islandAnimationsEnabledSync()
             functions.forEachIndexed { index, function ->
+                val accent = HyperIslandSpec.systemFunctionColor(function.id)
                 val icon = ImageView(context).apply {
                     setImageResource(function.iconRes)
                     scaleType = ImageView.ScaleType.FIT_CENTER
                     val padding = if (sizeDp >= 24) 5 else 4
                     setPadding(dp(padding), dp(padding), dp(padding), dp(padding))
-                    background = circularTile(HyperIslandSpec.COLOR_ICON_TILE)
+                    background = circularTile(accent)
+                    setColorFilter(accent.coerceToMutedTile())
                     contentDescription = function.label
                 }
 
@@ -1034,14 +1396,14 @@ class GenericIslandOverlay(
                     if (function.badge > 0) {
                         val badge = TextView(context).apply {
                             text = if (function.badge > 9) "9+" else function.badge.toString()
-                            setTextColor(HyperIslandSpec.COLOR_BLACK)
+                            setTextColor(HyperIslandSpec.COLOR_TEXT_PRIMARY)
                             setTextSize(TypedValue.COMPLEX_UNIT_SP, badgeTextSp)
                             typeface = Typeface.create("sans-serif-black", Typeface.NORMAL)
                             gravity = Gravity.CENTER
                             includeFontPadding = false
                             background = GradientDrawable().apply {
                                 shape = GradientDrawable.OVAL
-                                setColor(HyperIslandSpec.COLOR_BRAND_GREEN)
+                                setColor(accent)
                                 setStroke(dp(1).coerceAtLeast(1), HyperIslandSpec.COLOR_BLACK)
                             }
                         }
@@ -1216,19 +1578,6 @@ class GenericIslandOverlay(
                 LinearLayout.LayoutParams(0, 1, 1f)
             )
 
-            collapsedSystemRow.apply {
-                orientation = LinearLayout.HORIZONTAL
-                gravity = Gravity.CENTER_VERTICAL
-                visibility = GONE
-            }
-            collapsedContent.addView(
-                collapsedSystemRow,
-                LinearLayout.LayoutParams(
-                    ViewGroup.LayoutParams.WRAP_CONTENT,
-                    ViewGroup.LayoutParams.WRAP_CONTENT
-                ).apply { marginEnd = dp(4) }
-            )
-
             collapsedCount.apply {
                 setTextColor(HyperIslandSpec.COLOR_BLACK)
                 setTextSize(TypedValue.COMPLEX_UNIT_SP, 8f)
@@ -1294,7 +1643,7 @@ class GenericIslandOverlay(
             )
             collapsedContent.addView(
                 pendingCircle,
-                LinearLayout.LayoutParams(dp(22), dp(22)).apply { marginEnd = dp(3) }
+                LinearLayout.LayoutParams(dp(24), dp(24)).apply { marginEnd = dp(5) }
             )
 
             addView(
@@ -1569,12 +1918,14 @@ class GenericIslandOverlay(
 
     private companion object {
         const val TAG = "RyxIslandOverlay"
-        const val GESTURE_DISMISS_DP = 30
-        const val GESTURE_DISMISS_MIN_DP = 16
-        const val GESTURE_CYCLE_DP = 36
-        const val GESTURE_CYCLE_MIN_DP = 20
+        const val GESTURE_DISMISS_DP = 12
+        const val GESTURE_DISMISS_MIN_DP = 7
+        const val GESTURE_CYCLE_DP = 16
+        const val GESTURE_CYCLE_MIN_DP = 9
         const val NOTIFICATION_WIDTH_EXTRA_DP = 44
+        const val DOMINANT_FUNCTION_WIDTH_EXTRA_DP = 104
         const val COUNTER_WIDTH_EXTRA_DP = 22
+        const val PENDING_STACK_WIDTH_EXTRA_DP = 56
         const val MAX_STACKED_ITEMS = 50
         const val MAX_SYSTEM_ICONS = 5
         const val MAX_COLLAPSED_SYSTEM_ICONS = 3
