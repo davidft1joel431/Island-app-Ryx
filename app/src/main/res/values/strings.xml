@@ -581,6 +581,13 @@
     <string name="update_source_note">Las actualizaciones se publican en github.com/davidft1joel431/Island-app-Ryx</string>
     <string name="title_1_0_6">Actualizaciones y compatibilidad total</string>
     <string name="changelog_1_0_6">Se a&#241;ade un comprobador de actualizaciones que consulta siempre el repositorio oficial de Ryx Isla en GitHub. Se elimina cualquier requisito de HyperOS o Xiaomi: la isla flotante funciona en todos los dispositivos Android 15+. Se mejora la detecci&#243;n de fabricante y ROM, y se corrigen el icono de la app y el icono de las notificaciones.</string>
+    <string name="title_1_0_9">Historial, clones y acumulación</string>
+    <string name="changelog_1_0_9">• &lt;b&gt;Historial completo:&lt;/b&gt; registra las notificaciones de todas las apps, del sistema y de apps clonadas, con cada mensaje de las conversaciones.
+• &lt;b&gt;Apps clonadas:&lt;/b&gt; la isla reconoce clones y perfiles de trabajo con su icono y nombre correctos.
+• &lt;b&gt;Acumulación HyperOS:&lt;/b&gt; las notificaciones se apilan con contador y aparece la siguiente al cerrarse la actual.
+• &lt;b&gt;Sin duplicados:&lt;/b&gt; la notificación original se retira de la barra al mostrarse en la isla.
+• &lt;b&gt;Sensibilidad:&lt;/b&gt; desliza 50 dp para cerrar la isla. Se elimina el texto de marca y solo quedan los indicadores.
+• &lt;b&gt;Estabilidad:&lt;/b&gt; se evita crear islas duplicadas y se corrigen animaciones y contenido.</string>
     <string name="title_1_0_8">Isla HyperOS fiel y fluida</string>
     <string name="title_1_0_7">Dise&#241;o, historial y animaciones</string>
     <string name="changelog_1_0_8">&#8226; &lt;b&gt;Isla en la barra de estado:&lt;/b&gt; corregida la posici&#243;n y el tama&#241;o para que coincidan con la vista previa.\n&#8226; &lt;b&gt;Dise&#241;o HyperOS:&lt;/b&gt; negro puro, borde de cristal, lente redise&#241;ada y la misma paleta en la isla real y en la vista previa.\n&#8226; &lt;b&gt;Animaciones premium:&lt;/b&gt; expansi&#243;n con muelle, barrido de luz, pulso en la isla permanente y respuesta al toque.\n&#8226; &lt;b&gt;Vista previa fiel:&lt;/b&gt; usa la altura real de la barra de estado y muestra las medidas compacta y expandida.\n&#8226; &lt;b&gt;Cambios en vivo:&lt;/b&gt; mover o alinear la isla se aplica al instante.\n&#8226; &lt;b&gt;Icono y limpieza:&lt;/b&gt; logo ajustado al &#225;rea segura y eliminaci&#243;n de c&#243;digo sin uso.</string>

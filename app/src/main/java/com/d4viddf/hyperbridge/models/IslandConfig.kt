@@ -16,7 +16,9 @@ data class IslandConfig(
             isShowShade = this.isShowShade ?: global.isShowShade ?: false,
             timeout = this.timeout ?: global.timeout ?: 10,
             floatTimeout = this.floatTimeout ?: global.floatTimeout ?: 5,
-            removeOriginalNotification = this.removeOriginalNotification ?: global.removeOriginalNotification ?: false,
+            // HyperOS replaces the notification with the island, so by default the
+            // original is removed to avoid a duplicate in the shade.
+            removeOriginalNotification = this.removeOriginalNotification ?: global.removeOriginalNotification ?: true,
             dismissWithOriginal = this.dismissWithOriginal ?: global.dismissWithOriginal ?: true,
             enableInlineReply = this.enableInlineReply ?: global.enableInlineReply ?: true,
         )
