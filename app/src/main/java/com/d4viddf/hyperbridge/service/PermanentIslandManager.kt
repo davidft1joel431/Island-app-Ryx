@@ -27,13 +27,12 @@ class PermanentIslandManager(
         scope.launch {
             combine(
                 preferences.isPermanentIslandEnabledFlow,
-                preferences.permanentIslandWidthFlow,
                 preferences.hidePermanentIslandLandscapeFlow
-            ) { isEnabled, width, hideInLandscape ->
-                Triple(isEnabled, width, hideInLandscape)
-            }.collectLatest { (isEnabled, width, hideInLandscape) ->
+            ) { isEnabled, hideInLandscape ->
+                isEnabled to hideInLandscape
+            }.collectLatest { (isEnabled, hideInLandscape) ->
                 enabled = isEnabled
-                overlay.setPermanentIsland(isEnabled, width, hideInLandscape)
+                overlay.setPermanentIsland(isEnabled, hideInLandscape)
             }
         }
     }

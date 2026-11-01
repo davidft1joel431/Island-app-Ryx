@@ -505,24 +505,16 @@ class AppPreferences(context: Context) {
     // ========================================================================
 
     private val SHOW_PERMANENT_ISLAND = "show_permanent_island"
-    private val PERMANENT_ISLAND_WIDTH = "permanent_island_width"
     private val HIDE_PERMANENT_ISLAND_LANDSCAPE = "hide_permanent_island_landscape"
 
     val isPermanentIslandEnabledFlow: Flow<Boolean> = dao.getSettingFlow(SHOW_PERMANENT_ISLAND)
         .map { it?.toBoolean() ?: false }
-
-    val permanentIslandWidthFlow: Flow<Int> = dao.getSettingFlow(PERMANENT_ISLAND_WIDTH)
-        .map { it?.toIntOrNull() ?: 0 }
 
     val hidePermanentIslandLandscapeFlow: Flow<Boolean> = dao.getSettingFlow(HIDE_PERMANENT_ISLAND_LANDSCAPE)
         .map { it?.toBoolean() ?: false }
 
     suspend fun setPermanentIslandEnabled(value: Boolean) {
         save(SHOW_PERMANENT_ISLAND, value.toString())
-    }
-
-    suspend fun setPermanentIslandWidth(value: Int) {
-        save(PERMANENT_ISLAND_WIDTH, value.toString())
     }
 
     suspend fun setHidePermanentIslandLandscape(value: Boolean) {
@@ -653,7 +645,9 @@ class AppPreferences(context: Context) {
     }
 
     companion object {
-        const val MIN_POSITION_Y = -24
+        // 0 = inside the status bar (HyperOS default); positive values move the
+        // island down for devices with unusual status-bar heights.
+        const val MIN_POSITION_Y = 0
         const val MAX_POSITION_Y = 48
     }
 }

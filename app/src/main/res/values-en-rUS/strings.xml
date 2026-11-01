@@ -434,6 +434,10 @@
     <string name="design_preview_time">9:41</string>
     <string name="design_preview_island_title">Ryx Isla</string>
     <string name="design_preview_island_text">Your island, your way</string>
+    <string name="design_preview_hint">Live preview on your screen</string>
+    <string name="design_preview_dimensions">%1$d × %2$d dp</string>
+    <string name="design_preview_now">NOW</string>
+    <string name="design_position_hint">0 dp keeps the island inside the status bar.</string>
     <string name="design_active">Active</string>
     <string name="design_history_desc">See the latest notifications shown by the island.</string>
     <string name="design_inspiration">Inspired by HyperOS and Hyper Bridge. Independent project.</string>
@@ -580,5 +584,7 @@
     <string name="changelog_inspiration_title">Inspiration</string>
     <string name="changelog_inspiration_desc">Ryx Isla is an independent project inspired by the HyperOS dynamic island and the Hyper Bridge project. It is not an official version and is not affiliated with Xiaomi. The previous upstream version history is no longer part of the app; only this attribution remains.</string>
     <string name="changelog_inspiration_link">View the project that inspired Ryx Isla</string>
+    <string name="permanent_island_hide_landscape_desc">The capsule disappears when the device is rotated.</string>
+    <string name="permanent_island_preview_note">The preview uses the island\'s real size and position.</string>
 </resources>
 

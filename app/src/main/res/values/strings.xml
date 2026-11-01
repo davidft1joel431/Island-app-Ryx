@@ -48,6 +48,8 @@
     <string name="permanent_island_screen_desc">Mantiene una c&#225;psula vac&#237;a en la pantalla. Al llegar una notificaci&#243;n, muestra su informaci&#243;n y vuelve a la c&#225;psula al cerrarse o terminar su tiempo.</string>
     <string name="permanent_island_width">Ancho de la Isla</string>
     <string name="permanent_island_hide_landscape">Ocultar en Horizontal</string>
+    <string name="permanent_island_hide_landscape_desc">La cápsula desaparece al girar el dispositivo.</string>
+    <string name="permanent_island_preview_note">La vista previa usa el tamaño y la posición reales de la isla.</string>
     <string name="group_about">Sobre la aplicación</string>
     <string name="developer">David Joel</string>
     <string name="developer_subtitle">Creador de Ryx Isla · Perú</string>
@@ -368,6 +370,10 @@
     <string name="design_preview_time">9:41</string>
     <string name="design_preview_island_title">Ryx Isla</string>
     <string name="design_preview_island_text">Tu isla, a tu manera</string>
+    <string name="design_preview_hint">Vista previa real en tu pantalla</string>
+    <string name="design_preview_dimensions">%1$d × %2$d dp</string>
+    <string name="design_preview_now">AHORA</string>
+    <string name="design_position_hint">0 dp mantiene la isla dentro de la barra de estado.</string>
     <string name="design_active">Activo</string>
     <string name="design_history_desc">Consulta las últimas notificaciones que mostró la isla.</string>
     <string name="design_inspiration">Inspirado en HyperOS y en Hyper Bridge. Proyecto independiente.</string>

@@ -18,7 +18,6 @@ sealed interface Screen : NavKey {
     @Serializable data object Backup : Screen
     @Serializable data class ImportPreview(val backup: HyperBridgeBackup) : Screen
     @Serializable data class NavCustomization(val packageName: String?) : Screen
-    @Serializable data object EngineSettings : Screen
     @Serializable data object AppPriority : Screen
     @Serializable data object GlobalBlocklist : Screen
     @Serializable data object BlocklistApps : Screen

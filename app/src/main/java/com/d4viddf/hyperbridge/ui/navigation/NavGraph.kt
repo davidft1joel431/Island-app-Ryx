@@ -13,7 +13,6 @@ import com.d4viddf.hyperbridge.ui.screens.settings.AppPriorityScreen
 import com.d4viddf.hyperbridge.ui.screens.settings.BackupSettingsScreen
 import com.d4viddf.hyperbridge.ui.screens.settings.BlocklistAppListScreen
 import com.d4viddf.hyperbridge.ui.screens.settings.ChangelogHistoryScreen
-import com.d4viddf.hyperbridge.ui.screens.settings.EngineSettingsScreen
 import com.d4viddf.hyperbridge.ui.screens.settings.GlobalBlocklistScreen
 import com.d4viddf.hyperbridge.ui.screens.settings.GlobalSettingsScreen
 import com.d4viddf.hyperbridge.ui.screens.settings.ImportPreviewScreen
@@ -72,7 +71,6 @@ fun mainNavGraph(
             onNavSettingsClick = { navigator.navigate(Screen.NavCustomization(null)) },
             onInlineReplyClick = { navigator.navigate(Screen.ReplyCustomization) },
             onIslandSettingsClick = { navigator.navigate(Screen.IslandSettings) },
-            onEngineSettingsClick = { navigator.navigate(Screen.EngineSettings) },
             onDndSettingsClick = { navigator.navigate(Screen.DndSettings) },
             onPermanentIslandClick = { navigator.navigate(Screen.PermanentIslandConfig) }
         )
@@ -91,9 +89,6 @@ fun mainNavGraph(
             onBack = { navigator.goBack() },
             packageName = key.packageName
         )
-    }
-    entry<Screen.EngineSettings> {
-        EngineSettingsScreen(onBack = { navigator.goBack() })
     }
     entry<Screen.Setup> {
         SetupHealthScreen(onBack = { navigator.goBack() })

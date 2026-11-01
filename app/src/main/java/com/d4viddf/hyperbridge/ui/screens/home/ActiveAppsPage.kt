@@ -64,6 +64,7 @@ fun ActiveAppsPage(
 
     Scaffold(
         // [FIX] Only respect Status Bars here. The bottom nav bar space is handled by the parent HomeScreen.
+        containerColor = androidx.compose.ui.graphics.Color.Transparent,
         contentWindowInsets = WindowInsets.statusBars,
         topBar = {
             TopAppBar(
@@ -81,7 +82,7 @@ fun ActiveAppsPage(
                     }
                 }
                 },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface)
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = androidx.compose.ui.graphics.Color.Transparent)
             )
         }
     ) { padding ->

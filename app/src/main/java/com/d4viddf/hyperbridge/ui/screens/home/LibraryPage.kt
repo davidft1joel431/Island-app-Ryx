@@ -64,6 +64,7 @@ fun LibraryPage(
 
     Scaffold(
         // [FIX] Only respect Status Bars here.
+        containerColor = androidx.compose.ui.graphics.Color.Transparent,
         contentWindowInsets = WindowInsets.statusBars,
         topBar = {
             TopAppBar(
@@ -82,7 +83,7 @@ fun LibraryPage(
                     }
                 }
                 },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface)
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = androidx.compose.ui.graphics.Color.Transparent)
             )
         }
     ) { padding ->
