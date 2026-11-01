@@ -47,12 +47,13 @@ jobs:
           tag_name: v${{ steps.version.outputs.version }}
           name: Ryx Isla v${{ steps.version.outputs.version }}
           body: |
-            Ryx Isla 1.0.7.
+            Ryx Isla 1.1.0.
 
-            - Diseño renovado con vista previa en vivo, posición vertical, alineación y animaciones de la isla.
-            - Historial local de notificaciones, con opción de borrarlo cuando quieras.
-            - Animaciones fluidas inspiradas en HyperOS en la isla y en las transiciones de la app.
-            - Nuevos iconos adaptativos, temáticos y de notificación.
-            - APK de release optimizado: mucho más ligero y con menos consumo de datos.
+            - Acumulación permanente: las notificaciones no expiran ni se borran solas.
+            - Círculo lateral con el icono de la app y contador; al pulsarlo se expande la isla.
+            - Detección de apps clonadas y duales por su nombre visible.
+            - Indicadores del sistema en vivo: linterna, hotspot, Wi-Fi, datos, internet, Bluetooth, grabadora y música.
+            - Actualización instantánea de los indicadores mediante receptores y callbacks.
+            - Vista previa sincronizada con el círculo lateral y los indicadores del sistema.
             - Creador: David Joel, Perú. Inspirado en HyperOS y en Hyper Bridge; proyecto independiente bajo Apache 2.0.
           files: RyxIsla.apk

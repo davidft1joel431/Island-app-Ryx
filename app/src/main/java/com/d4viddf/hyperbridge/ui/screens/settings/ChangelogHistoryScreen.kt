@@ -67,7 +67,8 @@ data class VersionLog(val version: String, val titleRes: Int, val textRes: Int, 
 fun ChangelogHistoryScreen(onBack: () -> Unit) {
     val uriHandler = LocalUriHandler.current
     val ryxHistory = listOf(
-        VersionLog("1.0.9", R.string.title_1_0_9, R.string.changelog_1_0_9, isLatest = true),
+        VersionLog("1.1.0", R.string.title_1_1_0, R.string.changelog_1_1_0, isLatest = true),
+        VersionLog("1.0.9", R.string.title_1_0_9, R.string.changelog_1_0_9),
         VersionLog("1.0.8", R.string.title_1_0_8, R.string.changelog_1_0_8),
         VersionLog("1.0.7", R.string.title_1_0_7, R.string.changelog_1_0_7),
         VersionLog("1.0.6", R.string.title_1_0_6, R.string.changelog_1_0_6),

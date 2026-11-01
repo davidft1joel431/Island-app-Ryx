@@ -579,6 +579,13 @@
     <string name="changelog_1_0_5">Ryx Isla now uses a single floating island engine on any Android 15+ ROM. The permanent island appears as a capsule and returns when a notification closes. The setup wizard checks the overlay permission.</string>
     <string name="title_1_0_6">Updates and full compatibility</string>
     <string name="changelog_1_0_6">Adds an update checker that always consults Ryx Isla\'s official GitHub repository. Removes every HyperOS/Xiaomi requirement: the floating island works on all Android 15+ devices. Improves manufacturer/ROM detection and fixes the app and notification icons.</string>
+    <string name="title_1_1_0">Stacking, clones and system</string>
+    <string name="changelog_1_1_0">• &lt;b&gt;Permanent stacking:&lt;/b&gt; notifications no longer expire or disappear on their own; they stack and you choose which one to open.
+• &lt;b&gt;Side circle:&lt;/b&gt; the island shows the app icon on the right with a counter; tap it to select and expand.
+• &lt;b&gt;Clones by name:&lt;/b&gt; detects cloned and dual apps by their visible name and routes them like the original app.
+• &lt;b&gt;System functions:&lt;/b&gt; flashlight, hotspot, Wi-Fi, data, internet, Bluetooth, recorder and music with instant updates.
+• &lt;b&gt;Synced preview:&lt;/b&gt; the side circle and system indicators match the real island.
+• &lt;b&gt;Stability:&lt;/b&gt; no duplicate islands, no automatic expiry and cleaner animations.</string>
     <string name="title_1_0_9">History, clones and stacking</string>
     <string name="changelog_1_0_9">• &lt;b&gt;Full history:&lt;/b&gt; records notifications from every app, system apps and cloned apps, including each message in a conversation.
 • &lt;b&gt;Cloned apps:&lt;/b&gt; the island recognizes clones and work profiles with the right icon and name.

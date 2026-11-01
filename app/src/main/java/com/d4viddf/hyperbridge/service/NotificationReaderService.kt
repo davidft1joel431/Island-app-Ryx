@@ -58,6 +58,10 @@ class NotificationReaderService : NotificationListenerService() {
             ".clone", ".clon", ".dual", ".dualspace", ".parallel", ".second",
             ".secondspace", ".work", ".multi", ".appclone", "_clone", "_dual", "_parallel"
         )
+        private val CLONE_NAME_MARKERS = listOf(
+            "clon", "clone", "dual", "parallel", "paralela", "segunda",
+            "second", "gemelo", "espejo"
+        )
     }
 
     private val TAG = "HyperBridgeDebug"
@@ -1101,10 +1105,39 @@ class NotificationReaderService : NotificationListenerService() {
 
     private fun isAppAllowed(packageName: String): Boolean {
         if (allowedPackageSet.contains(packageName)) return true
+
         // Cloned / dual apps can expose a derived package id. Match the base app
         // so enabling the original also bridges its clone.
         val base = cloneBasePackage(packageName)
-        return allowedPackageSet.any { allowed -> cloneBasePackage(allowed) == base }
+        if (allowedPackageSet.any { allowed -> cloneBasePackage(allowed) == base }) return true
+
+        // Many cloners keep the original package id and only rename the label
+        // ("WhatsApp clon", "Clon de WhatsApp", "Parallel WhatsApp"...). Look at
+        // the visible name and bridge the clone when its base app is enabled.
+        val label = getCachedAppLabel(packageName)
+        if (label.isBlank() || !hasCloneMarker(label)) return false
+        val baseLabel = stripCloneMarker(label)
+        if (baseLabel.isBlank()) return false
+        return allowedPackageSet.any { allowed ->
+            getCachedAppLabel(allowed).contains(baseLabel, ignoreCase = true)
+        }
+    }
+
+    private fun hasCloneMarker(label: String): Boolean =
+        CLONE_NAME_MARKERS.any { label.contains(it, ignoreCase = true) }
+
+    private fun stripCloneMarker(label: String): String {
+        var result = label
+        // Longest markers first so "clone" is not half-removed as "clon".
+        for (marker in CLONE_NAME_MARKERS.sortedByDescending { it.length }) {
+            result = result.replace(marker, " ", ignoreCase = true)
+        }
+        result = result.replace(Regex("\\s+"), " ")
+            .trim(' ', '-', '_', ':', '.', '(', ')')
+        val connectors = setOf("de", "del", "la", "el", "los", "las", "app", "para")
+        return result.split(' ')
+            .filter { it.isNotBlank() && it.lowercase() !in connectors }
+            .joinToString(" ")
     }
 
     private fun cloneBasePackage(packageName: String): String {
