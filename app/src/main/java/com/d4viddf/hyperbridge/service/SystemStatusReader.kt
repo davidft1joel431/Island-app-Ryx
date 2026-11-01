@@ -35,7 +35,12 @@ class SystemStatusReader(
     context: Context,
     private val onChanged: (List<Function>) -> Unit
 ) {
-    data class Function(val id: String, val iconRes: Int, val label: String)
+    data class Function(
+        val id: String,
+        val iconRes: Int,
+        val label: String,
+        val badge: Int = 0
+    )
 
     private val appContext = context.applicationContext
     private val mainHandler = Handler(Looper.getMainLooper())
@@ -184,12 +189,13 @@ class SystemStatusReader(
         val wifiManager = appContext.getSystemService(Context.WIFI_SERVICE) as? WifiManager
         val wifiOn = runCatching { wifiManager?.isWifiEnabled == true }.getOrDefault(false)
 
-        val hotspotOn = runCatching {
-            val method = wifiManager?.javaClass?.getMethod("isWifiApEnabled") ?: return@runCatching false
-            method.invoke(wifiManager) as? Boolean ?: false
-        }.getOrDefault(false)
-        if (hotspotOn) {
-            active += Function("hotspot", R.drawable.ic_system_hotspot, "Zona Wi-Fi")
+        if (isHotspotEnabled(wifiManager)) {
+            active += Function(
+                "hotspot",
+                R.drawable.ic_system_hotspot,
+                "Zona Wi-Fi",
+                badge = hotspotClientCount()
+            )
         }
 
         if (wifiOn) {
@@ -237,6 +243,40 @@ class SystemStatusReader(
         return active
     }
 
+    /**
+     * Hidden framework APIs still expose the hotspot state on most ROMs. Both
+     * entry points are guarded because Android may block either one.
+     */
+    private fun isHotspotEnabled(wifiManager: WifiManager?): Boolean {
+        val manager = wifiManager ?: return false
+        runCatching {
+            val enabled = manager.javaClass.getMethod("isWifiApEnabled").invoke(manager) as? Boolean
+            if (enabled != null) return enabled
+        }
+        return runCatching {
+            val state = manager.javaClass.getMethod("getWifiApState").invoke(manager) as? Int
+            state == WIFI_AP_STATE_ENABLED
+        }.getOrDefault(false)
+    }
+
+    /**
+     * Connected hotspot clients as reported by the ARP table. This is the only
+     * source available to a normal app; when the ROM hides it, the badge is
+     * simply omitted.
+     */
+    private fun hotspotClientCount(): Int = runCatching {
+        val arp = java.io.File("/proc/net/arp")
+        if (!arp.canRead()) return@runCatching 0
+        arp.useLines { lines ->
+            lines.drop(1).count { line ->
+                val parts = line.trim().split(Regex("\\s+"))
+                parts.size >= 4 &&
+                    parts[0] != "0.0.0.0" &&
+                    parts[3].equals("0x2", ignoreCase = true)
+            }
+        }
+    }.getOrDefault(0)
+
     private fun scheduleEmit() {
         mainHandler.removeCallbacks(emitTask)
         mainHandler.postDelayed(emitTask, EMIT_DEBOUNCE_MS)
@@ -274,6 +314,7 @@ class SystemStatusReader(
 
     private companion object {
         const val WIFI_AP_STATE_CHANGED = "android.net.wifi.WIFI_AP_STATE_CHANGED"
+        const val WIFI_AP_STATE_ENABLED = 13
         const val EMIT_DEBOUNCE_MS = 120L
     }
 }

@@ -47,13 +47,14 @@ jobs:
           tag_name: v${{ steps.version.outputs.version }}
           name: Ryx Isla v${{ steps.version.outputs.version }}
           body: |
-            Ryx Isla 1.1.0.
+            Ryx Isla 1.1.1.
 
-            - Acumulación permanente: las notificaciones no expiran ni se borran solas.
-            - Círculo lateral con el icono de la app y contador; al pulsarlo se expande la isla.
-            - Detección de apps clonadas y duales por su nombre visible.
-            - Indicadores del sistema en vivo: linterna, hotspot, Wi-Fi, datos, internet, Bluetooth, grabadora y música.
-            - Actualización instantánea de los indicadores mediante receptores y callbacks.
-            - Vista previa sincronizada con el círculo lateral y los indicadores del sistema.
+            - La cápsula contraída crece para notificaciones en espera y funciones del sistema activas.
+            - Nombre de la app a la izquierda y contador de esa app a la derecha.
+            - Círculo animado del icono en espera saliendo del borde derecho.
+            - Sistema de gestos completo: arriba/abajo cierra, izquierda/derecha cambia de app, toque expande o abre.
+            - Umbral de gesto de 30 dp o fling rápido para detectar mejor el dedo.
+            - Hotspot con número de dispositivos conectados en el icono.
+            - Detección de clones reforzada por nombre y tokens del paquete.
             - Creador: David Joel, Perú. Inspirado en HyperOS y en Hyper Bridge; proyecto independiente bajo Apache 2.0.
           files: RyxIsla.apk
