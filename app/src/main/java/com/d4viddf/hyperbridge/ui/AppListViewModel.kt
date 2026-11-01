@@ -308,7 +308,10 @@ class AppListViewModel(application: Application) : AndroidViewModel(application)
 
                 AppInfo(name, pkg, icon, category = cat, isInstalled = true)
             } catch (e: Exception) { null }
-        }.distinctBy { it.packageName }.sortedWith(compareBy(String.CASE_INSENSITIVE_ORDER) { it.name })
+        // Keep cloned apps: some cloners reuse the original package id and only
+        // change the visible name ("WhatsApp clon", "Clon de WhatsApp"...).
+        }.distinctBy { "${it.packageName}#${it.name}" }
+            .sortedWith(compareBy(String.CASE_INSENSITIVE_ORDER) { it.name })
     }
 
     private fun Drawable.toBitmap(): Bitmap {

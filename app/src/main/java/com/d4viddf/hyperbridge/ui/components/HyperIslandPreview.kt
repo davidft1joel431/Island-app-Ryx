@@ -372,12 +372,15 @@ private fun HyperIslandMock(
             }
         }
 
-        CameraLens(
-            modifier = Modifier
-                .align(Alignment.CenterEnd)
-                .padding(end = HyperIslandSpec.CAMERA_END_MARGIN_DP.dp)
-                .size(HyperIslandSpec.CAMERA_DOT_DP.dp)
-        )
+        // The notification capsule replaces the lens with the app circle.
+        if (expanded || permanent) {
+            CameraLens(
+                modifier = Modifier
+                    .align(Alignment.CenterEnd)
+                    .padding(end = HyperIslandSpec.CAMERA_END_MARGIN_DP.dp)
+                    .size(HyperIslandSpec.CAMERA_DOT_DP.dp)
+            )
+        }
     }
 }
 
@@ -386,7 +389,7 @@ private fun CollapsedIslandContent() {
     Row(
         modifier = Modifier
             .fillMaxSize()
-            .padding(start = 11.dp, end = 28.dp),
+            .padding(start = 11.dp, end = 3.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Box(
@@ -416,6 +419,40 @@ private fun CollapsedIslandContent() {
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier.weight(1f, fill = false)
         )
+        Spacer(Modifier.width(6.dp))
+        // HyperOS-style app circle on the right; tap expands the island.
+        Box(contentAlignment = Alignment.TopEnd) {
+            Box(
+                modifier = Modifier
+                    .size(22.dp)
+                    .clip(CircleShape)
+                    .background(IslandTile)
+                    .border(1.dp, IslandStroke, CircleShape),
+                contentAlignment = Alignment.Center
+            ) {
+                Image(
+                    painter = painterResource(R.drawable.ryx_logo),
+                    contentDescription = null,
+                    modifier = Modifier.size(16.dp),
+                    contentScale = ContentScale.Fit
+                )
+            }
+            Box(
+                modifier = Modifier
+                    .size(12.dp)
+                    .clip(CircleShape)
+                    .background(BrandGreen)
+                    .border(1.dp, IslandBlack, CircleShape),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = "3",
+                    color = IslandBlack,
+                    fontSize = 7.sp,
+                    fontWeight = FontWeight.Black
+                )
+            }
+        }
     }
 }
 
@@ -448,6 +485,12 @@ private fun PermanentIslandContent(animationsEnabled: Boolean) {
                 }
                 .background(BrandGreen, CircleShape)
         )
+        Spacer(Modifier.width(9.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+            SystemFunctionBadge(R.drawable.ic_system_flashlight, 18.dp)
+            SystemFunctionBadge(R.drawable.ic_system_wifi, 18.dp)
+            SystemFunctionBadge(R.drawable.ic_system_bluetooth, 18.dp)
+        }
     }
 }
 
@@ -509,6 +552,33 @@ private fun ExpandedIslandContent() {
                 overflow = TextOverflow.Ellipsis
             )
         }
+        Spacer(Modifier.width(8.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+            SystemFunctionBadge(R.drawable.ic_system_flashlight, 24.dp)
+            SystemFunctionBadge(R.drawable.ic_system_hotspot, 24.dp)
+            SystemFunctionBadge(R.drawable.ic_system_wifi, 24.dp)
+            SystemFunctionBadge(R.drawable.ic_system_data, 24.dp)
+            SystemFunctionBadge(R.drawable.ic_system_music, 24.dp)
+        }
+    }
+}
+
+@Composable
+private fun SystemFunctionBadge(iconRes: Int, size: Dp) {
+    Box(
+        modifier = Modifier
+            .size(size)
+            .clip(CircleShape)
+            .background(IslandTile)
+            .border(1.dp, IslandStroke, CircleShape),
+        contentAlignment = Alignment.Center
+    ) {
+        Image(
+            painter = painterResource(iconRes),
+            contentDescription = null,
+            modifier = Modifier.size(size * 0.62f),
+            contentScale = ContentScale.Fit
+        )
     }
 }
 
