@@ -62,6 +62,11 @@ class NotificationReaderService : NotificationListenerService() {
             "clon", "clone", "dual", "parallel", "paralela", "segunda",
             "second", "gemelo", "espejo"
         )
+        private val GENERIC_TOKENS = setOf(
+            "com", "net", "org", "android", "app", "apps", "mobile", "plus",
+            "free", "lite", "pro", "the", "and", "for", "with", "main",
+            "launcher", "service", "system", "studio", "google", "version"
+        )
     }
 
     private val TAG = "HyperBridgeDebug"
@@ -1111,16 +1116,50 @@ class NotificationReaderService : NotificationListenerService() {
         val base = cloneBasePackage(packageName)
         if (allowedPackageSet.any { allowed -> cloneBasePackage(allowed) == base }) return true
 
+        val label = getCachedAppLabel(packageName)
+
         // Many cloners keep the original package id and only rename the label
         // ("WhatsApp clon", "Clon de WhatsApp", "Parallel WhatsApp"...). Look at
         // the visible name and bridge the clone when its base app is enabled.
-        val label = getCachedAppLabel(packageName)
-        if (label.isBlank() || !hasCloneMarker(label)) return false
-        val baseLabel = stripCloneMarker(label)
-        if (baseLabel.isBlank()) return false
-        return allowedPackageSet.any { allowed ->
-            getCachedAppLabel(allowed).contains(baseLabel, ignoreCase = true)
+        if (label.isNotBlank() && hasCloneMarker(label)) {
+            val baseLabel = stripCloneMarker(label)
+            if (baseLabel.isNotBlank() && allowedPackageSet.any { allowed ->
+                    getCachedAppLabel(allowed).contains(baseLabel, ignoreCase = true)
+                }
+            ) {
+                return true
+            }
         }
+
+        // Finally compare the name and package tokens: clones often embed the
+        // original brand in the label or id ("GBWhatsApp", "com.gbwhatsapp",
+        // "insta pro"...), even when the clone marker is missing.
+        return matchesEnabledAppByName(packageName, label)
+    }
+
+    private fun matchesEnabledAppByName(packageName: String, label: String): Boolean {
+        val cloneTokens = (significantTokens(label) + significantTokens(packageName)).toSet()
+        if (cloneTokens.isEmpty()) return false
+        return allowedPackageSet.any { allowed ->
+            if (allowed == packageName) return@any false
+            val allowedTokens =
+                significantTokens(getCachedAppLabel(allowed)) + significantTokens(allowed)
+            cloneTokens.any { cloneToken ->
+                allowedTokens.any { allowedToken -> relatedTokens(cloneToken, allowedToken) }
+            }
+        }
+    }
+
+    private fun significantTokens(value: String): List<String> =
+        value.lowercase()
+            .replace(Regex("[^a-z0-9]+"), " ")
+            .split(' ')
+            .filter { it.length >= 4 && it !in GENERIC_TOKENS }
+
+    private fun relatedTokens(first: String, second: String): Boolean {
+        if (first == second) return true
+        if (first.length < 4 || second.length < 4) return false
+        return first.contains(second) || second.contains(first)
     }
 
     private fun hasCloneMarker(label: String): Boolean =

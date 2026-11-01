@@ -581,6 +581,14 @@
     <string name="update_source_note">Las actualizaciones se publican en github.com/davidft1joel431/Island-app-Ryx</string>
     <string name="title_1_0_6">Actualizaciones y compatibilidad total</string>
     <string name="changelog_1_0_6">Se a&#241;ade un comprobador de actualizaciones que consulta siempre el repositorio oficial de Ryx Isla en GitHub. Se elimina cualquier requisito de HyperOS o Xiaomi: la isla flotante funciona en todos los dispositivos Android 15+. Se mejora la detecci&#243;n de fabricante y ROM, y se corrigen el icono de la app y el icono de las notificaciones.</string>
+    <string name="title_1_1_1">Cápsula, gestos y contadores</string>
+    <string name="changelog_1_1_1">• &lt;b&gt;Cápsula que crece:&lt;/b&gt; la isla contraída aumenta su ancho para las notificaciones en espera y para las funciones del sistema activas.
+• &lt;b&gt;Orden pedido:&lt;/b&gt; nombre de la app a la izquierda y contador de notificaciones de esa app a la derecha.
+• &lt;b&gt;Círculo animado:&lt;/b&gt; el icono de la app en espera aparece saliendo del borde derecho con animación.
+• &lt;b&gt;Gestos completos:&lt;/b&gt; deslizar arriba/abajo cierra, izquierda/derecha cambia de app y tocar expande o abre.
+• &lt;b&gt;Detección de dedo:&lt;/b&gt; umbral de 30 dp o gesto rápido con velocidad, más sensible que antes.
+• &lt;b&gt;Hotspot:&lt;/b&gt; muestra el número de dispositivos conectados en el icono.
+• &lt;b&gt;Clones:&lt;/b&gt; detección reforzada por nombre y tokens del paquete.</string>
     <string name="title_1_1_0">Acumulación, clones y sistema</string>
     <string name="changelog_1_1_0">• &lt;b&gt;Acumulación permanente:&lt;/b&gt; las notificaciones ya no expiran ni se borran solas; se apilan y puedes abrir la que quieras.
 • &lt;b&gt;Círculo lateral:&lt;/b&gt; la isla muestra a la derecha el icono de la app con contador; al pulsarlo se selecciona y se expande.

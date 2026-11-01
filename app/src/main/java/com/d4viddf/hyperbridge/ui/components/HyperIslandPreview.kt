@@ -488,8 +488,8 @@ private fun PermanentIslandContent(animationsEnabled: Boolean) {
         Spacer(Modifier.width(9.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
             SystemFunctionBadge(R.drawable.ic_system_flashlight, 18.dp)
+            SystemFunctionBadge(R.drawable.ic_system_hotspot, 18.dp, badge = 2)
             SystemFunctionBadge(R.drawable.ic_system_wifi, 18.dp)
-            SystemFunctionBadge(R.drawable.ic_system_bluetooth, 18.dp)
         }
     }
 }
@@ -555,7 +555,7 @@ private fun ExpandedIslandContent() {
         Spacer(Modifier.width(8.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(5.dp)) {
             SystemFunctionBadge(R.drawable.ic_system_flashlight, 24.dp)
-            SystemFunctionBadge(R.drawable.ic_system_hotspot, 24.dp)
+            SystemFunctionBadge(R.drawable.ic_system_hotspot, 24.dp, badge = 2)
             SystemFunctionBadge(R.drawable.ic_system_wifi, 24.dp)
             SystemFunctionBadge(R.drawable.ic_system_data, 24.dp)
             SystemFunctionBadge(R.drawable.ic_system_music, 24.dp)
@@ -564,21 +564,41 @@ private fun ExpandedIslandContent() {
 }
 
 @Composable
-private fun SystemFunctionBadge(iconRes: Int, size: Dp) {
-    Box(
-        modifier = Modifier
-            .size(size)
-            .clip(CircleShape)
-            .background(IslandTile)
-            .border(1.dp, IslandStroke, CircleShape),
-        contentAlignment = Alignment.Center
-    ) {
-        Image(
-            painter = painterResource(iconRes),
-            contentDescription = null,
-            modifier = Modifier.size(size * 0.62f),
-            contentScale = ContentScale.Fit
-        )
+private fun SystemFunctionBadge(iconRes: Int, size: Dp, badge: Int? = null) {
+    Box {
+        Box(
+            modifier = Modifier
+                .size(size)
+                .clip(CircleShape)
+                .background(IslandTile)
+                .border(1.dp, IslandStroke, CircleShape),
+            contentAlignment = Alignment.Center
+        ) {
+            Image(
+                painter = painterResource(iconRes),
+                contentDescription = null,
+                modifier = Modifier.size(size * 0.62f),
+                contentScale = ContentScale.Fit
+            )
+        }
+        if (badge != null) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .size(size * 0.62f)
+                    .clip(CircleShape)
+                    .background(BrandGreen)
+                    .border(1.dp, IslandBlack, CircleShape),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = if (badge > 9) "9+" else badge.toString(),
+                    color = IslandBlack,
+                    fontSize = (size.value * 0.28f).sp,
+                    fontWeight = FontWeight.Black
+                )
+            }
+        }
     }
 }
 
