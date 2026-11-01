@@ -157,7 +157,7 @@ class WidgetOverlayService : Service() {
     @RequiresPermission(Manifest.permission.POST_NOTIFICATIONS)
     private fun postWidgetNotification(notificationId: Int, data: HyperIslandData) {
         val builder = NotificationCompat.Builder(this, WIDGET_CHANNEL_ID)
-            .setSmallIcon(R.drawable.ic_launcher_foreground)
+            .setSmallIcon(R.drawable.ic_stat_island)
             .setContentTitle("Widget Overlay")
             .setPriority(NotificationCompat.PRIORITY_LOW) // Low priority = no sound/peek
             .addExtras(data.resources)

@@ -66,12 +66,12 @@ class LiveUpdateTranslator(
             if (navStartBitmap != null) {
                 builder.setSmallIcon(IconCompat.createWithBitmap(navStartBitmap))
             } else {
-                builder.setSmallIcon(original?.smallIcon?.let { IconCompat.createFromIcon(context, it) } ?: IconCompat.createWithResource(context, R.drawable.ic_launcher_foreground))
+                builder.setSmallIcon(original?.smallIcon?.let { IconCompat.createFromIcon(context, it) } ?: IconCompat.createWithResource(context, R.drawable.ic_stat_island))
             }
         } else {
             // Standard fallback for non-navigation
             builder.setColor(original?.color ?: 0)
-            builder.setSmallIcon(original?.smallIcon?.let { IconCompat.createFromIcon(context, it) } ?: IconCompat.createWithResource(context, R.drawable.ic_launcher_foreground))
+            builder.setSmallIcon(original?.smallIcon?.let { IconCompat.createFromIcon(context, it) } ?: IconCompat.createWithResource(context, R.drawable.ic_stat_island))
         }
 
         // --- ACTIONS ---

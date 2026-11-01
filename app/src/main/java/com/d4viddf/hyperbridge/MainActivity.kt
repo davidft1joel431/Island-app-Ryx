@@ -7,9 +7,11 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.appcompat.app.AppCompatActivity
 import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
@@ -54,6 +56,9 @@ import kotlinx.coroutines.launch
 
 import androidx.activity.enableEdgeToEdge
 
+private val RyxEmphasizedDecelerate = CubicBezierEasing(0.05f, 0.7f, 0.1f, 1f)
+private val RyxEmphasizedAccelerate = CubicBezierEasing(0.3f, 0f, 0.8f, 0.15f)
+
 class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -85,7 +90,7 @@ fun MainRootNavigation(onExit: () -> Unit) {
     }
     @Suppress("DEPRECATION")
     val currentVersionCode = packageInfo?.longVersionCode?.toInt() ?: 0
-    val currentVersionName = packageInfo?.versionName ?: "0.5.0"
+    val currentVersionName = packageInfo?.versionName ?: "1.0.7"
 
     val isSetupComplete by produceState<Boolean?>(initialValue = null) {
         preferences.isSetupComplete.collect { value = it }
@@ -179,22 +184,38 @@ private fun MainNavigationContent(
             }
         },
         transitionSpec = {
-            slideInHorizontally(
-                initialOffsetX = { it },
-                animationSpec = tween(400)
-            ) + fadeIn(animationSpec = tween(400)) togetherWith slideOutHorizontally(
-                targetOffsetX = { -it / 3 },
-                animationSpec = tween(400)
-            ) + fadeOut(animationSpec = tween(400))
+            (
+                slideInHorizontally(
+                    initialOffsetX = { it / 5 },
+                    animationSpec = tween(420, easing = RyxEmphasizedDecelerate)
+                ) + fadeIn(animationSpec = tween(280, delayMillis = 50)) +
+                    scaleIn(
+                        initialScale = 0.96f,
+                        animationSpec = tween(420, easing = RyxEmphasizedDecelerate)
+                    )
+                ) togetherWith (
+                slideOutHorizontally(
+                    targetOffsetX = { -it / 12 },
+                    animationSpec = tween(300, easing = RyxEmphasizedAccelerate)
+                ) + fadeOut(animationSpec = tween(220))
+                )
         },
         popTransitionSpec = {
-            slideInHorizontally(
-                initialOffsetX = { -it / 3 },
-                animationSpec = tween(400)
-            ) + fadeIn(animationSpec = tween(400)) togetherWith slideOutHorizontally(
-                targetOffsetX = { it },
-                animationSpec = tween(400)
-            ) + fadeOut(animationSpec = tween(400))
+            (
+                slideInHorizontally(
+                    initialOffsetX = { -it / 5 },
+                    animationSpec = tween(420, easing = RyxEmphasizedDecelerate)
+                ) + fadeIn(animationSpec = tween(280, delayMillis = 50)) +
+                    scaleIn(
+                        initialScale = 0.96f,
+                        animationSpec = tween(420, easing = RyxEmphasizedDecelerate)
+                    )
+                ) togetherWith (
+                slideOutHorizontally(
+                    targetOffsetX = { it / 12 },
+                    animationSpec = tween(300, easing = RyxEmphasizedAccelerate)
+                ) + fadeOut(animationSpec = tween(220))
+                )
         },
         predictivePopTransitionSpec = { swipeEdge ->
             val origin = if (swipeEdge == BackEventCompat.EDGE_LEFT) {
@@ -204,11 +225,13 @@ private fun MainNavigationContent(
             }
             EnterTransition.None togetherWith (
                 scaleOut(
-                    targetScale = 0.86f,
-                    transformOrigin = origin
+                    targetScale = 0.88f,
+                    transformOrigin = origin,
+                    animationSpec = tween(260, easing = RyxEmphasizedAccelerate)
                 ) + slideOutHorizontally(
-                    targetOffsetX = { if (swipeEdge == BackEventCompat.EDGE_LEFT) -it / 30 else it / 30 }
-                ) + fadeOut()
+                    targetOffsetX = { if (swipeEdge == BackEventCompat.EDGE_LEFT) -it / 30 else it / 30 },
+                    animationSpec = tween(260, easing = RyxEmphasizedAccelerate)
+                ) + fadeOut(animationSpec = tween(180))
             )
         },
         modifier = Modifier
@@ -219,7 +242,7 @@ private fun MainNavigationContent(
     if (showChangelog) {
         ChangelogSheet(
             currentVersionName = currentVersionName,
-            changelogText = stringResource(R.string.changelog_1_0_6),
+            changelogText = stringResource(R.string.changelog_1_0_7),
             onDismiss = {
                 showChangelog = false
                 scope.launch {

@@ -23,11 +23,21 @@ jobs:
           yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null
           "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-36" "build-tools;36.0.0"
       - uses: gradle/actions/setup-gradle@v4
+      - name: Prepare signing key
+        run: |
+          mkdir -p "$HOME/.android"
+          if [ ! -f "$HOME/.android/debug.keystore" ]; then
+            keytool -genkeypair -v \
+              -keystore "$HOME/.android/debug.keystore" \
+              -storepass android -alias androiddebugkey -keypass android \
+              -keyalg RSA -keysize 2048 -validity 10000 \
+              -dname "CN=Android Debug,O=Android,C=US"
+          fi
       - name: Build APK
         run: |
           chmod +x gradlew
-          ./gradlew clean assembleDebug --no-daemon --stacktrace
-          cp app/build/outputs/apk/debug/app-debug.apk RyxIsla.apk
+          ./gradlew clean assembleRelease --no-daemon --stacktrace
+          cp app/build/outputs/apk/release/app-release.apk RyxIsla.apk
       - name: Read app version
         id: version
         run: echo "version=$(grep -oP 'versionName = \"\K[^\"]+' app/build.gradle.kts)" >> "$GITHUB_OUTPUT"
@@ -37,11 +47,12 @@ jobs:
           tag_name: v${{ steps.version.outputs.version }}
           name: Ryx Isla v${{ steps.version.outputs.version }}
           body: |
-            Ryx Isla 1.0.6.
+            Ryx Isla 1.0.7.
 
-            - Comprobador de actualizaciones que consulta siempre github.com/davidft1joel431/Island-app-Ryx.
-            - Sin requisito de HyperOS ni Xiaomi: la isla flotante funciona en todos los dispositivos Android 15+.
-            - Detección mejorada de fabricante, ROM y versión de Android.
-            - Iconos corregidos para la app y para las notificaciones.
-            - Creador: David Joel, Perú. Basada en Hyper Bridge bajo Apache 2.0.
+            - Diseño renovado con vista previa en vivo, posición vertical, alineación y animaciones de la isla.
+            - Historial local de notificaciones, con opción de borrarlo cuando quieras.
+            - Animaciones fluidas inspiradas en HyperOS en la isla y en las transiciones de la app.
+            - Nuevos iconos adaptativos, temáticos y de notificación.
+            - APK de release optimizado: mucho más ligero y con menos consumo de datos.
+            - Creador: David Joel, Perú. Inspirado en HyperOS y en Hyper Bridge; proyecto independiente bajo Apache 2.0.
           files: RyxIsla.apk

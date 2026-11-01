@@ -32,6 +32,7 @@ import androidx.compose.material.icons.filled.Code
 import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Language
+import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Save
@@ -91,6 +92,7 @@ fun InfoScreen(
     onBehaviorClick: () -> Unit,
     onGlobalSettingsClick: () -> Unit,
     onHistoryClick: () -> Unit,
+    onNotificationHistoryClick: () -> Unit,
     onBlocklistClick: () -> Unit,
     onBackupClick: () -> Unit
 ) {
@@ -186,6 +188,7 @@ fun InfoScreen(
                     SettingsItemData(Icons.Default.SettingsSuggest, stringResource(R.string.system_setup), stringResource(R.string.system_setup_subtitle), onSetupClick),
                     SettingsItemData(Icons.Default.Tune, stringResource(R.string.island_behavior), stringResource(R.string.limit_strategy), onBehaviorClick),
                     SettingsItemData(Icons.Default.Palette, stringResource(R.string.global_settings), stringResource(R.string.island_appearance), onGlobalSettingsClick),
+                    SettingsItemData(Icons.Default.Notifications, stringResource(R.string.notification_history_title), stringResource(R.string.notification_history_subtitle), onNotificationHistoryClick),
                     SettingsItemData(Icons.Default.Block, stringResource(R.string.blocked_terms), stringResource(R.string.spoiler_subtitle), onBlocklistClick),
                     SettingsItemData(Icons.Default.Save, stringResource(R.string.backup_restore_title), stringResource(R.string.backup_section_title), onBackupClick)
                 )

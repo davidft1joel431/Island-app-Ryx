@@ -105,7 +105,6 @@
     <string name="whats_new_title">What\'s New in %s</string>
     <string name="awesome">Awesome!</string>
 
-
     <string name="island_behavior">Island Behavior</string>
     <string name="limit_strategy">Limit Strategy</string>
     <string name="limit_desc">What happens when you reach 9 islands?</string>
@@ -141,25 +140,6 @@
     </string-array>
 
     <string name="version_history">Version History</string>
-
-    <string name="title_0_2_0">The Information Update</string>
-    <string name="changelog_0_2_0">
-        • &lt;b&gt;Advanced Progress:&lt;/b&gt; Added support for "Step Progress" (e.g. 1 of 3) and progress bars with icons inside the notification shade.\n
-        • &lt;b&gt;Priority System:&lt;/b&gt; New "Island Behavior" settings. Choose between "Most Recent", "First Come", or a custom "App Priority" list.\n
-        • &lt;b&gt;Smart Filtering:&lt;/b&gt; Improved detection of duplicate notifications and grouped downloads.\n
-        • &lt;b&gt;Visual Improvements:&lt;/b&gt; Fixed layout issues with Navigation instructions.\n
-        • &lt;b&gt;Per-App Config:&lt;/b&gt; Customize Timeout and Floating behavior per app.
-    </string>
-
-    <string name="title_0_1_0">The Expressive Update</string>
-    <string name="changelog_0_1_0">
-        • &lt;b&gt;Major UI Overhaul:&lt;/b&gt; New Material 3 Expressive design with smooth animations.\n
-        • &lt;b&gt;Better Island:&lt;/b&gt; Text now appears on the right side. Added Green Tick for finished downloads.\n
-        • &lt;b&gt;Per-App Config:&lt;/b&gt; Select specific notification types (Music, Maps, Calls) per app.\n
-        • &lt;b&gt;Smart Filters:&lt;/b&gt; Blocks duplicate notifications and saves battery.\n
-        • &lt;b&gt;New Library:&lt;/b&gt; Filter apps by category and sort order.\n
-        • &lt;b&gt;Localization:&lt;/b&gt; Added Spanish support.
-    </string>
 
     <string name="priority_edu_title">Control the Island</string>
     <string name="priority_edu_desc">Choose how the island should behave when multiple notifications are active at the same time.</string>
@@ -242,28 +222,6 @@
         <item>audio</item>
     </string-array>
 
-    <string name="title_0_3_0">The Global Update</string>
-    <string name="changelog_0_3_0">
-        <b>Hidden Notification 👻</b>\n
-        New option to hide notifications from the system panel while keeping the Island active. Check Global Settings!\n\n
-        <b>New Languages 🌍</b>\n
-        • 🇧🇷 Portuguese (Brazil)\n
-        • 🇵🇱 Polish\n
-        • 🇰🇷 Korean\n\n
-        • 🇺🇦 Ukranian\n\n
-        <b>Navigation Customization 🧭</b>\n
-        You can now choose what information appears on the Left and Right sides of the Navigation Island (Distance, ETA, Instruction).\n\n
-        <b>Spoiler Protection 🛡️</b>\n
-        New "Blocked Terms" feature. Define words globally or per-app to prevent specific notifications from showing up on the Island.\n\n
-        <b>Call Improvements 📞</b>\n
-        Improved detection logic to support a wider range of VoIP and Dialer applications.\n\n
-        <b>Fixes &amp; Improvements 🛠️</b>\n
-        • Fixed a critical bug where the app would get stuck loading after a reboot.\n
-        • Fixed notifications sometimes showing raw package names (e.g. "com.google...") instead of content.\n
-        • Redesigned App Configuration sheet for better usability.\n
-        • Improved Compatibility Check screen with detailed device info.
-    </string>
-
     <string name="privacy_title">Privacy by design</string>
     <string name="privacy_desc">Ryx Isla processes everything directly on your phone\'s processor. Your notifications and personal data never leave your device. The only internet connection is used to check for updates in the official GitHub repository.</string>
 
@@ -307,27 +265,6 @@
 
     <string name="privacy_card_title">Offline First</string>
     <string name="privacy_card_desc">No internet connection required.</string>
-
-    <string name="title_0_3_1">Backup &amp; Polyglot Update</string>
-    <string name="changelog_0_3_1">
-        <b>Backup &amp; Restore 📦</b>\n
-        New power-user feature! Securely export your settings, blocklists, and app priorities to a .hbr file and restore them anytime.\n\n
-        <b>New Languages 🌍</b>\n
-        Added support for:\n
-        • 🇩🇪 German\n
-        • 🇷🇺 Russian\n
-        • 🇺🇦 Ukrainian (Improved)\n
-        <i>Plus: A new in-app Language Selector to change languages without affecting your system settings.</i>\n\n
-        <b>Visual Refresh 🎨</b>\n
-        The app has been updated with <b>Material 3 Expressive</b> design. Enjoy larger headers, rounder shapes, and a smoother experience.\n\n
-        <b>Privacy &amp; Setup 🛡️</b>\n
-        • Improved Onboarding with a dedicated Privacy page clarifying offline-first architecture.\n
-        • Stricter compatibility checks to ensure the best experience on HyperOS 3.0.\n\n
-        <b>Fixes 🛠️</b>\n
-        • Fixed a critical issue where settings were lost after device reboot (migrated to database).\n
-        • Fixed "Exit" button in Navigation island showing as an icon instead of text.\n
-        • Fixed App Icon loading in Settings.\n
-    </string>
 
     <string name="close">Close</string>
     <string name="search">Search</string>
@@ -470,24 +407,45 @@
 
     <string name="apps_empty">No apps configured</string>
 
-    <string name="design_hero_customization_title">Customization</string>
-    <string name="design_hero_customization_subtitle">Learn how to create themes</string>
-    <string name="design_hero_pro_title">Pro Features</string>
-    <string name="design_hero_pro_subtitle">Unlock more power</string>
-    <string name="design_hero_community_title">Community</string>
-    <string name="design_hero_community_subtitle">Join our GitHub</string>
-
+    <string name="design_subtitle">Make your island yours</string>
     <string name="design_section_themes">Themes</string>
     <string name="design_section_widgets">Widgets</string>
 
     <string name="design_browse_more">Browse More</string>
     <string name="design_add_new">Add New</string>
     <string name="design_add_design">Add Design</string>
-    <string name="design_add_to_island">Customization</string>
+    <string name="design_add_to_island">Add to Island</string>
     <string name="design_system_widget_beta">System Widget (Beta)</string>
     <string name="design_get_themes">Get Themes</string>
     <string name="design_empty_widget_title">Add your first Widget</string>
+    <string name="design_empty_widget_desc">Add a system widget to see it on the island.</string>
+    <string name="design_position_title">Island position</string>
+    <string name="design_position_desc">Adjust the height and alignment of the floating island.</string>
+    <string name="design_position_vertical">Height</string>
+    <string name="design_position_value">%1$d dp</string>
+    <string name="design_alignment">Alignment</string>
+    <string name="design_alignment_left">Left</string>
+    <string name="design_alignment_center">Center</string>
+    <string name="design_alignment_right">Right</string>
+    <string name="design_animations">Smooth animations</string>
+    <string name="design_animations_desc">A gentle entrance and exit motion.</string>
+    <string name="design_test_animation">Test animation</string>
+    <string name="design_reset_position">Reset position</string>
+    <string name="design_preview_time">9:41</string>
+    <string name="design_preview_island_title">Ryx Isla</string>
+    <string name="design_preview_island_text">Your island, your way</string>
+    <string name="design_active">Active</string>
+    <string name="design_history_desc">See the latest notifications shown by the island.</string>
+    <string name="design_inspiration">Inspired by HyperOS and Hyper Bridge. Independent project.</string>
     <string name="design">Design</string>
+    <string name="notification_history_title">Notification history</string>
+    <string name="notification_history_subtitle">Latest notifications shown by the island</string>
+    <string name="notification_history_empty_title">No notifications yet</string>
+    <string name="notification_history_empty_desc">When Ryx Isla shows a notification, it will appear here.</string>
+    <string name="notification_history_clear">Clear history</string>
+    <string name="notification_history_clear_title">Clear history?</string>
+    <string name="notification_history_clear_desc">All notifications saved on this device will be deleted. This cannot be undone.</string>
+    <string name="notification_history_clear_confirm">Clear</string>
 
     <string name="creator_nav_actions">Global Actions</string>
     <string name="creator_sub_actions">Style buttons by keyword</string>
@@ -534,38 +492,6 @@
         <item quantity="many">%1$d custom actions</item>
 
     </plurals>
-
-    <string name="title_0_4_0">The Customization Update</string>
-    <string name="changelog_0_4_0">
-        <b>Theme Engine 🎨</b>\n
-        The biggest update yet! You can now fully customize the Dynamic Island visual experience.\n
-        • <b>Theme Creator:</b> Design themes directly on your phone with real-time previews.\n
-        • <b>Granular Control:</b> Choose exactly how icons are shown, customize call notification colors and shapes, and configure individual app overrides.\n
-        • <b>Smart Colors:</b> Automatically extract vibrant brand colors from app icons.\n
-        • <b>Per-Action Customization (Beta):</b> Fine-tune the look of specific notification actions.\n
-        • <b>Sharing:</b> Export and import themes as portable <i>.hbr</i> packages.\n\n
-
-        <b>Widget Support 🧩</b>\n
-        Pin standard Android widgets to the island for quick access—even on your <b>Lockscreen</b>!\n
-        • Choose between <b>Interactive</b> mode for speed or <b>Snapshot</b> mode for battery efficiency.\n\n
-
-        <b>Notification Engine 2.0 ⚡</b>\n
-        A complete rewrite of the core logic for better stability:\n
-        • <b>Smarter Parsing:</b> Fixed issues where notifications showed package names (e.g., com.whatsapp) instead of message content.\n
-        • <b>Anti-Flicker:</b> New content hashing prevents redundant updates and stuttering.\n
-        • <b>Ghost Fixes:</b> Solved race conditions where islands lingered after dismissal.\n\n
-
-        <b>Visual Refresh ✨</b>\n
-        • Redesigned "Design" tab with fluid, native-feeling carousels.\n
-        • New "Text Pill" buttons for clearer notification actions.\n
-        • Added support for 🇮🇩 Indonesian and 🇹🇷 Turkish.\n\n
-
-        <i>Note: This release includes significant architectural changes. Please report any bugs on GitHub!</i>
-    </string>
-    <string name="title_0_4_2">Hotfix Update</string>
-    <string name="changelog_0_4_2">        •&lt;b&gt;Crash Fix:&lt;/b&gt; Resolved a critical issue that caused the app to crash when opening the settings menu in Traditional Chinese.\n
-        •&lt;b&gt;Under the Hood:&lt;/b&gt; General bug fixes and stability improvements to keep your Island running smoothly.
-    </string>
 
     <string name="colors_label_hue">Hue</string>
     <string name="colors_label_saturation">Saturation</string>
@@ -649,6 +575,10 @@
     <string name="changelog_1_0_5">Ryx Isla now uses a single floating island engine on any Android 15+ ROM. The permanent island appears as a capsule and returns when a notification closes. The setup wizard checks the overlay permission.</string>
     <string name="title_1_0_6">Updates and full compatibility</string>
     <string name="changelog_1_0_6">Adds an update checker that always consults Ryx Isla\'s official GitHub repository. Removes every HyperOS/Xiaomi requirement: the floating island works on all Android 15+ devices. Improves manufacturer/ROM detection and fixes the app and notification icons.</string>
+    <string name="title_1_0_7">Design, history and animations</string>
+    <string name="changelog_1_0_7">• &lt;b&gt;Redesigned Design tab:&lt;/b&gt; live preview, vertical position and alignment for the island, plus animation controls.\n• &lt;b&gt;Notification history:&lt;/b&gt; keeps the latest notifications locally and lets you clear them anytime.\n• &lt;b&gt;Smooth animations:&lt;/b&gt; island entrance/exit and app transitions inspired by HyperOS.\n• &lt;b&gt;New icons:&lt;/b&gt; refreshed adaptive icon, themed icon and sharper notification icon.\n• &lt;b&gt;Lighter app:&lt;/b&gt; removes unnecessary data, text and UI to reduce resource usage.</string>
+    <string name="changelog_inspiration_title">Inspiration</string>
+    <string name="changelog_inspiration_desc">Ryx Isla is an independent project inspired by the HyperOS dynamic island and the Hyper Bridge project. It is not an official version and is not affiliated with Xiaomi. The previous upstream version history is no longer part of the app; only this attribution remains.</string>
+    <string name="changelog_inspiration_link">View the project that inspired Ryx Isla</string>
 </resources>
-
 

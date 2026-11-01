@@ -21,6 +21,7 @@ import com.d4viddf.hyperbridge.ui.screens.settings.InfoScreen
 import com.d4viddf.hyperbridge.ui.screens.settings.IslandSettingsScreen
 import com.d4viddf.hyperbridge.ui.screens.settings.LicensesScreen
 import com.d4viddf.hyperbridge.ui.screens.settings.NavCustomizationScreen
+import com.d4viddf.hyperbridge.ui.screens.settings.NotificationHistoryScreen
 import com.d4viddf.hyperbridge.ui.screens.settings.PrioritySettingsScreen
 import com.d4viddf.hyperbridge.ui.screens.settings.SetupHealthScreen
 import com.d4viddf.hyperbridge.util.BackupManager
@@ -48,6 +49,7 @@ fun mainNavGraph(
     entry<Screen.Home> {
         HomeScreen(
             onSettingsClick = { navigator.navigate(Screen.Info) },
+            onNotificationHistoryClick = { navigator.navigate(Screen.NotificationHistory) },
             onNavConfigClick = { pkg -> navigator.navigate(Screen.NavCustomization(pkg)) }
         )
     }
@@ -59,6 +61,7 @@ fun mainNavGraph(
             onBehaviorClick = { navigator.navigate(Screen.Behavior) },
             onGlobalSettingsClick = { navigator.navigate(Screen.GlobalSettings) },
             onHistoryClick = { navigator.navigate(Screen.History) },
+            onNotificationHistoryClick = { navigator.navigate(Screen.NotificationHistory) },
             onBlocklistClick = { navigator.navigate(Screen.GlobalBlocklist) },
             onBackupClick = { navigator.navigate(Screen.Backup) }
         )
@@ -109,6 +112,9 @@ fun mainNavGraph(
     }
     entry<Screen.History> {
         ChangelogHistoryScreen(onBack = { navigator.goBack() })
+    }
+    entry<Screen.NotificationHistory> {
+        NotificationHistoryScreen(onBack = { navigator.goBack() })
     }
     entry<Screen.GlobalBlocklist> {
         GlobalBlocklistScreen(

@@ -68,6 +68,7 @@ private enum class DesignRoute {
 fun HomeScreen(
     viewModel: AppListViewModel = viewModel(),
     onSettingsClick: () -> Unit,
+    onNotificationHistoryClick: () -> Unit,
     onNavConfigClick: (String) -> Unit
 ) {
     var selectedTab by remember { mutableIntStateOf(1) }
@@ -164,7 +165,8 @@ fun HomeScreen(
                                                 designRoute = DesignRoute.THEME_CREATOR
                                             },
                                             onLaunchPicker = { showWidgetPicker = true },
-                                            onSettingsClick = onSettingsClick
+                                            onSettingsClick = onSettingsClick,
+                                            onNavigateToHistory = onNotificationHistoryClick
                                         )
                                     }
 
