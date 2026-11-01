@@ -22,6 +22,9 @@ object HyperIslandSpec {
     const val CONTENT_END_DP = 30
     const val ALIGNMENT_MARGIN_DP = 12
 
+    /** Vertical travel (dp) needed to dismiss the island with a swipe. */
+    const val TOUCH_SENSITIVITY_DP = 50
+
     /** Simulated status-bar height used when a real inset is unavailable. */
     const val PREVIEW_STATUS_BAR_DP = 34
 

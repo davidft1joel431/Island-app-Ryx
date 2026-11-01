@@ -15,10 +15,7 @@ import android.graphics.drawable.GradientDrawable
 import android.os.Handler
 import android.os.Looper
 import android.provider.Settings
-import android.text.SpannableString
-import android.text.Spanned
 import android.text.TextUtils
-import android.text.style.ForegroundColorSpan
 import android.util.Log
 import android.util.TypedValue
 import android.view.Gravity
@@ -29,7 +26,6 @@ import android.view.ViewOutlineProvider
 import android.view.WindowInsets
 import android.view.WindowManager
 import android.view.animation.AccelerateInterpolator
-import android.view.animation.DecelerateInterpolator
 import android.view.animation.OvershootInterpolator
 import android.view.animation.PathInterpolator
 import android.widget.FrameLayout
@@ -49,6 +45,10 @@ import kotlin.math.roundToInt
  * The visual language follows HyperOS: a pure-black capsule that lives inside
  * the status bar, a camera lens on the right, and a spring-like morph between
  * the compact capsule and the expanded notification card.
+ *
+ * Notifications are accumulated instead of replacing each other: the card
+ * always shows the newest event, a counter marks how many are waiting, and
+ * when one expires the next one slides in.
  */
 class GenericIslandOverlay(
     private val context: Context,
@@ -59,6 +59,7 @@ class GenericIslandOverlay(
     private var root: HyperIslandView? = null
     private var rootParams: WindowManager.LayoutParams? = null
     private val pendingRemovals = mutableSetOf<View>()
+    private val items = LinkedHashMap<String, IslandItem>()
     private var activeNotificationKey: String? = null
     private var dismissTask: Runnable? = null
     private var touchStartY = 0f
@@ -66,6 +67,18 @@ class GenericIslandOverlay(
     private var hidePermanentInLandscape = false
     private var sizeAnimator: ValueAnimator? = null
     @Volatile private var permanentVisible = false
+
+    private data class IslandItem(
+        val key: String,
+        val packageName: String,
+        val title: String,
+        val text: String,
+        val largeIcon: Drawable?,
+        val smallIcon: Drawable?,
+        val isOngoing: Boolean,
+        val timeoutSeconds: Int,
+        val postedAt: Long
+    )
 
     fun setPermanentIsland(enabled: Boolean, hideInLandscape: Boolean) {
         mainHandler.post {
@@ -136,107 +149,59 @@ class GenericIslandOverlay(
         mainHandler.post {
             if (!Settings.canDrawOverlays(context)) return@post
 
-            dismissTask?.let(mainHandler::removeCallbacks)
-            dismissTask = null
-            removeCurrentView()
-            activeNotificationKey = notificationKey
-
             val appLabel = getApplicationLabel(packageName)
             val appIcon = getNotificationIcon(packageName)
-            val largeIcon = notificationImage ?: appIcon
             val displayTitle = title.ifBlank { appLabel }
+            val item = IslandItem(
+                key = notificationKey,
+                packageName = packageName,
+                title = displayTitle,
+                text = text,
+                largeIcon = notificationImage ?: appIcon,
+                smallIcon = appIcon,
+                isOngoing = isOngoing,
+                timeoutSeconds = timeoutSeconds.coerceIn(3, 15),
+                postedAt = System.currentTimeMillis()
+            )
 
-            val view = HyperIslandView(context)
-            view.bindNotification(appLabel, displayTitle, text, largeIcon, appIcon)
-            view.contentDescription = "$appLabel. $displayTitle. $text"
-            view.setOnClickListener {
-                launchApp(packageName)
-                dismiss(notificationKey)
-            }
-            view.setOnTouchListener { touched, event ->
-                when (event.actionMasked) {
-                    MotionEvent.ACTION_DOWN -> {
-                        touchStartY = event.rawY
-                        touched.animate().scaleX(0.97f).scaleY(0.97f).setDuration(90).start()
-                        true
-                    }
-                    MotionEvent.ACTION_MOVE -> {
-                        if (touchStartY - event.rawY > dp(36)) dismiss(notificationKey)
-                        true
-                    }
-                    MotionEvent.ACTION_UP -> {
-                        touched.animate().scaleX(1f).scaleY(1f).setDuration(140).start()
-                        if (touchStartY - event.rawY > dp(28)) {
-                            dismiss(notificationKey)
-                            true
-                        } else {
-                            touched.performClick()
-                            true
-                        }
-                    }
-                    MotionEvent.ACTION_CANCEL -> {
-                        touched.animate().scaleX(1f).scaleY(1f).setDuration(140).start()
-                        true
-                    }
-                    else -> false
+            val isVisible = activeNotificationKey == notificationKey
+            items.remove(notificationKey)
+            items[notificationKey] = item
+            trimStack()
+
+            if (isVisible) {
+                // Live update of the card that is already on screen: refresh the
+                // content in place instead of collapsing and re-expanding it.
+                root?.let { view ->
+                    view.updateNotification(displayTitle, text, item.largeIcon ?: appIcon, appIcon)
+                    view.setStackCount(items.size)
                 }
-            }
-
-            val params = newParams(dp(HyperIslandSpec.COLLAPSED_WIDTH_DP), dp(HyperIslandSpec.COLLAPSED_HEIGHT_DP))
-            try {
-                windowManager.addView(view, params)
-                root = view
-                rootParams = params
-                view.showCollapsedNotification()
-                view.updateCornerRadius(HyperIslandSpec.cornerRadiusPx(params.height.toFloat()))
-                animateIn(view)
-            } catch (error: Exception) {
-                Log.w(TAG, "Could not show the island overlay", error)
-                root = null
-                rootParams = null
-                activeNotificationKey = null
+                scheduleDismiss(item)
                 return@post
             }
 
-            permanentVisible = false
-
-            // Wake the capsule, then morph it into the expanded card like HyperOS.
-            val expandedWidth = expandedWidthPx()
-            val expandedHeight = dp(HyperIslandSpec.EXPANDED_HEIGHT_DP)
-            if (!preferences.islandAnimationsEnabledSync()) {
-                view.expandInstant()
-                params.width = expandedWidth
-                params.height = expandedHeight
-                view.updateCornerRadius(HyperIslandSpec.cornerRadiusPx(expandedHeight.toFloat()))
-                runCatching { windowManager.updateViewLayout(view, params) }
+            if (activeNotificationKey == null) {
+                showItem(item)
             } else {
-                mainHandler.postDelayed({
-                    if (root === view && activeNotificationKey == notificationKey) {
-                        view.expand()
-                        animateSize(
-                            view = view,
-                            params = params,
-                            targetWidth = expandedWidth,
-                            targetHeight = expandedHeight,
-                            durationMs = 440L,
-                            interpolator = OvershootInterpolator(0.32f)
-                        )
-                    }
-                }, 60L)
-            }
-
-            if (!isOngoing) {
-                val visibleFor = timeoutSeconds.coerceIn(3, 15) * 1000L
-                dismissTask = Runnable { dismiss(notificationKey) }.also {
-                    mainHandler.postDelayed(it, visibleFor)
-                }
+                // Accumulate: keep the current card visible and surface the
+                // counter so the user knows more events are waiting.
+                root?.setStackCount(items.size)
             }
         }
     }
 
     fun dismiss(notificationKey: String? = null) {
         mainHandler.post {
-            if (notificationKey != null && notificationKey != activeNotificationKey) return@post
+            if (notificationKey != null) {
+                items.remove(notificationKey)
+                if (notificationKey != activeNotificationKey) {
+                    // A queued item was removed from the shade: just refresh the counter.
+                    root?.setStackCount(items.size)
+                    return@post
+                }
+            } else {
+                activeNotificationKey?.let(items::remove)
+            }
             if (activeNotificationKey == null && permanentVisible) return@post
             dismissTask?.let(mainHandler::removeCallbacks)
             dismissTask = null
@@ -255,12 +220,12 @@ class GenericIslandOverlay(
                 ) {
                     removeCurrentView(animated = true)
                     activeNotificationKey = null
-                    if (shouldShowPermanent()) showPermanentView()
+                    showNextOrPermanent()
                 }
             } else {
                 removeCurrentView(animated = true)
                 activeNotificationKey = null
-                if (shouldShowPermanent()) showPermanentView()
+                showNextOrPermanent()
             }
         }
     }
@@ -269,6 +234,7 @@ class GenericIslandOverlay(
         mainHandler.post {
             dismissTask?.let(mainHandler::removeCallbacks)
             dismissTask = null
+            items.clear()
             activeNotificationKey = null
             permanentVisible = false
             removeCurrentView()
@@ -278,6 +244,128 @@ class GenericIslandOverlay(
             }
             pendingRemovals.clear()
         }
+    }
+
+    private fun trimStack() {
+        while (items.size > MAX_STACKED_ITEMS) {
+            val oldestQueued = items.keys.firstOrNull { it != activeNotificationKey } ?: break
+            items.remove(oldestQueued)
+        }
+    }
+
+    private fun showNextOrPermanent() {
+        val next = items.values.lastOrNull()
+        if (next != null) {
+            showItem(next)
+        } else if (shouldShowPermanent()) {
+            showPermanentView()
+        }
+    }
+
+    private fun scheduleDismiss(item: IslandItem) {
+        dismissTask?.let(mainHandler::removeCallbacks)
+        dismissTask = null
+        if (item.isOngoing) return
+        val visibleFor = item.timeoutSeconds.coerceIn(3, 15) * 1000L
+        dismissTask = Runnable { dismiss(item.key) }.also {
+            mainHandler.postDelayed(it, visibleFor)
+        }
+    }
+
+    private fun showItem(item: IslandItem) {
+        dismissTask?.let(mainHandler::removeCallbacks)
+        dismissTask = null
+        removeCurrentView()
+        activeNotificationKey = item.key
+        permanentVisible = false
+
+        val appIcon = item.smallIcon ?: getNotificationIcon(item.packageName)
+        val view = HyperIslandView(context)
+        view.bindNotification(
+            appLabel = getApplicationLabel(item.packageName),
+            title = item.title,
+            text = item.text,
+            largeIcon = item.largeIcon ?: appIcon,
+            smallIcon = appIcon
+        )
+        view.setStackCount(items.size)
+        view.contentDescription = "${item.title}. ${item.text}"
+        view.setOnClickListener {
+            launchApp(item.packageName)
+            dismiss(item.key)
+        }
+        view.setOnTouchListener { touched, event ->
+            when (event.actionMasked) {
+                MotionEvent.ACTION_DOWN -> {
+                    touchStartY = event.rawY
+                    touched.animate().scaleX(0.97f).scaleY(0.97f).setDuration(90).start()
+                    true
+                }
+                MotionEvent.ACTION_MOVE -> {
+                    if (touchStartY - event.rawY > dp(HyperIslandSpec.TOUCH_SENSITIVITY_DP)) {
+                        dismiss(item.key)
+                    }
+                    true
+                }
+                MotionEvent.ACTION_UP -> {
+                    touched.animate().scaleX(1f).scaleY(1f).setDuration(140).start()
+                    if (touchStartY - event.rawY > dp(HyperIslandSpec.TOUCH_SENSITIVITY_DP)) {
+                        dismiss(item.key)
+                        true
+                    } else {
+                        touched.performClick()
+                        true
+                    }
+                }
+                MotionEvent.ACTION_CANCEL -> {
+                    touched.animate().scaleX(1f).scaleY(1f).setDuration(140).start()
+                    true
+                }
+                else -> false
+            }
+        }
+
+        val params = newParams(dp(HyperIslandSpec.COLLAPSED_WIDTH_DP), dp(HyperIslandSpec.COLLAPSED_HEIGHT_DP))
+        try {
+            windowManager.addView(view, params)
+            root = view
+            rootParams = params
+            view.showCollapsedNotification()
+            view.updateCornerRadius(HyperIslandSpec.cornerRadiusPx(params.height.toFloat()))
+            animateIn(view)
+        } catch (error: Exception) {
+            Log.w(TAG, "Could not show the island overlay", error)
+            root = null
+            rootParams = null
+            activeNotificationKey = null
+            return
+        }
+
+        val expandedWidth = expandedWidthPx()
+        val expandedHeight = dp(HyperIslandSpec.EXPANDED_HEIGHT_DP)
+        if (!preferences.islandAnimationsEnabledSync()) {
+            view.expandInstant()
+            params.width = expandedWidth
+            params.height = expandedHeight
+            view.updateCornerRadius(HyperIslandSpec.cornerRadiusPx(expandedHeight.toFloat()))
+            runCatching { windowManager.updateViewLayout(view, params) }
+        } else {
+            mainHandler.postDelayed({
+                if (root === view && activeNotificationKey == item.key) {
+                    view.expand()
+                    animateSize(
+                        view = view,
+                        params = params,
+                        targetWidth = expandedWidth,
+                        targetHeight = expandedHeight,
+                        durationMs = 440L,
+                        interpolator = OvershootInterpolator(0.32f)
+                    )
+                }
+            }, 60L)
+        }
+
+        scheduleDismiss(item)
     }
 
     private fun shouldShowPermanent(): Boolean {
@@ -500,11 +588,13 @@ class GenericIslandOverlay(
         context.packageManager.getApplicationLabel(app).toString()
     }.getOrDefault(packageName)
 
-    private fun getNotificationIcon(packageName: String): Drawable = runCatching {
-        context.packageManager.getApplicationIcon(packageName)
-    }.getOrElse {
-        ContextCompat.getDrawable(context, android.R.drawable.sym_def_app_icon)
-            ?: ColorDrawable(Color.GRAY)
+    private fun getNotificationIcon(packageName: String): Drawable {
+        return runCatching {
+            context.packageManager.getApplicationIcon(packageName)
+        }.getOrElse {
+            ContextCompat.getDrawable(context, android.R.drawable.sym_def_app_icon)
+                ?: ColorDrawable(Color.GRAY)
+        }
     }
 
     /** The actual pill view: black glass, lens, compact icon and expanded copy. */
@@ -518,11 +608,12 @@ class GenericIslandOverlay(
             cornerRadius = dp(HyperIslandSpec.COLLAPSED_HEIGHT_DP / 2).toFloat()
         }
         private val collapsedContent = LinearLayout(context)
+        private val iconHolder = FrameLayout(context)
         private val collapsedIcon = ImageView(context)
+        private val stackBadge = TextView(context)
         private val collapsedTitle = TextView(context)
         private val permanentContent = LinearLayout(context)
         private val permanentDot = View(context)
-        private val collapsedBrand = TextView(context)
         private val expandedContent = LinearLayout(context)
         private val expandedIcon = ImageView(context)
         private val appLabelView = TextView(context)
@@ -530,6 +621,7 @@ class GenericIslandOverlay(
         private val bodyView = TextView(context)
         private val highlightSweep = View(context)
         private var pulseAnimator: ValueAnimator? = null
+        private var currentAppLabel: String = ""
         private val glassEdge = PathInterpolator(0.2f, 0f, 0f, 1f)
 
         init {
@@ -568,6 +660,7 @@ class GenericIslandOverlay(
             largeIcon: Drawable,
             smallIcon: Drawable
         ) {
+            currentAppLabel = appLabel
             expandedIcon.setImageDrawable(largeIcon)
             collapsedIcon.setImageDrawable(smallIcon)
             collapsedTitle.text = title
@@ -578,18 +671,25 @@ class GenericIslandOverlay(
             showCollapsedNotification()
         }
 
+        /** Refreshes content without collapsing the card that is already open. */
+        fun updateNotification(title: String, text: String, largeIcon: Drawable, smallIcon: Drawable) {
+            expandedIcon.setImageDrawable(largeIcon)
+            collapsedIcon.setImageDrawable(smallIcon)
+            collapsedTitle.text = title
+            titleView.text = title
+            bodyView.text = text
+            bodyView.visibility = if (text.isBlank() || text == title) GONE else VISIBLE
+        }
+
+        fun setStackCount(count: Int) {
+            val stacked = count > 1
+            stackBadge.visibility = if (stacked) VISIBLE else GONE
+            stackBadge.text = if (count > 9) "9+" else count.toString()
+            appLabelView.text = if (stacked) "$currentAppLabel · $count" else currentAppLabel
+        }
+
         fun bindPermanent() {
-            collapsedBrand.text = buildBrandWordmark()
-            collapsedBrand.alpha = 0f
-            collapsedBrand.translationX = -px(6f)
             showPermanent()
-            collapsedBrand.animate()
-                .alpha(1f)
-                .translationX(0f)
-                .setStartDelay(120)
-                .setDuration(380)
-                .setInterpolator(glassEdge)
-                .start()
             startPulse()
         }
 
@@ -679,8 +779,34 @@ class GenericIslandOverlay(
                 clipToOutline = true
                 outlineProvider = ViewOutlineProvider.BACKGROUND
             }
-            collapsedContent.addView(
+            iconHolder.addView(
                 collapsedIcon,
+                FrameLayout.LayoutParams(
+                    FrameLayout.LayoutParams.MATCH_PARENT,
+                    FrameLayout.LayoutParams.MATCH_PARENT
+                )
+            )
+
+            stackBadge.apply {
+                setTextColor(HyperIslandSpec.COLOR_BLACK)
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, 8f)
+                typeface = Typeface.create("sans-serif-black", Typeface.NORMAL)
+                gravity = Gravity.CENTER
+                includeFontPadding = false
+                background = GradientDrawable().apply {
+                    shape = GradientDrawable.OVAL
+                    setColor(HyperIslandSpec.COLOR_BRAND_GREEN)
+                    setStroke(dp(1).coerceAtLeast(1), HyperIslandSpec.COLOR_BLACK)
+                }
+                visibility = GONE
+            }
+            iconHolder.addView(
+                stackBadge,
+                FrameLayout.LayoutParams(dp(13), dp(13), Gravity.TOP or Gravity.END)
+            )
+
+            collapsedContent.addView(
+                iconHolder,
                 LinearLayout.LayoutParams(dp(21), dp(21)).apply { marginStart = dp(11) }
             )
 
@@ -690,7 +816,7 @@ class GenericIslandOverlay(
                 typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
                 maxLines = 1
                 ellipsize = TextUtils.TruncateAt.END
-                maxWidth = dp(58)
+                maxWidth = dp(56)
                 includeFontPadding = false
                 letterSpacing = 0.01f
             }
@@ -728,24 +854,6 @@ class GenericIslandOverlay(
                 LinearLayout.LayoutParams(dp(7), dp(7)).apply { marginStart = dp(14) }
             )
 
-            collapsedBrand.apply {
-                setTextColor(HyperIslandSpec.COLOR_TEXT_PRIMARY)
-                setTextSize(TypedValue.COMPLEX_UNIT_SP, 10.5f)
-                typeface = Typeface.create("sans-serif-black", Typeface.NORMAL)
-                maxLines = 1
-                ellipsize = TextUtils.TruncateAt.END
-                maxWidth = dp(78)
-                includeFontPadding = false
-                letterSpacing = 0.06f
-            }
-            permanentContent.addView(
-                collapsedBrand,
-                LinearLayout.LayoutParams(
-                    ViewGroup.LayoutParams.WRAP_CONTENT,
-                    ViewGroup.LayoutParams.WRAP_CONTENT
-                ).apply { marginStart = dp(9) }
-            )
-
             permanentContent.visibility = GONE
             addView(
                 permanentContent,
@@ -754,23 +862,6 @@ class GenericIslandOverlay(
                     ViewGroup.LayoutParams.MATCH_PARENT
                 )
             )
-        }
-
-        private fun buildBrandWordmark(): SpannableString {
-            val wordmark = SpannableString("RYX  ISLAND")
-            wordmark.setSpan(
-                ForegroundColorSpan(HyperIslandSpec.COLOR_BRAND),
-                0,
-                3,
-                Spanned.SPAN_EXCLUSIVE_EXCLUSIVE
-            )
-            wordmark.setSpan(
-                ForegroundColorSpan(HyperIslandSpec.COLOR_BRAND_GREEN),
-                5,
-                11,
-                Spanned.SPAN_EXCLUSIVE_EXCLUSIVE
-            )
-            return wordmark
         }
 
         private fun buildExpandedContent() {
@@ -975,5 +1066,6 @@ class GenericIslandOverlay(
 
     private companion object {
         const val TAG = "RyxIslandOverlay"
+        const val MAX_STACKED_ITEMS = 5
     }
 }

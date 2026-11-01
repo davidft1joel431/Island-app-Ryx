@@ -579,6 +579,13 @@
     <string name="changelog_1_0_5">Ryx Isla now uses a single floating island engine on any Android 15+ ROM. The permanent island appears as a capsule and returns when a notification closes. The setup wizard checks the overlay permission.</string>
     <string name="title_1_0_6">Updates and full compatibility</string>
     <string name="changelog_1_0_6">Adds an update checker that always consults Ryx Isla\'s official GitHub repository. Removes every HyperOS/Xiaomi requirement: the floating island works on all Android 15+ devices. Improves manufacturer/ROM detection and fixes the app and notification icons.</string>
+    <string name="title_1_0_9">History, clones and stacking</string>
+    <string name="changelog_1_0_9">• &lt;b&gt;Full history:&lt;/b&gt; records notifications from every app, system apps and cloned apps, including each message in a conversation.
+• &lt;b&gt;Cloned apps:&lt;/b&gt; the island recognizes clones and work profiles with the right icon and name.
+• &lt;b&gt;HyperOS stacking:&lt;/b&gt; notifications accumulate with a counter and the next one appears when the current one closes.
+• &lt;b&gt;No duplicates:&lt;/b&gt; the original notification is removed from the shade once it is shown in the island.
+• &lt;b&gt;Sensitivity:&lt;/b&gt; swipe 50 dp to dismiss the island. Brand text is removed, leaving only the indicators.
+• &lt;b&gt;Stability:&lt;/b&gt; duplicate islands are prevented and animations and content are corrected.</string>
     <string name="title_1_0_8">Faithful, fluid HyperOS island</string>
     <string name="title_1_0_7">Design, history and animations</string>
     <string name="changelog_1_0_8">• &lt;b&gt;Island in the status bar:&lt;/b&gt; position and size corrected to match the preview.\n• &lt;b&gt;HyperOS design:&lt;/b&gt; pure black, glass edge, redesigned lens and the same palette in the real island and the preview.\n• &lt;b&gt;Premium animations:&lt;/b&gt; spring expansion, light sweep, pulse on the permanent island and touch feedback.\n• &lt;b&gt;Faithful preview:&lt;/b&gt; uses the real status-bar height and shows both compact and expanded sizes.\n• &lt;b&gt;Live changes:&lt;/b&gt; moving or aligning the island applies instantly.\n• &lt;b&gt;Icon and cleanup:&lt;/b&gt; logo fitted to the safe area and unused code removed.</string>

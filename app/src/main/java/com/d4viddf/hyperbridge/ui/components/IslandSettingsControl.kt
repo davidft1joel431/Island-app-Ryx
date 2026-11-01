@@ -225,7 +225,7 @@ fun IslandSettingsControl(
 
         Spacer(Modifier.height(8.dp))
 
-        val removeOriginalOn = displayConfig.removeOriginalNotification == true
+        val removeOriginalOn = displayConfig.removeOriginalNotification != false
 
         SettingsToggleCard(
             title = stringResource(R.string.remove_original_notification),
@@ -331,7 +331,7 @@ fun IslandSettingsControlPreview() {
                     timeout = 5,
                     floatTimeout = 5,
                     isShowShade = true,
-                    removeOriginalNotification = false,
+                    removeOriginalNotification = true,
                     dismissWithOriginal = false
                 ),
                 onUpdate = {}

@@ -51,6 +51,13 @@ class NotificationReaderService : NotificationListenerService() {
     companion object {
         const val ACTION_RELOAD_THEME = "com.d4viddf.hyperbridge.ACTION_RELOAD_THEME"
         const val ACTION_PERFORM_MIGRATION = "com.d4viddf.hyperbridge.ACTION_PERFORM_MIGRATION"
+
+        private const val MAX_HISTORY_MESSAGES = 20
+        private const val MAX_SYNCED_HISTORY_KEYS = 1000
+        private val CLONE_SUFFIXES = listOf(
+            ".clone", ".clon", ".dual", ".dualspace", ".parallel", ".second",
+            ".secondspace", ".work", ".multi", ".appclone", "_clone", "_dual", "_parallel"
+        )
     }
 
     private val TAG = "HyperBridgeDebug"
@@ -72,6 +79,9 @@ class NotificationReaderService : NotificationListenerService() {
 
     // --- CACHES ---
     private val recentlyRemovedKeys = ConcurrentHashMap<String, Long>()
+    // Keys cancelled by us after handing the notification to the island.
+    // Their removal callbacks must not close the island that is already showing.
+    private val suppressedSourceKeys = ConcurrentHashMap<String, Long>()
     private val genericNotificationKeys = ConcurrentHashMap.newKeySet<String>()
     private val activeIslands = ConcurrentHashMap<String, ActiveIsland>()
     private val activeTranslations = ConcurrentHashMap<String, Int>()
@@ -83,6 +93,9 @@ class NotificationReaderService : NotificationListenerService() {
     private val dismissedWidgetIds = ConcurrentHashMap.newKeySet<Int>()
     private val activeWidgets = ConcurrentHashMap.newKeySet<Int>()
     private val appLabelCache = ConcurrentHashMap<String, String>()
+    // Keys already mirrored into history by a catch-up sync, so a reconnect does
+    // not rewrite the same entries. Posted notifications are always recorded.
+    private val historySyncedKeys = ConcurrentHashMap.newKeySet<String>()
 
     private val MAX_ISLANDS = 9
     private val WIDGET_ID_BASE = 9000
@@ -315,6 +328,9 @@ class NotificationReaderService : NotificationListenerService() {
 
     override fun onNotificationRemoved(sbn: StatusBarNotification?, rankingMap: RankingMap?, reason: Int) {
         sbn?.let {
+            // We removed the source on purpose after showing it in the island.
+            if (suppressedSourceKeys.remove(it.key) != null) return
+
             val isOurApp = it.packageName == packageName
             val notifId = it.id
             val notifKey = it.key
@@ -467,6 +483,11 @@ class NotificationReaderService : NotificationListenerService() {
     @RequiresPermission(Manifest.permission.POST_NOTIFICATIONS)
     override fun onNotificationPosted(sbn: StatusBarNotification?) {
         sbn?.let {
+            // The local history mirrors everything the listener can see: system
+            // packages, work profiles and cloned apps included. Island rules are
+            // applied afterwards, so nothing is missing from the log.
+            if (it.packageName != this.packageName) recordHistoryEntry(it)
+
             if (shouldIgnore(it.packageName)) return
             if (!isAppAllowed(it.packageName)) return
 
@@ -654,6 +675,12 @@ class NotificationReaderService : NotificationListenerService() {
                 deleteIntent = sbn.notification.deleteIntent
             )
             NotificationManagerCompat.from(this).cancel(bridgeId)
+
+            // HyperOS replaces the notification with the island, so remove the
+            // original and avoid showing the same event twice in the shade.
+            if (finalConfig.removeOriginalNotification != false) {
+                suppressSource(sbn)
+            }
             updatePermanentIsland()
             return
 
@@ -948,13 +975,158 @@ class NotificationReaderService : NotificationListenerService() {
         try { packageManager.getApplicationLabel(packageManager.getApplicationInfo(pkg, 0)).toString() } catch (_: Exception) { "" }
     }
 
+    private data class HistoryRecord(
+        val key: String,
+        val title: String,
+        val text: String,
+        val postedAt: Long
+    )
+
+    /** Copies every notification the listener can see into the local history. */
+    private fun recordHistoryEntry(sbn: StatusBarNotification) {
+        val label = getCachedAppLabel(sbn.packageName).ifBlank { sbn.packageName }
+        val type = runCatching { detectNotificationType(sbn).name }
+            .getOrDefault(NotificationType.STANDARD.name)
+        val postedAt = sbn.postTime.takeIf { it > 0 } ?: System.currentTimeMillis()
+        val entries = runCatching { collectHistoryRecords(sbn, label, postedAt) }
+            .getOrDefault(emptyList())
+        if (entries.isEmpty()) return
+        serviceScope.launch(Dispatchers.IO) {
+            entries.forEach { entry ->
+                runCatching {
+                    notificationHistoryRepository.record(
+                        notificationKey = entry.key,
+                        packageName = sbn.packageName,
+                        appLabel = label,
+                        title = entry.title,
+                        text = entry.text,
+                        type = type,
+                        postedAt = entry.postedAt
+                    )
+                }
+            }
+        }
+    }
+
+    /**
+     * Builds the history rows for one notification. Messaging-style notifications
+     * expand into one row per message, so a chat shows every message instead of
+     * only the latest state of its notification key.
+     */
+    private fun collectHistoryRecords(
+        sbn: StatusBarNotification,
+        appLabel: String,
+        postedAt: Long
+    ): List<HistoryRecord> {
+        val extras = sbn.notification.extras
+        val conversationTitle = runCatching { resolveTitle(sbn) }.getOrDefault("")
+            .ifBlank { appLabel }
+
+        val messageBundles = runCatching {
+            @Suppress("DEPRECATION")
+            extras.getParcelableArray(Notification.EXTRA_MESSAGES)
+                ?.filterIsInstance<Bundle>()
+                .orEmpty()
+        }.getOrDefault(emptyList())
+
+        if (messageBundles.isNotEmpty()) {
+            return messageBundles.mapNotNull { message ->
+                val body = message.getCharSequence("text")?.toString()?.trim().orEmpty()
+                if (body.isEmpty()) return@mapNotNull null
+                @Suppress("DEPRECATION")
+                val senderName = (message.getParcelable<android.app.Person>("sender_person"))
+                    ?.name?.toString()?.trim()
+                    ?: message.getCharSequence("sender")?.toString()?.trim().orEmpty()
+                val timestamp = message.getLong("time").takeIf { it > 0 } ?: postedAt
+                HistoryRecord(
+                    key = "${sbn.key}#msg:$timestamp:${body.hashCode()}",
+                    title = senderName.ifBlank { conversationTitle },
+                    text = body,
+                    postedAt = timestamp
+                )
+            }.takeLast(MAX_HISTORY_MESSAGES)
+        }
+
+        val text = runCatching { resolveHistoryText(extras) }.getOrDefault("")
+        if (conversationTitle.isBlank() && text.isBlank()) return emptyList()
+        return listOf(HistoryRecord(sbn.key, conversationTitle, text, postedAt))
+    }
+
+    /** Text fallback used by the history, which also accepts system-style extras. */
+    private fun resolveHistoryText(extras: Bundle): String {
+        val text = resolveText(extras)
+        if (text.isNotBlank()) return text
+
+        val lines = extras.getCharSequenceArray(Notification.EXTRA_TEXT_LINES)
+            ?.mapNotNull { it?.toString()?.trim() }
+            ?.filter { it.isNotEmpty() }
+            .orEmpty()
+        if (lines.isNotEmpty()) return lines.joinToString("\n")
+
+        return extras.getCharSequence(Notification.EXTRA_SUB_TEXT)?.toString()?.trim()
+            ?: extras.getCharSequence(Notification.EXTRA_INFO_TEXT)?.toString()?.trim()
+            ?: ""
+    }
+
+    /** Mirrors every notification currently in the shade, e.g. after a reconnect. */
+    private fun recordMissingHistory(notifications: Array<StatusBarNotification>) {
+        for (sbn in notifications) {
+            if (sbn.packageName == packageName) continue
+            if (!historySyncedKeys.add(sbn.key)) continue
+            recordHistoryEntry(sbn)
+        }
+        if (historySyncedKeys.size > MAX_SYNCED_HISTORY_KEYS) historySyncedKeys.clear()
+    }
+
+    /**
+     * Cancels the original notification after it has been handed to the island.
+     * The keys are marked so the removal callback does not dismiss the island.
+     */
+    private fun suppressSource(sbn: StatusBarNotification) {
+        val now = System.currentTimeMillis()
+        suppressedSourceKeys[sbn.key] = now
+        val summaryKey = runCatching {
+            val group = sbn.groupKey ?: return@runCatching null
+            activeNotifications.orEmpty()
+                .filter { it.packageName == sbn.packageName && it.groupKey == group && it.key != sbn.key }
+                .singleOrNull()
+                ?.takeIf { (it.notification.flags and Notification.FLAG_GROUP_SUMMARY) != 0 }
+                ?.key
+        }.getOrNull()
+        if (summaryKey != null) suppressedSourceKeys[summaryKey] = now
+        cancelSourceNotification(sbn.key)
+    }
+
     private fun shouldIgnore(packageName: String): Boolean = packageName == this.packageName || packageName == "android" || packageName.contains("miui.notification")
-    private fun isAppAllowed(packageName: String): Boolean = allowedPackageSet.contains(packageName)
+
+    private fun isAppAllowed(packageName: String): Boolean {
+        if (allowedPackageSet.contains(packageName)) return true
+        // Cloned / dual apps can expose a derived package id. Match the base app
+        // so enabling the original also bridges its clone.
+        val base = cloneBasePackage(packageName)
+        return allowedPackageSet.any { allowed -> cloneBasePackage(allowed) == base }
+    }
+
+    private fun cloneBasePackage(packageName: String): String {
+        var base = packageName.trim()
+        for (suffix in CLONE_SUFFIXES) {
+            if (base.endsWith(suffix, ignoreCase = true)) {
+                base = base.dropLast(suffix.length)
+            }
+        }
+        return base
+    }
 
     private var syncJob: Job? = null
 
     override fun onListenerConnected() { 
         Log.i(TAG, "HyperBridge Service Connected")
+        // Rebind once so profiles/cloned apps that were enabled after the first
+        // bind are picked up without needing a reboot.
+        runCatching { requestRebind(android.content.ComponentName(this, NotificationReaderService::class.java)) }
+        serviceScope.launch(Dispatchers.IO) {
+            runCatching { activeNotifications?.let(::recordMissingHistory) }
+        }
         syncNotifications(refresh = true)
         syncJob?.cancel()
         syncJob = serviceScope.launch {
@@ -972,10 +1144,12 @@ class NotificationReaderService : NotificationListenerService() {
     private fun syncNotifications(refresh: Boolean = false) {
         val now = System.currentTimeMillis()
         recentlyRemovedKeys.entries.removeIf { now - it.value > 10000 }
+        suppressedSourceKeys.entries.removeIf { now - it.value > 15000 }
 
         serviceScope.launch(Dispatchers.IO) {
             try {
                 val currentNotifications = activeNotifications ?: return@launch
+                if (refresh) recordMissingHistory(currentNotifications)
                 val systemNotificationKeys = currentNotifications.map { it.key }.toSet()
 
                 val currentKeys = currentNotifications.map { it.key }.toSet()

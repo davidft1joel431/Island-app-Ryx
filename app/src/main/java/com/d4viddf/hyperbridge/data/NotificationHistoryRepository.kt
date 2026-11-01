@@ -48,7 +48,7 @@ class NotificationHistoryRepository(context: Context) {
     suspend fun delete(id: Long) = dao.deleteById(id)
 
     private companion object {
-        const val MAX_ENTRIES = 80
+        const val MAX_ENTRIES = 200
         const val MAX_LABEL_LENGTH = 64
         const val MAX_TITLE_LENGTH = 160
         const val MAX_TEXT_LENGTH = 400
