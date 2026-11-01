@@ -301,7 +301,7 @@
 
     <string name="config_refresh_title">Auto Refresh</string>
     <string name="config_refresh_desc">Update snapshot periodically</string>
-    ¡    <plurals name="config_refresh_fmt">
+        <plurals name="config_refresh_fmt">
     <item quantity="many">Every %d minutes</item>
     <item quantity="other">Every %d minutes</item>
     <item quantity="one">Every minute</item>
@@ -580,27 +580,11 @@
     <string name="title_1_0_6">Updates and full compatibility</string>
     <string name="changelog_1_0_6">Adds an update checker that always consults Ryx Isla\'s official GitHub repository. Removes every HyperOS/Xiaomi requirement: the floating island works on all Android 15+ devices. Improves manufacturer/ROM detection and fixes the app and notification icons.</string>
     <string name="title_1_1_1">Capsule, gestures and counters</string>
-    <string name="changelog_1_1_1">• &lt;b&gt;Growing capsule:&lt;/b&gt; the collapsed island widens for queued notifications and active system functions.
-• &lt;b&gt;Requested order:&lt;/b&gt; app name on the left and that app's notification counter on the right.
-• &lt;b&gt;Animated circle:&lt;/b&gt; the waiting app icon slides out from the right edge with an animation.
-• &lt;b&gt;Full gestures:&lt;/b&gt; swipe up/down dismisses, left/right changes app, tap expands or opens.
-• &lt;b&gt;Finger detection:&lt;/b&gt; 30 dp threshold or a quick velocity fling, more responsive than before.
-• &lt;b&gt;Hotspot:&lt;/b&gt; shows the number of connected devices on the icon.
-• &lt;b&gt;Clones:&lt;/b&gt; stronger detection by app name and package tokens.</string>
+    <string name="changelog_1_1_1">• &lt;b&gt;Growing capsule:&lt;/b&gt; the collapsed island widens for queued notifications and active system functions.\n• &lt;b&gt;Requested order:&lt;/b&gt; app name on the left and that app\'s notification counter on the right.\n• &lt;b&gt;Animated circle:&lt;/b&gt; the waiting app icon slides out from the right edge with an animation.\n• &lt;b&gt;Full gestures:&lt;/b&gt; swipe up/down dismisses, left/right changes app, tap expands or opens.\n• &lt;b&gt;Finger detection:&lt;/b&gt; 30 dp threshold or a quick velocity fling, more responsive than before.\n• &lt;b&gt;Hotspot:&lt;/b&gt; shows the number of connected devices on the icon.\n• &lt;b&gt;Clones:&lt;/b&gt; stronger detection by app name and package tokens.</string>
     <string name="title_1_1_0">Stacking, clones and system</string>
-    <string name="changelog_1_1_0">• &lt;b&gt;Permanent stacking:&lt;/b&gt; notifications no longer expire or disappear on their own; they stack and you choose which one to open.
-• &lt;b&gt;Side circle:&lt;/b&gt; the island shows the app icon on the right with a counter; tap it to select and expand.
-• &lt;b&gt;Clones by name:&lt;/b&gt; detects cloned and dual apps by their visible name and routes them like the original app.
-• &lt;b&gt;System functions:&lt;/b&gt; flashlight, hotspot, Wi-Fi, data, internet, Bluetooth, recorder and music with instant updates.
-• &lt;b&gt;Synced preview:&lt;/b&gt; the side circle and system indicators match the real island.
-• &lt;b&gt;Stability:&lt;/b&gt; no duplicate islands, no automatic expiry and cleaner animations.</string>
+    <string name="changelog_1_1_0">• &lt;b&gt;Permanent stacking:&lt;/b&gt; notifications no longer expire or disappear on their own; they stack and you choose which one to open.\n• &lt;b&gt;Side circle:&lt;/b&gt; the island shows the app icon on the right with a counter; tap it to select and expand.\n• &lt;b&gt;Clones by name:&lt;/b&gt; detects cloned and dual apps by their visible name and routes them like the original app.\n• &lt;b&gt;System functions:&lt;/b&gt; flashlight, hotspot, Wi-Fi, data, internet, Bluetooth, recorder and music with instant updates.\n• &lt;b&gt;Synced preview:&lt;/b&gt; the side circle and system indicators match the real island.\n• &lt;b&gt;Stability:&lt;/b&gt; no duplicate islands, no automatic expiry and cleaner animations.</string>
     <string name="title_1_0_9">History, clones and stacking</string>
-    <string name="changelog_1_0_9">• &lt;b&gt;Full history:&lt;/b&gt; records notifications from every app, system apps and cloned apps, including each message in a conversation.
-• &lt;b&gt;Cloned apps:&lt;/b&gt; the island recognizes clones and work profiles with the right icon and name.
-• &lt;b&gt;HyperOS stacking:&lt;/b&gt; notifications accumulate with a counter and the next one appears when the current one closes.
-• &lt;b&gt;No duplicates:&lt;/b&gt; the original notification is removed from the shade once it is shown in the island.
-• &lt;b&gt;Sensitivity:&lt;/b&gt; swipe 50 dp to dismiss the island. Brand text is removed, leaving only the indicators.
-• &lt;b&gt;Stability:&lt;/b&gt; duplicate islands are prevented and animations and content are corrected.</string>
+    <string name="changelog_1_0_9">• &lt;b&gt;Full history:&lt;/b&gt; records notifications from every app, system apps and cloned apps, including each message in a conversation.\n• &lt;b&gt;Cloned apps:&lt;/b&gt; the island recognizes clones and work profiles with the right icon and name.\n• &lt;b&gt;HyperOS stacking:&lt;/b&gt; notifications accumulate with a counter and the next one appears when the current one closes.\n• &lt;b&gt;No duplicates:&lt;/b&gt; the original notification is removed from the shade once it is shown in the island.\n• &lt;b&gt;Sensitivity:&lt;/b&gt; swipe 50 dp to dismiss the island. Brand text is removed, leaving only the indicators.\n• &lt;b&gt;Stability:&lt;/b&gt; duplicate islands are prevented and animations and content are corrected.</string>
     <string name="title_1_0_8">Faithful, fluid HyperOS island</string>
     <string name="title_1_0_7">Design, history and animations</string>
     <string name="changelog_1_0_8">• &lt;b&gt;Island in the status bar:&lt;/b&gt; position and size corrected to match the preview.\n• &lt;b&gt;HyperOS design:&lt;/b&gt; pure black, glass edge, redesigned lens and the same palette in the real island and the preview.\n• &lt;b&gt;Premium animations:&lt;/b&gt; spring expansion, light sweep, pulse on the permanent island and touch feedback.\n• &lt;b&gt;Faithful preview:&lt;/b&gt; uses the real status-bar height and shows both compact and expanded sizes.\n• &lt;b&gt;Live changes:&lt;/b&gt; moving or aligning the island applies instantly.\n• &lt;b&gt;Icon and cleanup:&lt;/b&gt; logo fitted to the safe area and unused code removed.</string>
