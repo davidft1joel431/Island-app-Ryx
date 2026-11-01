@@ -104,6 +104,7 @@ import com.d4viddf.hyperbridge.BuildConfig
 import com.d4viddf.hyperbridge.R
 import com.d4viddf.hyperbridge.data.AppPreferences
 import com.d4viddf.hyperbridge.models.IslandConfig
+import com.d4viddf.hyperbridge.models.IslandAlignment
 import com.d4viddf.hyperbridge.models.IslandLimitMode
 import com.d4viddf.hyperbridge.models.NotificationType
 import com.d4viddf.hyperbridge.ui.components.EngineOptionCard
@@ -1288,17 +1289,10 @@ fun AutoHidePagePreview(){
 @Composable
 fun PermanentIslandConfigPage(prefs: AppPreferences) {
     val isEnabled by prefs.isPermanentIslandEnabledFlow.collectAsState(initial = false)
-    val islandWidth by prefs.permanentIslandWidthFlow.collectAsState(initial = 0)
-    
-    var sliderValue by androidx.compose.runtime.remember { androidx.compose.runtime.mutableFloatStateOf(0f) }
-    var isDragging by androidx.compose.runtime.remember { mutableStateOf(false) }
+    val hideInLandscape by prefs.hidePermanentIslandLandscapeFlow.collectAsState(initial = false)
+    val positionY by prefs.islandPositionYFlow.collectAsState(initial = 0)
+    val alignment by prefs.islandAlignmentFlow.collectAsState(initial = IslandAlignment.CENTER)
 
-    androidx.compose.runtime.LaunchedEffect(islandWidth) {
-        if (!isDragging) {
-            sliderValue = islandWidth.toFloat()
-        }
-    }
-    
     val scope = rememberCoroutineScope()
 
     OnboardingPageLayout(
@@ -1306,20 +1300,37 @@ fun PermanentIslandConfigPage(prefs: AppPreferences) {
         description = stringResource(R.string.permanent_island_desc),
         iconColor = MaterialTheme.colorScheme.primary
     ) {
-        PermanentIslandPreview(islandWidthValue = if (isDragging) sliderValue.toInt() else islandWidth)
+        PermanentIslandPreview(
+            positionY = positionY,
+            alignment = alignment,
+            modifier = Modifier.fillMaxWidth()
+        )
 
-        Spacer(Modifier.height(24.dp))
-        
+        Spacer(Modifier.height(20.dp))
+
         Card(
             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
             shape = RoundedCornerShape(24.dp),
             modifier = Modifier.fillMaxWidth()
         ) {
-            Column(modifier = Modifier.padding(horizontal = 20.dp, vertical = 16.dp)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-
+            Column(modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp)) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
                     Column(modifier = Modifier.weight(1f)) {
-                        Text(stringResource(R.string.permanent_island_title), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Medium)
+                        Text(
+                            stringResource(R.string.permanent_island_title),
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Medium
+                        )
+                        Text(
+                            stringResource(R.string.permanent_island_screen_desc),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
                     }
                     Switch(
                         checked = isEnabled,
@@ -1328,31 +1339,45 @@ fun PermanentIslandConfigPage(prefs: AppPreferences) {
                         }
                     )
                 }
-                
-                if (isEnabled) {
-                    Spacer(Modifier.height(16.dp))
-                    Text(
-                        text = stringResource(R.string.permanent_island_width),
-                        style = MaterialTheme.typography.titleSmall,
-                        fontWeight = FontWeight.Medium
-                    )
-                    androidx.compose.material3.Slider(
-                        value = sliderValue,
-                        onValueChange = { value ->
-                            isDragging = true
-                            sliderValue = value
-                            scope.launch {
-                                prefs.setPermanentIslandWidth(value.toInt())
+
+                AnimatedVisibility(visible = isEnabled) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                stringResource(R.string.permanent_island_hide_landscape),
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.Medium
+                            )
+                            Text(
+                                stringResource(R.string.permanent_island_hide_landscape_desc),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        Switch(
+                            checked = hideInLandscape,
+                            onCheckedChange = { hide ->
+                                scope.launch { prefs.setHidePermanentIslandLandscape(hide) }
                             }
-                        },
-                        onValueChangeFinished = {
-                            isDragging = false
-                        },
-                        valueRange = 0f..20f
-                    )
+                        )
+                    }
                 }
             }
         }
+
+        Spacer(Modifier.height(12.dp))
+
+        Text(
+            text = stringResource(R.string.permanent_island_preview_note),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(horizontal = 4.dp)
+        )
     }
 }
 

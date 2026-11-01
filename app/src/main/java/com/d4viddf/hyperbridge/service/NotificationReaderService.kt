@@ -40,6 +40,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import java.util.concurrent.ConcurrentHashMap
@@ -184,6 +185,15 @@ class NotificationReaderService : NotificationListenerService() {
         serviceScope.launch { preferences.globalBlockedTermsFlow.collectLatest { globalBlockedTerms = it } }
         serviceScope.launch { preferences.isDndModeEnabledFlow.collectLatest { isDndModeEnabled = it } }
         serviceScope.launch { preferences.autoDetectDndFlow.collectLatest { autoDetectDnd = it } }
+
+        // Keep the live island in sync with the appearance controls in the app.
+        serviceScope.launch {
+            combine(
+                preferences.islandPositionYFlow,
+                preferences.islandAlignmentFlow,
+                preferences.islandAnimationsEnabledFlow
+            ) { _, _, _ -> Unit }.collectLatest { genericIslandOverlay.refreshAppearance() }
+        }
 
         // Listen for Theme Changes
         serviceScope.launch {

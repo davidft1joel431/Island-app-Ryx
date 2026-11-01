@@ -4,11 +4,6 @@ import android.annotation.SuppressLint
 import android.graphics.BitmapFactory
 import android.graphics.drawable.Drawable
 import androidx.compose.animation.animateContentSize
-import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.Spring
-import androidx.compose.animation.core.animateDpAsState
-import androidx.compose.animation.core.spring
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -27,7 +22,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
@@ -40,14 +34,13 @@ import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.ArrowDownward
 import androidx.compose.material.icons.rounded.ArrowUpward
 import androidx.compose.material.icons.rounded.AutoAwesome
+import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.History
-import androidx.compose.material.icons.rounded.NotificationsActive
 import androidx.compose.material.icons.rounded.Palette
 import androidx.compose.material.icons.rounded.PhoneAndroid
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.RestartAlt
 import androidx.compose.material.icons.rounded.Settings
-import androidx.compose.material.icons.rounded.Tune
 import androidx.compose.material.icons.rounded.Widgets
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -85,7 +78,6 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -103,6 +95,7 @@ import com.d4viddf.hyperbridge.data.AppPreferences
 import com.d4viddf.hyperbridge.data.theme.ThemeRepository
 import com.d4viddf.hyperbridge.data.widget.WidgetManager
 import com.d4viddf.hyperbridge.models.IslandAlignment
+import com.d4viddf.hyperbridge.ui.components.HyperIslandPreviewHero
 import com.d4viddf.hyperbridge.models.theme.CallModule
 import com.d4viddf.hyperbridge.models.theme.GlobalConfig
 import com.d4viddf.hyperbridge.models.theme.HyperTheme
@@ -278,7 +271,7 @@ fun DesignScreenContent(
     onNavigateToHistory: () -> Unit
 ) {
     Scaffold(
-        containerColor = MaterialTheme.colorScheme.background,
+        containerColor = Color.Transparent,
         contentWindowInsets = WindowInsets.statusBars,
         topBar = {
             TopAppBar(
@@ -310,7 +303,7 @@ fun DesignScreenContent(
                         }
                     }
                 },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.background)
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent)
             )
         },
         floatingActionButton = {
@@ -329,7 +322,7 @@ fun DesignScreenContent(
                 .verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(22.dp)
         ) {
-            IslandTuningCard(
+            IslandSection(
                 positionY = islandPositionY,
                 alignment = islandAlignment,
                 animationsEnabled = islandAnimationsEnabled,
@@ -370,7 +363,7 @@ fun DesignScreenContent(
 }
 
 @Composable
-private fun IslandTuningCard(
+private fun IslandSection(
     positionY: Int,
     alignment: IslandAlignment,
     animationsEnabled: Boolean,
@@ -387,196 +380,167 @@ private fun IslandTuningCard(
         if (!isDragging) sliderValue = positionY.toFloat()
     }
 
-    val previewFraction = (sliderValue - AppPreferences.MIN_POSITION_Y) /
-        (AppPreferences.MAX_POSITION_Y - AppPreferences.MIN_POSITION_Y).toFloat()
-    val previewOffset by animateDpAsState(
-        targetValue = (8f + previewFraction * 72f).dp,
-        animationSpec = spring(dampingRatio = 0.78f, stiffness = Spring.StiffnessLow),
-        label = "islandPreviewOffset"
-    )
-    val previewAlignment = when (alignment) {
-        IslandAlignment.LEFT -> Alignment.TopStart
-        IslandAlignment.CENTER -> Alignment.TopCenter
-        IslandAlignment.RIGHT -> Alignment.TopEnd
-    }
+    Column {
+        HyperIslandPreviewHero(
+            positionY = sliderValue.roundToInt(),
+            alignment = alignment,
+            animationsEnabled = animationsEnabled,
+            animationKey = animationKey,
+            modifier = Modifier.fillMaxWidth()
+        )
 
-    Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp)
-            .animateContentSize(),
-        shape = RoundedCornerShape(28.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.55f))
-    ) {
-        Column(modifier = Modifier.padding(18.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = stringResource(R.string.design_position_title),
-                        style = MaterialTheme.typography.titleLarge,
-                        fontWeight = FontWeight.Bold
-                    )
-                    Text(
-                        text = stringResource(R.string.design_position_desc),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-                IconButton(onClick = onReset) {
-                    Icon(
-                        Icons.Rounded.RestartAlt,
-                        contentDescription = stringResource(R.string.design_reset_position),
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-            }
+        Spacer(Modifier.height(16.dp))
 
-            Spacer(Modifier.height(12.dp))
-
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(188.dp)
-                    .clip(RoundedCornerShape(22.dp))
-                    .background(
-                        Brush.verticalGradient(
-                            listOf(
-                                MaterialTheme.colorScheme.surfaceContainerHighest,
-                                MaterialTheme.colorScheme.surfaceContainer
-                            )
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp)
+                .animateContentSize(),
+            shape = RoundedCornerShape(28.dp),
+            colors = CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.surfaceContainerLow
+            ),
+            border = BorderStroke(
+                1.dp,
+                MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.55f)
+            )
+        ) {
+            Column(modifier = Modifier.padding(18.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = stringResource(R.string.design_position_title),
+                            style = MaterialTheme.typography.titleLarge,
+                            fontWeight = FontWeight.Bold
                         )
-                    )
-            ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 18.dp, vertical = 12.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = stringResource(R.string.design_preview_time),
-                        style = MaterialTheme.typography.labelMedium,
-                        fontWeight = FontWeight.Bold
-                    )
-                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                        Box(Modifier.size(6.dp).background(MaterialTheme.colorScheme.onSurfaceVariant, CircleShape))
-                        Box(Modifier.size(6.dp).background(MaterialTheme.colorScheme.onSurfaceVariant, CircleShape))
-                        Box(Modifier.size(6.dp).background(MaterialTheme.colorScheme.onSurfaceVariant, CircleShape))
+                        Text(
+                            text = stringResource(R.string.design_position_desc),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    IconButton(onClick = onReset) {
+                        Icon(
+                            Icons.Rounded.RestartAlt,
+                            contentDescription = stringResource(R.string.design_reset_position),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
                     }
                 }
 
-                IslandPreviewPill(
-                    animationKey = animationKey,
-                    animationsEnabled = animationsEnabled,
-                    modifier = Modifier
-                        .align(previewAlignment)
-                        .padding(top = previewOffset, start = 16.dp, end = 16.dp)
-                )
-            }
+                Spacer(Modifier.height(16.dp))
 
-            Spacer(Modifier.height(14.dp))
-
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(
-                    Icons.Rounded.ArrowUpward,
-                    contentDescription = null,
-                    modifier = Modifier.size(18.dp),
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                Slider(
-                    value = sliderValue,
-                    onValueChange = {
-                        isDragging = true
-                        sliderValue = it
-                    },
-                    onValueChangeFinished = {
-                        isDragging = false
-                        onPositionChange(sliderValue.roundToInt())
-                    },
-                    valueRange = AppPreferences.MIN_POSITION_Y.toFloat()..AppPreferences.MAX_POSITION_Y.toFloat(),
-                    steps = 35,
-                    modifier = Modifier.weight(1f).padding(horizontal = 6.dp)
-                )
-                Icon(
-                    Icons.Rounded.ArrowDownward,
-                    contentDescription = null,
-                    modifier = Modifier.size(18.dp),
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                Text(
-                    text = stringResource(R.string.design_position_vertical),
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                Text(
-                    text = stringResource(R.string.design_position_value, sliderValue.roundToInt()),
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.primary,
-                    fontWeight = FontWeight.SemiBold
-                )
-            }
-
-            Spacer(Modifier.height(14.dp))
-
-            Text(
-                text = stringResource(R.string.design_alignment),
-                style = MaterialTheme.typography.titleSmall,
-                fontWeight = FontWeight.SemiBold
-            )
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                AlignmentChip(
-                    label = stringResource(R.string.design_alignment_left),
-                    selected = alignment == IslandAlignment.LEFT,
-                    onClick = { onAlignmentChange(IslandAlignment.LEFT) }
-                )
-                AlignmentChip(
-                    label = stringResource(R.string.design_alignment_center),
-                    selected = alignment == IslandAlignment.CENTER,
-                    onClick = { onAlignmentChange(IslandAlignment.CENTER) }
-                )
-                AlignmentChip(
-                    label = stringResource(R.string.design_alignment_right),
-                    selected = alignment == IslandAlignment.RIGHT,
-                    onClick = { onAlignmentChange(IslandAlignment.RIGHT) }
-                )
-            }
-
-            Spacer(Modifier.height(12.dp))
-
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = stringResource(R.string.design_animations),
-                        style = MaterialTheme.typography.titleSmall,
-                        fontWeight = FontWeight.SemiBold
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        Icons.Rounded.ArrowUpward,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant
                     )
-                    Text(
-                        text = stringResource(R.string.design_animations_desc),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    Slider(
+                        value = sliderValue,
+                        onValueChange = {
+                            isDragging = true
+                            sliderValue = it
+                        },
+                        onValueChangeFinished = {
+                            isDragging = false
+                            onPositionChange(sliderValue.roundToInt())
+                        },
+                        valueRange = AppPreferences.MIN_POSITION_Y.toFloat()..AppPreferences.MAX_POSITION_Y.toFloat(),
+                        steps = 47,
+                        modifier = Modifier.weight(1f).padding(horizontal = 6.dp)
+                    )
+                    Icon(
+                        Icons.Rounded.ArrowDownward,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
-                Switch(
-                    checked = animationsEnabled,
-                    onCheckedChange = onAnimationsChange
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text(
+                        text = stringResource(R.string.design_position_vertical),
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Text(
+                        text = stringResource(R.string.design_position_value, sliderValue.roundToInt()),
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.primary,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                }
+                Text(
+                    text = stringResource(R.string.design_position_hint),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.75f),
+                    modifier = Modifier.padding(top = 2.dp)
                 )
-            }
 
-            Spacer(Modifier.height(6.dp))
+                Spacer(Modifier.height(18.dp))
 
-            OutlinedButton(
-                onClick = { animationKey++ },
-                enabled = animationsEnabled,
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(14.dp)
-            ) {
-                Icon(Icons.Rounded.PlayArrow, null, modifier = Modifier.size(18.dp))
-                Spacer(Modifier.width(8.dp))
-                Text(stringResource(R.string.design_test_animation))
+                Text(
+                    text = stringResource(R.string.design_alignment),
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.SemiBold
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    AlignmentChip(
+                        label = stringResource(R.string.design_alignment_left),
+                        selected = alignment == IslandAlignment.LEFT,
+                        onClick = { onAlignmentChange(IslandAlignment.LEFT) }
+                    )
+                    AlignmentChip(
+                        label = stringResource(R.string.design_alignment_center),
+                        selected = alignment == IslandAlignment.CENTER,
+                        onClick = { onAlignmentChange(IslandAlignment.CENTER) }
+                    )
+                    AlignmentChip(
+                        label = stringResource(R.string.design_alignment_right),
+                        selected = alignment == IslandAlignment.RIGHT,
+                        onClick = { onAlignmentChange(IslandAlignment.RIGHT) }
+                    )
+                }
+
+                Spacer(Modifier.height(16.dp))
+
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = stringResource(R.string.design_animations),
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        Text(
+                            text = stringResource(R.string.design_animations_desc),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Switch(
+                        checked = animationsEnabled,
+                        onCheckedChange = onAnimationsChange
+                    )
+                }
+
+                Spacer(Modifier.height(10.dp))
+
+                Button(
+                    onClick = { animationKey++ },
+                    enabled = animationsEnabled,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(48.dp),
+                    shape = RoundedCornerShape(16.dp)
+                ) {
+                    Icon(Icons.Rounded.PlayArrow, null, modifier = Modifier.size(19.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text(stringResource(R.string.design_test_animation))
+                }
             }
         }
     }
@@ -593,88 +557,9 @@ private fun AlignmentChip(
         onClick = onClick,
         label = { Text(label) },
         leadingIcon = if (selected) {
-            { Icon(Icons.Rounded.Tune, null, modifier = Modifier.size(16.dp)) }
+            { Icon(Icons.Rounded.Check, null, modifier = Modifier.size(16.dp)) }
         } else null
     )
-}
-
-@Composable
-private fun IslandPreviewPill(
-    animationKey: Int,
-    animationsEnabled: Boolean,
-    modifier: Modifier = Modifier
-) {
-    val scale = remember { Animatable(1f) }
-    val alpha = remember { Animatable(1f) }
-
-    LaunchedEffect(animationKey, animationsEnabled) {
-        if (!animationsEnabled) {
-            scale.snapTo(1f)
-            alpha.snapTo(1f)
-        } else {
-            scale.snapTo(0.72f)
-            alpha.snapTo(0f)
-            scale.animateTo(1f, spring(dampingRatio = 0.55f, stiffness = Spring.StiffnessMediumLow))
-            alpha.animateTo(1f, tween(220))
-        }
-    }
-
-    Surface(
-        modifier = modifier
-            .fillMaxWidth(0.92f)
-            .widthIn(max = 330.dp)
-            .graphicsLayer {
-                scaleX = scale.value
-                scaleY = scale.value
-                this.alpha = alpha.value
-            },
-        shape = RoundedCornerShape(50),
-        color = Color(0xFF15110A),
-        border = BorderStroke(1.dp, Color(0xFFDDB136)),
-        shadowElevation = 10.dp
-    ) {
-        Row(
-            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Box(
-                modifier = Modifier
-                    .size(34.dp)
-                    .clip(RoundedCornerShape(11.dp))
-                    .background(Color(0xFFF2C144)),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(
-                    Icons.Rounded.NotificationsActive,
-                    contentDescription = null,
-                    modifier = Modifier.size(19.dp),
-                    tint = Color(0xFF1B1508)
-                )
-            }
-            Spacer(Modifier.width(10.dp))
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = stringResource(R.string.design_preview_island_title),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = Color(0xFFF2C144),
-                    fontWeight = FontWeight.Bold
-                )
-                Text(
-                    text = stringResource(R.string.design_preview_island_text),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = Color.White,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-            }
-            Spacer(Modifier.width(8.dp))
-            Box(
-                modifier = Modifier
-                    .size(8.dp)
-                    .background(Color(0xFF5CE1A0), CircleShape)
-            )
-        }
-    }
 }
 
 @Composable
