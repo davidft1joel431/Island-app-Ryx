@@ -20,6 +20,7 @@ import androidx.core.app.NotificationManagerCompat
 import com.d4viddf.hyperbridge.R
 import com.d4viddf.hyperbridge.MainActivity
 import com.d4viddf.hyperbridge.data.AppPreferences
+import com.d4viddf.hyperbridge.data.NotificationHistoryRepository
 import com.d4viddf.hyperbridge.data.db.AppDatabase
 import com.d4viddf.hyperbridge.data.theme.RulesEngine
 import com.d4viddf.hyperbridge.data.theme.ThemeRepository
@@ -88,6 +89,7 @@ class NotificationReaderService : NotificationListenerService() {
     private val STANDARD_ISLAND_TIMEOUT_MS = 60_000L
 
     private lateinit var preferences: AppPreferences
+    private lateinit var notificationHistoryRepository: NotificationHistoryRepository
 
     // --- THEME ENGINE ---
     private lateinit var themeRepository: ThemeRepository
@@ -159,7 +161,8 @@ class NotificationReaderService : NotificationListenerService() {
         )
         
         preferences = AppPreferences(applicationContext)
-        genericIslandOverlay = GenericIslandOverlay(this)
+        notificationHistoryRepository = NotificationHistoryRepository(applicationContext)
+        genericIslandOverlay = GenericIslandOverlay(this, preferences)
         createChannels()
 
         // [INIT] Theme Engine
@@ -610,6 +613,21 @@ class NotificationReaderService : NotificationListenerService() {
                 isOngoing = sbn.isOngoing,
                 timeoutSeconds = finalConfig.timeout ?: 5
             )
+
+            val historyLabel = getCachedAppLabel(sbn.packageName).ifBlank { sbn.packageName }
+            serviceScope.launch(Dispatchers.IO) {
+                runCatching {
+                    notificationHistoryRepository.record(
+                        notificationKey = sbn.key,
+                        packageName = sbn.packageName,
+                        appLabel = historyLabel,
+                        title = effectiveTitle,
+                        text = effectiveText,
+                        type = type.name
+                    )
+                }
+            }
+
             genericNotificationKeys.add(effectiveKey)
             activeTranslations[effectiveKey] = bridgeId
             reverseTranslations[bridgeId] = effectiveKey

@@ -37,6 +37,8 @@ Ryx Isla convierte notificaciones compatibles en una isla flotante personalizabl
 | 📞 Llamadas | Mantener a la vista la información de llamadas compatibles. |
 | 📥 Descargas y tareas | Seguir el progreso de notificaciones compatibles. |
 | 🎨 Apariencia | Ajustar colores, formas, temas y diseño de la isla. |
+| 🎛️ Posición | Elegir la altura, la alineación y las animaciones de la isla flotante. |
+| 🔔 Historial | Consultar y borrar las últimas notificaciones que mostró la isla. |
 | 🧩 Widgets | Añadir widgets compatibles y personalizar su presentación. |
 | ⚙️ Control por aplicación | Elegir qué aplicaciones y tipos de aviso aparecen. |
 | 🛡️ Privacidad | El procesamiento de notificaciones se realiza en el dispositivo. |

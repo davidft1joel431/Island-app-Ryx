@@ -121,21 +121,6 @@
         <item>destination</item>
     </string-array>
     <string name="version_history">버전 기록</string>
-    <string name="title_0_2_0">The Information 업데이트</string>
-    <string name="changelog_0_2_0">        • &lt;b&gt;고급 진행률 표시줄:&lt;/b&gt; \"단계별 진행\"(예: 1/3) 및 알림창 내 아이콘이 포함된 진행률 표시줄 지원이 추가되었습니다.\n
-        • &lt;b&gt;우선순위 시스템:&lt;/b&gt; 새로운 \"아일랜드 동작\" 설정. \"최신순\", \"선착순\", 또는 사용자 지정 \"앱 우선순위\" 목록 중에서 선택하세요.\n
-        • &lt;b&gt;스마트 필터링:&lt;/b&gt; 중복 알림 및 그룹화된 다운로드 감지 기능이 개선되었습니다.\n
-        • &lt;b&gt;시각적 개선:&lt;/b&gt; 내비게이션 안내의 레이아웃 문제를 수정했습니다.\n
-        • &lt;b&gt;앱별 구성:&lt;/b&gt; 앱별로 시간 제한 및 플로팅 동작을 사용자가 지정할 수 있습니다.
-    </string>
-    <string name="title_0_1_0">The Expressive 업데이트</string>
-    <string name="changelog_0_1_0">        • &lt;b&gt;주요 UI 개편:&lt;/b&gt; 부드러운 애니메이션이 적용된 새로운 Material 3 Expressive 디자인.\n
-        • &lt;b&gt;향상된 아일랜드:&lt;/b&gt; 이제 텍스트가 오른쪽에 표시됩니다. 완료된 다운로드에 녹색 체크 표시가 추가되었습니다.\n
-        • &lt;b&gt;앱별 구성:&lt;/b&gt; 앱별로 특정 알림 유형(음악, 지도, 통화)을 선택할 수 있습니다.\n
-        • &lt;b&gt;스마트 필터:&lt;/b&gt; 중복 알림을 차단하고 배터리를 절약합니다.\n
-        • &lt;b&gt;새로운 라이브러리:&lt;/b&gt; 카테고리별로 앱을 필터링하고 정렬 순서를 변경할 수 있습니다.\n
-        • &lt;b&gt;현지화:&lt;/b&gt; 스페인어 지원이 추가되었습니다.
-    </string>
     <string name="priority_edu_title">새 기능: 섬 제어</string>
     <string name="priority_edu_desc">Ryx Isla는 이제 9개 제한에 도달했을 때 여러 알림을 어떻게 처리할지 관리할 수 있습니다.\n\n<b>기본값: 최신순</b>\n새로운 알림이 오래된 알림을 자동으로 대체합니다.</string>
     <string name="badge_new">신규</string>
@@ -209,22 +194,6 @@
         <item>speaker</item>
         <item>audio</item>
     </string-array>
-    <string name="title_0_3_0">The Hidden 업데이트</string>
-    <string name="changelog_0_3_0">            • &lt;b&gt;숨겨진 알림 👻:&lt;/b&gt; 알림 패널에는 숨기고, 아일랜드에서는 계속 표시되도록 하는 새로운 옵션이 추가되었습니다. 전역 설정에서 확인하세요.\n
-            • &lt;b&gt;새로운 언어 🌍:&lt;/b&gt; 커뮤니티 번역에 감사드립니다:\n
-                • 🇧🇷 포르투갈어(브라질)\n
-                • 🇵🇱 폴란드어\n
-                • 🇰🇷 한국어\n
-                • 🇺🇦 우크라이나어\n
-            • &lt;b&gt;내비게이션 설정 🧭:&lt;/b&gt; 거리, 도착 시간, 안내 등 어떤 정보를 좌/우에 표시할지 선택할 수 있습니다.\n
-            • &lt;b&gt;스포일러 방지 🛡️:&lt;/b&gt; “차단된 단어” 기능을 통해 특정 단어가 포함된 알림이 아일랜드에 표시되지 않도록 전역 또는 앱별로 설정할 수 있습니다.\n
-            • &lt;b&gt;통화 개선 📞:&lt;/b&gt; 더 다양한 VoIP 및 전화 앱을 정확하게 감지하도록 로직을 개선했습니다.\n
-            • &lt;b&gt;수정 및 개선 🛠️:&lt;/b&gt;\n
-                • 재부팅 후 앱이 로딩에서 멈추는 치명적 버그 수정\n
-                • 알림 내용 대신 패키지명이 표시되던 문제 수정\n
-                • 앱 구성 패널 디자인 개선\n
-                • 기기 정보를 포함한 호환성 검사 화면 개선\n
-    </string>
     <string name="privacy_title">설계부터 개인정보 보호</string>
     <string name="privacy_desc">Ryx Isla는 모든 작업을 휴대폰의 프로세서에서 직접 처리합니다. 알림과 개인 데이터는 절대 기기를 떠나지 않습니다. 인터넷 연결은 공식 GitHub 저장소의 업데이트를 확인하는 데만 사용됩니다.</string>
     <string name="language">언어</string>
@@ -257,25 +226,6 @@
     <string name="optimization_title">기기 최적화</string>
     <string name="privacy_card_title">오프라인 우선</string>
     <string name="privacy_card_desc">인터넷 연결이 필요 없습니다.</string>
-    <string name="title_0_3_1">백업 &amp; 다국어 업데이트</string>
-    <string name="changelog_0_3_1">            &lt;b&gt;백업 &amp; 복원 📦&lt;/b&gt;\n
-            고급 사용자 기능 추가! 설정, 차단 목록, 앱 우선순위를 .hbr 파일로 안전하게 내보내고 언제든지 복원할 수 있습니다.\n\n
-            &lt;b&gt;새로운 언어 🌍&lt;/b&gt;\n
-            다음 언어가 추가되었습니다:\n
-            • 🇩🇪 독일어\n
-            • 🇷🇺 러시아어\n
-            • 🇺🇦 우크라이나어 (개선됨)\n
-            &lt;i&gt;또한: 시스템 언어에 영향을 주지 않고 앱 내에서 바로 변경할 수 있는 새로운 언어 선택기가 추가되었습니다.&lt;/i&gt;\n\n
-            &lt;b&gt;시각적 업데이트 🎨&lt;/b&gt;\n
-            앱이 Material 3 Expressive 디자인으로 새로워졌습니다. 더 큰 헤더, 더 둥근 형태, 더 부드러운 사용자 경험을 제공합니다.\n\n
-            &lt;b&gt;프라이버시 &amp; 설정 🛡️&lt;/b&gt;\n
-            • 오프라인 우선 구조를 설명하는 전용 프라이버시 페이지가 포함된 온보딩 개선.\n
-            • HyperOS 3.0에서 최고의 경험을 제공하기 위한 더욱 엄격한 호환성 검사.\n\n
-            &lt;b&gt;버그 수정 🛠️&lt;/b&gt;\n
-            • 기기 재부팅 후 설정이 사라지는 치명적 오류 수정(데이터베이스로 마이그레이션됨).\n
-            • Navigation Island에서 “종료” 버튼이 아이콘으로 표시되던 문제 수정 — 이제 텍스트로 표시됩니다.\n
-            • 설정에서 앱 아이콘 로딩 문제 수정.\n
-    </string>
     <string name="close">Close</string>
     <string name="search">Search</string>
     <string name="widget_updated_toast">Widget updated</string>
@@ -387,12 +337,6 @@
     <string name="calls_label_answer">Answer</string>
     <string name="calls_label_decline">Decline</string>
     <string name="apps_empty">No apps configured</string>
-    <string name="design_hero_customization_title">Customization</string>
-    <string name="design_hero_customization_subtitle">Learn how to create themes</string>
-    <string name="design_hero_pro_title">Pro Features</string>
-    <string name="design_hero_pro_subtitle">Unlock more power</string>
-    <string name="design_hero_community_title">Community</string>
-    <string name="design_hero_community_subtitle">Join our GitHub</string>
     <string name="design_section_themes">Themes</string>
     <string name="design_section_widgets">Widgets</string>
     <string name="design_browse_more">Browse More</string>
@@ -441,36 +385,6 @@
     <plurals name="creator_sub_actions_count">
         <item quantity="other">%1$d custom actions</item>
     </plurals>
-    <string name="title_0_4_0">The Customization Update</string>
-    <string name="changelog_0_4_0">        <b>Theme Engine 🎨</b>\n
-        The biggest update yet! You can now fully customize the Dynamic Island visual experience.\n
-        • <b>Theme Creator:</b> Design themes directly on your phone with real-time previews.\n
-        • <b>Granular Control:</b> Choose exactly how icons are shown, customize call notification colors and shapes, and configure individual app overrides.\n
-        • <b>Smart Colors:</b> Automatically extract vibrant brand colors from app icons.\n
-        • <b>Per-Action Customization (Beta):</b> Fine-tune the look of specific notification actions.\n
-        • <b>Sharing:</b> Export and import themes as portable <i>.hbr</i> packages.\n\n
-
-        <b>Widget Support 🧩</b>\n
-        Pin standard Android widgets to the island for quick access—even on your <b>Lockscreen</b>!\n
-        • Choose between <b>Interactive</b> mode for speed or <b>Snapshot</b> mode for battery efficiency.\n\n
-
-        <b>Notification Engine 2.0 ⚡</b>\n
-        A complete rewrite of the core logic for better stability:\n
-        • <b>Smarter Parsing:</b> Fixed issues where notifications showed package names (e.g., com.whatsapp) instead of message content.\n
-        • <b>Anti-Flicker:</b> New content hashing prevents redundant updates and stuttering.\n
-        • <b>Ghost Fixes:</b> Solved race conditions where islands lingered after dismissal.\n\n
-
-        <b>Visual Refresh ✨</b>\n
-        • Redesigned \"Design\" tab with fluid, native-feeling carousels.\n
-        • New \"Text Pill\" buttons for clearer notification actions.\n
-        • Added support for 🇮🇩 Indonesian and 🇹🇷 Turkish.\n\n
-
-        <i>Note: This release includes significant architectural changes. Please report any bugs on GitHub!</i>
-    </string>
-    <string name="title_0_4_2">Hotfix Update</string>
-    <string name="changelog_0_4_2">        •&lt;b&gt;Crash Fix:&lt;/b&gt; Resolved a critical issue that caused the app to crash when opening the settings menu in Traditional Chinese.\n
-        •&lt;b&gt;Under the Hood:&lt;/b&gt; General bug fixes and stability improvements to keep your Island running smoothly.
-    </string>
     <string name="colors_label_hue">Hue</string>
     <string name="colors_label_saturation">Saturation</string>
     <string name="colors_label_lightness">Lightness</string>
@@ -560,56 +474,6 @@
     <string name="onboard_design_desc">Expand the possibilities with different customization options</string>
     <string name="behavior_desc_glob_config">Determines how the island behaves.</string>
     <string name="widget_layout_snapshot">Preview of the widget</string>
-    <string name="changelog_0_5_2">        <b>Play Store Crash Fixes &amp; Stability</b>\n
-              ? <b>Theme Creator:</b> Fixed a crash when parsing large sets of custom assets.\n
-              ? <b>Performance:</b> Resolved an ANR (Application Not Responding) issue on the initial Welcome Screen.\n
-              ? <b>Widget Picker:</b> Eliminated crashes and Out-Of-Memory (OOM) errors caused by extremely large widget previews.\n
-              ? <b>UI Layouts:</b> Fixed Jetpack Compose layout constraint exceptions that crashed the app when resizing certain menus.\n
-              ? <b>Backups:</b> Resolved OOM errors when importing large backup files by optimizing JSON parsing.\n
-              ? <b>Warm Starts:</b> Significantly improved app launch speeds and eliminated UI thread blocking on mid-range devices.\n
-              ? <b>Background Service:</b> Completely overhauled the Notification Listener memory architecture, dropping background overhead to 0% and improving battery life.\n
-    </string>
-    <string name="title_0_5_2">Performance &amp; Stability Update</string>
-    <string name="changelog_0_5_1">        <b>Fixes &amp; Stability</b>\n
-              WhatsApp Duplicates Fixed: Resolved an issue that caused duplicate WhatsApp notifications to appear.\n
-              Notification Flicker &amp; Crashes Fixed: Fixed a crash caused by receiving multiple notifications in a short timeframe. The app now safely updates notifications normally, eliminating the notification flicker and improving stability.\n
-              Notification Intents Restored: Fixed an issue where clicking a featured notification would incorrectly route to the troubleshooting screen instead of the original app.\n\n
-        <b>Features &amp; Polish</b>\n
-              Remove Island on Dismiss: Added a new option to automatically remove the island if the original system notification is dismissed.\n
-              Featured Notifications Diagnostics: Added a new check screen during Onboarding to verify if your Xiaomi device supports Featured Notifications and if the required permissions are enabled.\n
-              Setup Health Integration: The Featured Notifications permission status is now continuously monitored and displayed inside the Setup Health screen.\n
-              Troubleshooting Screen: Added a dedicated Troubleshooting Screen that guides users on how to enable the necessary hidden system permissions (or use Shizuku) to get islands working on strict Xiaomi ROMs.\n
-              Clearer Terminology: Renamed the \"Live Updates\" section in the settings menu to \"Notification Management\" to better reflect its purpose.\n
-              Settings UI Polish: Restored the missing rounded corners on the \"Permanent Island\" option in the Global Settings list.\n
-              Spanish Translations: Added full Spanish translations for all the new troubleshooting dialogues, setup health checks, and notification management settings.
-    </string>
-    <string name="title_0_5_1">Fixes &amp; Refinements</string>
-    <string name="changelog_0_5_0">        <b>CN ROM Support</b>\n
-            • Enable the new Sui &amp; Shizuku workaround to enjoy the Hyper Islands in your devices running HyperOS CN (Chinese) ROMs without native support.\n\n
-        <b>Theme Engine Improvements</b>\n
-            • Engine Selection: You can now choose animation engines per-app or globally.\n
-            • Shizuku Workaround: Toggle added directly to the Theme Editor Engine tab.\n
-            • Behavior Controls: Custom timeouts and popup logic are now fully supported.\n\n
-        <b>Intelligent Permanent Island</b>\n
-            • Always Visible: Keep the island on screen even without active notifications.\n
-            • Auto-Hide: The permanent island now automatically hides itself whenever an active widget is shown on the screen.\n\n
-        <b>Smart Icon Tinting</b>\n
-            • New detection system automatically analyzes extracted notification icons and intelligently tints them white if they are dark or monochrome.\n\n
-        <b>Downloads &amp; Progress</b>\n
-            • New Dedicated Download Layout: Separated download and progress layouts with dedicated visual designs.\n
-            • Text Progress Support: Parsed percentage text (e.g. \"12%\") for app updates even without native progress bars.\n
-            • Smart Filtering: Restricted text-based progress checking to store and installer downloads to prevent false triggers on other status notifications.\n\n
-        <b>Messaging Fixes</b>\n
-            • Fixed missing sender avatars in apps like Telegram (now correctly extracts \"sender_person\" data).\n
-            • Resolved issues with grouped notifications (chat summaries) not triggering islands.\n
-            • Fixed island disappearance bugs caused by notification update race conditions.\n\n
-        <b>System &amp; Onboarding</b>\n
-            • New Onboarding Screen: A brand new and easier setup process for critical permissions.\n
-            • Boot Fix: Service now starts immediately and reliably after restart.\n
-            • Smarter Alerts: Downloads and Media update silently, while messaging updates reliably trigger popup animations.\n
-            • Navigation: Faster and smoother app transitions.
-    </string>
-    <string name="title_0_5_0">The Live Update</string>
     <string name="notification_went_wrong">If you are seeing this, something went wrong!</string>
     <string name="widget_went_wrong">If you are seeing this, something went wrong! The system couldn\'t show the widget</string>
     <string name="troubleshoot_featured_notification">Troubleshoot</string>

@@ -12,6 +12,8 @@ import android.view.Gravity
 import android.view.MotionEvent
 import android.view.View
 import android.view.WindowManager
+import android.view.animation.AccelerateInterpolator
+import android.view.animation.OvershootInterpolator
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
@@ -19,12 +21,18 @@ import android.util.TypedValue
 import android.util.Log
 import android.view.ViewGroup
 import android.graphics.drawable.Drawable
+import com.d4viddf.hyperbridge.data.AppPreferences
+import com.d4viddf.hyperbridge.models.IslandAlignment
 
 /** Renders Ryx Isla directly with Android's application overlay window. */
-class GenericIslandOverlay(private val context: Context) {
+class GenericIslandOverlay(
+    private val context: Context,
+    private val preferences: AppPreferences
+) {
     private val mainHandler = Handler(Looper.getMainLooper())
     private val windowManager = context.getSystemService(Context.WINDOW_SERVICE) as WindowManager
     private var root: View? = null
+    private val pendingRemovals = mutableSetOf<View>()
     private var activeNotificationKey: String? = null
     private var dismissTask: Runnable? = null
     private var touchStartY = 0f
@@ -109,8 +117,11 @@ class GenericIslandOverlay(private val context: Context) {
             }
 
             val screenWidth = context.resources.displayMetrics.widthPixels
+            val overlayWidth = (screenWidth - dp(28))
+                .coerceAtMost(dp(360))
+                .coerceAtLeast(dp(240))
             val params = WindowManager.LayoutParams(
-                (screenWidth - dp(28)).coerceAtLeast(dp(240)),
+                overlayWidth,
                 WindowManager.LayoutParams.WRAP_CONTENT,
                 WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
                 WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
@@ -118,13 +129,15 @@ class GenericIslandOverlay(private val context: Context) {
                     WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
                 PixelFormat.TRANSLUCENT
             ).apply {
-                gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL
-                y = statusBarHeight() + dp(12)
+                gravity = Gravity.TOP or horizontalGravity()
+                x = alignmentOffset()
+                y = islandTopOffset()
             }
 
             try {
                 windowManager.addView(container, params)
                 root = container
+                animateIn(container)
             } catch (error: Exception) {
                 Log.w(TAG, "Could not show the generic island overlay", error)
                 root = null
@@ -148,7 +161,7 @@ class GenericIslandOverlay(private val context: Context) {
             if (notificationKey != null && notificationKey != activeNotificationKey) return@post
             dismissTask?.let(mainHandler::removeCallbacks)
             dismissTask = null
-            removeCurrentView()
+            removeCurrentView(animated = true)
             activeNotificationKey = null
             if (shouldShowPermanent()) showPermanentView()
         }
@@ -161,6 +174,11 @@ class GenericIslandOverlay(private val context: Context) {
             activeNotificationKey = null
             permanentVisible = false
             removeCurrentView()
+            pendingRemovals.toList().forEach { view ->
+                view.animate().cancel()
+                runCatching { windowManager.removeView(view) }
+            }
+            pendingRemovals.clear()
         }
     }
 
@@ -221,13 +239,15 @@ class GenericIslandOverlay(private val context: Context) {
                 WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
             PixelFormat.TRANSLUCENT
         ).apply {
-            gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL
-            y = statusBarHeight() + dp(8)
+            gravity = Gravity.TOP or horizontalGravity()
+            x = alignmentOffset()
+            y = islandTopOffset()
         }
         try {
             windowManager.addView(capsule, params)
             root = capsule
             permanentVisible = true
+            animateIn(capsule, durationMs = 280)
         } catch (error: Exception) {
             Log.w(TAG, "Could not show the permanent island overlay", error)
             root = null
@@ -308,10 +328,68 @@ class GenericIslandOverlay(private val context: Context) {
         context.getDrawable(android.R.drawable.sym_def_app_icon)!!
     }
 
-    private fun removeCurrentView() {
-        root?.let { view -> runCatching { windowManager.removeView(view) } }
+    private fun removeCurrentView(animated: Boolean = false) {
+        val view = root ?: return
         root = null
         permanentVisible = false
+        view.animate().cancel()
+
+        if (animated && preferences.islandAnimationsEnabledSync()) {
+            pendingRemovals.add(view)
+            view.animate()
+                .alpha(0f)
+                .translationY(-dp(10).toFloat())
+                .scaleX(0.94f)
+                .scaleY(0.94f)
+                .setDuration(180)
+                .setInterpolator(AccelerateInterpolator())
+                .withEndAction {
+                    pendingRemovals.remove(view)
+                    runCatching { windowManager.removeView(view) }
+                }
+                .start()
+        } else {
+            runCatching { windowManager.removeView(view) }
+        }
+    }
+
+    private fun animateIn(view: View, durationMs: Long = 320) {
+        view.animate().cancel()
+        if (!preferences.islandAnimationsEnabledSync()) {
+            view.alpha = 1f
+            view.translationY = 0f
+            view.scaleX = 1f
+            view.scaleY = 1f
+            return
+        }
+        view.alpha = 0f
+        view.translationY = -dp(18).toFloat()
+        view.scaleX = 0.88f
+        view.scaleY = 0.88f
+        view.animate()
+            .alpha(1f)
+            .translationY(0f)
+            .scaleX(1f)
+            .scaleY(1f)
+            .setDuration(durationMs)
+            .setInterpolator(OvershootInterpolator(0.85f))
+            .start()
+    }
+
+    private fun islandTopOffset(): Int {
+        return statusBarHeight() + dp(4 + preferences.islandPositionYSync())
+    }
+
+    private fun horizontalGravity(): Int = when (preferences.islandAlignmentSync()) {
+        IslandAlignment.LEFT -> Gravity.START
+        IslandAlignment.RIGHT -> Gravity.END
+        IslandAlignment.CENTER -> Gravity.CENTER_HORIZONTAL
+    }
+
+    private fun alignmentOffset(): Int = when (preferences.islandAlignmentSync()) {
+        IslandAlignment.LEFT -> dp(12)
+        IslandAlignment.RIGHT -> -dp(12)
+        IslandAlignment.CENTER -> 0
     }
 
     private fun statusBarHeight(): Int {

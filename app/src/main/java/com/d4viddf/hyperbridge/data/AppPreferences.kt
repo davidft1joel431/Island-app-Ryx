@@ -8,6 +8,7 @@ import androidx.datastore.preferences.preferencesDataStore
 import com.d4viddf.hyperbridge.data.db.AppDatabase
 import com.d4viddf.hyperbridge.data.db.AppSetting
 import com.d4viddf.hyperbridge.data.db.SettingsKeys
+import com.d4viddf.hyperbridge.models.IslandAlignment
 import com.d4viddf.hyperbridge.models.IslandConfig
 import com.d4viddf.hyperbridge.models.IslandLimitMode
 import com.d4viddf.hyperbridge.models.NavContent
@@ -533,6 +534,58 @@ class AppPreferences(context: Context) {
     }
 
     // ========================================================================
+    //                        FLOATING ISLAND APPEARANCE
+    // ========================================================================
+
+    private val ISLAND_POSITION_Y = "island_position_y"
+    private val ISLAND_ALIGNMENT = "island_alignment"
+    private val ISLAND_ANIMATIONS = "island_animations_enabled"
+
+    val islandPositionYFlow: Flow<Int> = dao.getSettingFlow(ISLAND_POSITION_Y)
+        .map { it?.toIntOrNull()?.coerceIn(MIN_POSITION_Y, MAX_POSITION_Y) ?: 0 }
+
+    val islandAlignmentFlow: Flow<IslandAlignment> = dao.getSettingFlow(ISLAND_ALIGNMENT)
+        .map { value ->
+            try {
+                IslandAlignment.valueOf(value ?: IslandAlignment.CENTER.name)
+            } catch (_: Exception) {
+                IslandAlignment.CENTER
+            }
+        }
+
+    val islandAnimationsEnabledFlow: Flow<Boolean> = dao.getSettingFlow(ISLAND_ANIMATIONS)
+        .map { it?.toBoolean() ?: true }
+
+    suspend fun setIslandPositionY(value: Int) {
+        save(ISLAND_POSITION_Y, value.coerceIn(MIN_POSITION_Y, MAX_POSITION_Y).toString())
+    }
+
+    suspend fun setIslandAlignment(value: IslandAlignment) {
+        save(ISLAND_ALIGNMENT, value.name)
+    }
+
+    suspend fun setIslandAnimationsEnabled(value: Boolean) {
+        save(ISLAND_ANIMATIONS, value.toString())
+    }
+
+    fun islandPositionYSync(): Int {
+        return memoryCache[ISLAND_POSITION_Y]?.toIntOrNull()
+            ?.coerceIn(MIN_POSITION_Y, MAX_POSITION_Y) ?: 0
+    }
+
+    fun islandAlignmentSync(): IslandAlignment {
+        return try {
+            IslandAlignment.valueOf(memoryCache[ISLAND_ALIGNMENT] ?: IslandAlignment.CENTER.name)
+        } catch (_: Exception) {
+            IslandAlignment.CENTER
+        }
+    }
+
+    fun islandAnimationsEnabledSync(): Boolean {
+        return memoryCache[ISLAND_ANIMATIONS]?.toBoolean() ?: true
+    }
+
+    // ========================================================================
     //                        SYNCHRONOUS CACHE GETTERS
     // ========================================================================
 
@@ -597,5 +650,10 @@ class AppPreferences(context: Context) {
 
     fun useNativeLiveUpdatesSync(): Boolean {
         return memoryCache[USE_NATIVE_ENGINE]?.toBoolean() ?: false
+    }
+
+    companion object {
+        const val MIN_POSITION_Y = -8
+        const val MAX_POSITION_Y = 40
     }
 }

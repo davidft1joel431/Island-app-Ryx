@@ -14,6 +14,7 @@ sealed interface Screen : NavKey {
     @Serializable data object Behavior : Screen
     @Serializable data object GlobalSettings : Screen
     @Serializable data object History : Screen
+    @Serializable data object NotificationHistory : Screen
     @Serializable data object Backup : Screen
     @Serializable data class ImportPreview(val backup: HyperBridgeBackup) : Screen
     @Serializable data class NavCustomization(val packageName: String?) : Screen
