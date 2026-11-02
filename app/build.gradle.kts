@@ -16,8 +16,8 @@ android {
         applicationId = "com.dav.isla"
         minSdk = 35
         targetSdk = 37
-        versionCode = 115
-        versionName = "1.1.5"
+        versionCode = 116
+        versionName = "1.1.6"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 

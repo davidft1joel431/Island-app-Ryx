@@ -38,7 +38,6 @@ import androidx.core.content.ContextCompat
 import com.d4viddf.hyperbridge.R
 import com.d4viddf.hyperbridge.data.AppPreferences
 import com.d4viddf.hyperbridge.models.HyperIslandSpec
-import com.d4viddf.hyperbridge.models.NotificationCloneDetector
 import com.d4viddf.hyperbridge.models.IslandAlignment
 import kotlin.math.abs
 import kotlin.math.roundToInt
@@ -164,8 +163,8 @@ class GenericIslandOverlay(
             HyperIslandSpec.COLOR_ICON_TILE
         }
 
-        val appIcon = item?.smallIcon
-                ?: null
+        if (function != null) {
+            val appIcon = item?.smallIcon
             activeNotificationKey = item?.key
             permanentVisible = false
             view.bindSystemCapsule(
@@ -206,9 +205,6 @@ class GenericIslandOverlay(
         view.onPendingCircleClick = { expandSelected() }
         attachGestures(view, item)
         updateCollapsedWidth(view)
-
-        val isClone = NotificationCloneDetector.isCloneApp(item.packageName)
-        if (isClone) { view.setStackCount(items.size) }
     }
 
     private fun updateCollapsedWidth(view: HyperIslandView) {
@@ -641,111 +637,6 @@ class GenericIslandOverlay(
     }
 
     /**
-     * HyperOS-compatible expanded gesture system. The touch sensitivity is
-     * tuned to 50dp so even a small finger movement reliably detects the island.
-     * Vertical swipes dismiss, horizontal swipes cycle through the queued
-     * notifications and taps keep the classic behaviour.
-     */
-    private fun attachGestures(view: HyperIslandView, item: IslandItem?) {
-        // Gesture state lives outside the listener so MOVE/UP keep seeing the
-        // coordinates captured on DOWN.
-        var downX = 0f
-        var downY = 0f
-        var lastX = 0f
-        var lastY = 0f
-        var dragging = false
-        var tracker: VelocityTracker? = null
-
-        fun start(event: MotionEvent) {
-            downX = event.rawX
-            downY = event.rawY
-            lastX = downX
-            lastY = downY
-            dragging = false
-            tracker?.recycle()
-            tracker = VelocityTracker.obtain().also { it.addMovement(event) }
-        }
-
-        fun finish(touched: View) {
-            tracker?.recycle()
-            tracker = null
-            touched.animate()
-                .scaleX(1f)
-                .scaleY(1f)
-                .translationY(0f)
-                .setDuration(120)
-                .start()
-        }
-
-        view.setOnTouchListener { touched, event ->
-            when (event.actionMasked) {
-                MotionEvent.ACTION_DOWN -> {
-                    start(event)
-                    touched.animate().scaleX(0.97f).scaleY(0.97f).setDuration(80).start()
-                    true
-                }
-                MotionEvent.ACTION_MOVE -> {
-                    tracker?.addMovement(event)
-                    lastX = event.rawX
-                    lastY = event.rawY
-                    val dy = lastY - downY
-                    val dx = lastX - downX
-                    if (!dragging && (abs(dy) > touchSlop || abs(dx) > touchSlop)) {
-                        dragging = true
-                    }
-                    if (dragging) {
-                        touched.translationY =
-                            dy.coerceIn(-dp(20).toFloat(), dp(20).toFloat()) * 0.35f
-                    }
-                    true
-                }
-                MotionEvent.ACTION_UP -> {
-                    tracker?.addMovement(event)
-                    tracker?.computeCurrentVelocity(1000)
-                    val vx = tracker?.xVelocity ?: 0f
-                    val vy = tracker?.yVelocity ?: 0f
-                    val dy = event.rawY - downY
-                    val dx = event.rawX - downX
-                    val vertical = abs(dy) >= abs(dx)
-                    val fling = abs(vy) > minimumFlingVelocity
-                    val currentKey = activeNotificationKey ?: item?.key
-                    finish(touched)
-        when {
-            dragging && vertical && (
-                abs(dy) > dp(HyperIslandSpec.TOUCH_SENSITIVITY_DP) ||
-                    (abs(dy) > dp(GESTURE_DISMISS_MIN_DP) && fling)
-                ) -> if (currentKey != null) dismiss(currentKey) else collapseCurrent()
-            dragging && !vertical && (
-                abs(dx) > dp(GESTURE_CYCLE_DP) ||
-                    (abs(dx) > dp(GESTURE_CYCLE_MIN_DP) &&
-                        abs(vx) > minimumFlingVelocity)
-                ) -> cycleSelection(forward = dx < 0)
-            else -> touched.performClick()
-        }
-                    true
-                }
-                MotionEvent.ACTION_CANCEL -> {
-                    // SystemUI can steal the gesture (status-bar pull). Even then,
-                    // a long drag already seen is honoured so the island closes.
-                    val dy = lastY - downY
-                    val dx = lastX - downX
-                    if (dragging && abs(dy) >= abs(dx) && abs(dy) > dp(GESTURE_DISMISS_MIN_DP)) {
-                        val currentKey = activeNotificationKey ?: item?.key
-                        if (currentKey != null) dismiss(currentKey) else collapseCurrent()
-                    } else if (dragging && abs(dx) > abs(dy) &&
-                        abs(dx) > dp(GESTURE_CYCLE_MIN_DP)
-                    ) {
-                        cycleSelection(forward = dx < 0)
-                    }
-                    finish(touched)
-                    true
-                }
-                else -> false
-            }
-        }
-    }
-
-    /**
      * Full gesture system: vertical swipes dismiss, horizontal swipes cycle
      * through the queued notifications and taps keep the classic behaviour
      * (expand when collapsed, open the app when expanded). The threshold uses
@@ -869,15 +760,13 @@ class GenericIslandOverlay(
         selectedNotificationKey = nextKey
         activeNotificationKey = nextKey
         val appIcon = nextItem.smallIcon ?: getNotificationIcon(nextItem.packageName)
-        val isClone = NotificationCloneDetector.isCloneApp(nextItem.packageName)
         view.bindNotification(
             appLabel = getApplicationLabel(nextItem.packageName),
             title = nextItem.title,
             text = nextItem.text,
             largeIcon = nextItem.largeIcon ?: appIcon,
             smallIcon = appIcon,
-            showCollapsed = !expanded,
-            isClone = isClone
+            showCollapsed = !expanded
         )
         view.setStackCount(items.size)
         view.setPendingCircle(appIcon, pendingCountFor(nextItem))
@@ -1079,26 +968,6 @@ class GenericIslandOverlay(
             ?: context.resources.configuration.screenWidthDp
         return dp(HyperIslandSpec.expandedWidthDp(widthDp))
             .coerceAtMost(screenWidthPx() - dp(4))
-    }
-
-    private fun islandTopOffset(): Int {
-        val barPx = statusBarInsetPx()
-        val centeredPx = ((barPx - dp(HyperIslandSpec.COLLAPSED_HEIGHT_DP)) / 2).coerceAtLeast(0)
-        val offset = preferences.islandPositionYSync()
-            .coerceIn(AppPreferences.MIN_POSITION_Y, AppPreferences.MAX_POSITION_Y)
-        return (centeredPx + dp(offset)).coerceAtLeast(0)
-    }
-
-    private fun horizontalGravity(): Int = when (preferences.islandAlignmentSync()) {
-        IslandAlignment.LEFT -> Gravity.START
-        IslandAlignment.RIGHT -> Gravity.END
-        IslandAlignment.CENTER -> Gravity.CENTER_HORIZONTAL
-    }
-
-    private fun alignmentOffset(): Int = when (preferences.islandAlignmentSync()) {
-        IslandAlignment.LEFT -> dp(HyperIslandSpec.ALIGNMENT_MARGIN_DP)
-        IslandAlignment.RIGHT -> dp(HyperIslandSpec.ALIGNMENT_MARGIN_DP)
-        IslandAlignment.CENTER -> 0
     }
 
     private fun screenWidthPx(): Int = runCatching {
@@ -1381,7 +1250,7 @@ class GenericIslandOverlay(
                     val padding = if (sizeDp >= 24) 5 else 4
                     setPadding(dp(padding), dp(padding), dp(padding), dp(padding))
                     background = circularTile(accent)
-                    setColorFilter(accent.coerceToMutedTile())
+                    setColorFilter(HyperIslandSpec.mutedTileColor(accent))
                     contentDescription = function.label
                 }
 

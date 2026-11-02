@@ -57,10 +57,10 @@ object HyperIslandSpec {
     val COLOR_ACCENT_CYAN = 0xFF3EDDD2.toInt()
     val COLOR_ACCENT_GREEN = 0xFF3ED16B.toInt()
 
-    private fun Int.coerceToMutedTile(): Int = when {
-        this == COLOR_BLACK || this == COLOR_BLACK_SOFT -> COLOR_ICON_TILE
-        this == COLOR_TEXT_PRIMARY || this == COLOR_TEXT_SECONDARY || this == COLOR_TEXT_TERTIARY -> COLOR_ICON_TILE
-        else -> this
+    fun mutedTileColor(color: Int): Int = when {
+        color == COLOR_BLACK || color == COLOR_BLACK_SOFT -> COLOR_ICON_TILE
+        color == COLOR_TEXT_PRIMARY || color == COLOR_TEXT_SECONDARY || color == COLOR_TEXT_TERTIARY -> COLOR_ICON_TILE
+        else -> color
     }
 
     fun systemFunctionColor(id: String): Int = when (id) {
@@ -95,11 +95,9 @@ object HyperIslandSpec {
     /** The island is always a stadium: the radius follows the animated height. */
     fun cornerRadiusPx(heightPx: Float): Float = heightPx.coerceAtLeast(0f) / 2f
 
-    companion object {
-        private const val GESTURE_DISMISS_DP = 14
-        private const val GESTURE_DISMISS_MIN_DP = 10
-        private const val GESTURE_CYCLE_DP = 90
-        private const val GESTURE_CYCLE_MIN_DP = 70
-        const val MAX_STACKED_ITEMS = 12
-    }
+    private const val GESTURE_DISMISS_DP = 14
+    private const val GESTURE_DISMISS_MIN_DP = 10
+    private const val GESTURE_CYCLE_DP = 90
+    private const val GESTURE_CYCLE_MIN_DP = 70
+    const val MAX_STACKED_ITEMS = 12
 }
