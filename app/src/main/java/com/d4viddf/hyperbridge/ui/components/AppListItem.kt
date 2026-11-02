@@ -74,6 +74,21 @@ fun AppListItem(
                     color = if (app.isInstalled) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
                 )
 
+                if (app.isClone) {
+                    Spacer(Modifier.width(6.dp))
+                    Surface(
+                        color = MaterialTheme.colorScheme.tertiaryContainer,
+                        shape = RoundedCornerShape(6.dp)
+                    ) {
+                        Text(
+                            text = stringResource(R.string.clone_badge),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onTertiaryContainer,
+                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                        )
+                    }
+                }
+
                 if (!app.isInstalled) {
                     Spacer(Modifier.width(8.dp))
                     Surface(

@@ -162,7 +162,7 @@ class SystemStatusReader(
             active += Function(
                 "hotspot",
                 R.drawable.ic_system_hotspot,
-                "Zona Wi-Fi",
+                hotspotName(wifiManager) ?: "Zona Wi-Fi",
                 badge = hotspotClientCount()
             )
         }
@@ -213,6 +213,41 @@ class SystemStatusReader(
             val state = manager.javaClass.getMethod("getWifiApState").invoke(manager) as? Int
             state == WIFI_AP_STATE_ENABLED
         }.getOrDefault(false)
+    }
+
+    /**
+     * Hotspot name configured in the system settings, read from the hidden AP
+     * configuration so the island shows the same SSID the user chose instead
+     * of a generic label.
+     */
+    private fun hotspotName(wifiManager: WifiManager?): String? {
+        val manager = wifiManager ?: return null
+
+        // Android 11+ exposes the configured SSID through SoftApConfiguration;
+        // both entry points are hidden API, so they stay guarded.
+        val publicName = runCatching {
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
+                val config = manager.javaClass
+                    .getMethod("getSoftApConfiguration")
+                    .invoke(manager)
+                config?.javaClass?.getMethod("getSsid")?.invoke(config) as? String
+            } else {
+                null
+            }
+        }.getOrNull()
+
+        val resolved = publicName ?: runCatching {
+            val config = manager.javaClass
+                .getMethod("getWifiApConfiguration")
+                .invoke(manager) ?: return@runCatching null
+            val ssid = config.javaClass.getField("SSID").get(config) as? String
+            ssid
+        }.getOrNull()
+
+        return resolved?.trim()
+            ?.trim('"')
+            ?.takeIf { it.isNotBlank() }
+            ?.let { if (it.length > 24) it.take(23) + "…" else it }
     }
 
     /**

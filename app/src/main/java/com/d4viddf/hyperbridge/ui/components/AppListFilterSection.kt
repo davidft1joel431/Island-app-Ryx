@@ -26,12 +26,14 @@ import androidx.compose.material.icons.filled.ArrowDownward
 import androidx.compose.material.icons.filled.ArrowUpward
 import androidx.compose.material.icons.filled.Category
 import androidx.compose.material.icons.filled.Clear
+import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.Place
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Timer
 import androidx.compose.material.icons.outlined.Apps
 import androidx.compose.material.icons.outlined.Category
+import androidx.compose.material.icons.outlined.ContentCopy
 import androidx.compose.material.icons.outlined.MusicNote
 import androidx.compose.material.icons.outlined.Place
 import androidx.compose.material.icons.outlined.Timer
@@ -195,6 +197,7 @@ fun AppListFilterSection(
 private fun getCategoryLabelRes(category: AppCategory): Int {
     return when (category) {
         AppCategory.ALL -> R.string.cat_all
+        AppCategory.CLONES -> R.string.cat_clones
         AppCategory.MUSIC -> R.string.cat_music
         AppCategory.MAPS -> R.string.cat_nav
         AppCategory.TIMER -> R.string.cat_timer
@@ -207,6 +210,7 @@ private fun getCategoryIcon(category: AppCategory, isSelected: Boolean): ImageVe
     return if (isSelected) {
         when (category) {
             AppCategory.ALL -> Icons.Filled.Apps
+            AppCategory.CLONES -> Icons.Filled.ContentCopy
             AppCategory.MUSIC -> Icons.Filled.MusicNote
             AppCategory.MAPS -> Icons.Filled.Place
             AppCategory.TIMER -> Icons.Filled.Timer
@@ -215,6 +219,7 @@ private fun getCategoryIcon(category: AppCategory, isSelected: Boolean): ImageVe
     } else {
         when (category) {
             AppCategory.ALL -> Icons.Outlined.Apps
+            AppCategory.CLONES -> Icons.Outlined.ContentCopy
             AppCategory.MUSIC -> Icons.Outlined.MusicNote
             AppCategory.MAPS -> Icons.Outlined.Place
             AppCategory.TIMER -> Icons.Outlined.Timer

@@ -135,7 +135,7 @@ fun LibraryPage(
                             modifier = Modifier.fillMaxSize(),
                             contentPadding = PaddingValues(bottom = 80.dp)
                         ) {
-                            items(apps, key = { it.packageName }) { app ->
+                            items(apps, key = { "${it.packageName}#${it.name}" }) { app ->
                                 Column(modifier = Modifier.animateItem()) {
                                     AppListItem(
                                         app = app,

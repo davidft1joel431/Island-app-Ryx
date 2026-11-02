@@ -37,11 +37,13 @@ data class AppInfo(
     val icon: Bitmap?,
     val isBridged: Boolean = false,
     val isInstalled: Boolean = true,
-    val category: AppCategory = AppCategory.OTHER
+    val category: AppCategory = AppCategory.OTHER,
+    /** True when the package or its visible name marks a clone/dual instance. */
+    val isClone: Boolean = false
 )
 
 enum class AppCategory(val label: String) {
-    ALL("All"), MUSIC("Music"), MAPS("Navigation"), TIMER("Productivity"), OTHER("Other")
+    ALL("All"), CLONES("Clones"), MUSIC("Music"), MAPS("Navigation"), TIMER("Productivity"), OTHER("Other")
 }
 
 enum class SortOption { NAME_AZ, NAME_ZA }
@@ -129,7 +131,9 @@ class AppListViewModel(application: Application) : AndroidViewModel(application)
                 it.name.contains(query, true) || it.packageName.contains(query, true)
             }
         }
-        if (category != AppCategory.ALL) {
+        if (category == AppCategory.CLONES) {
+            result = result.filter { it.isClone }
+        } else if (category != AppCategory.ALL) {
             result = result.filter { it.category == category }
         }
         result = when (sort) {
@@ -306,7 +310,16 @@ class AppListViewModel(application: Application) : AndroidViewModel(application)
                     }
                 }
 
-                AppInfo(name, pkg, icon, category = cat, isInstalled = true)
+                val isClone = com.d4viddf.hyperbridge.models.NotificationCloneDetector
+                    .isClone(pkg, name)
+                AppInfo(
+                    name = name,
+                    packageName = pkg,
+                    icon = icon,
+                    category = cat,
+                    isInstalled = true,
+                    isClone = isClone
+                )
             } catch (e: Exception) { null }
         // Keep cloned apps: some cloners reuse the original package id and only
         // change the visible name ("WhatsApp clon", "Clon de WhatsApp"...).
