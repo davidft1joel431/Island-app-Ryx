@@ -1,0 +1,5 @@
+# Evita que Git convierta los saltos de línea de los scripts de Gradle
+*.sh text eol=lf
+gradlew text eol=lf
+*.bat text eol=crlf
+*.jar binary
