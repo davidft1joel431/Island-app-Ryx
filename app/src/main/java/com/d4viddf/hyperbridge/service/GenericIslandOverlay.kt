@@ -39,6 +39,7 @@ import com.d4viddf.hyperbridge.R
 import com.d4viddf.hyperbridge.data.AppPreferences
 import com.d4viddf.hyperbridge.models.HyperIslandSpec
 import com.d4viddf.hyperbridge.models.IslandAlignment
+import com.d4viddf.hyperbridge.models.NotificationCloneDetector
 import kotlin.math.abs
 import kotlin.math.roundToInt
 
@@ -83,6 +84,8 @@ class GenericIslandOverlay(
     private data class IslandItem(
         val key: String,
         val packageName: String,
+        val appLabel: String,
+        val isClone: Boolean,
         val title: String,
         val text: String,
         val largeIcon: Drawable?,
@@ -193,11 +196,12 @@ class GenericIslandOverlay(
         activeNotificationKey = item.key
         permanentVisible = false
         view.bindNotification(
-            appLabel = getApplicationLabel(item.packageName),
+            appLabel = item.appLabel,
             title = item.title,
             text = item.text,
             largeIcon = item.largeIcon ?: appIcon,
-            smallIcon = appIcon
+            smallIcon = appIcon,
+            isClone = item.isClone
         )
         view.setStackCount(items.size)
         view.setPendingCircle(appIcon, pendingCountFor(item))
@@ -299,17 +303,24 @@ class GenericIslandOverlay(
         text: String,
         notificationImage: Drawable? = null,
         isOngoing: Boolean,
-        timeoutSeconds: Int
+        timeoutSeconds: Int,
+        appLabel: String? = null,
+        isWorkProfile: Boolean = false
     ) {
         mainHandler.post {
             if (!Settings.canDrawOverlays(context)) return@post
 
-            val appLabel = getApplicationLabel(packageName)
+            val resolvedLabel = appLabel?.takeIf { it.isNotBlank() }
+                ?: getApplicationLabel(packageName)
+            val isClone = isWorkProfile ||
+                NotificationCloneDetector.isClone(packageName, resolvedLabel)
             val appIcon = getNotificationIcon(packageName)
-            val displayTitle = title.ifBlank { appLabel }
+            val displayTitle = title.ifBlank { resolvedLabel }
             val item = IslandItem(
                 key = notificationKey,
                 packageName = packageName,
+                appLabel = resolvedLabel,
+                isClone = isClone,
                 title = displayTitle,
                 text = text,
                 largeIcon = notificationImage ?: appIcon,
@@ -419,11 +430,12 @@ class GenericIslandOverlay(
         val appIcon = item.smallIcon ?: getNotificationIcon(item.packageName)
         val view = HyperIslandView(context)
         view.bindNotification(
-            appLabel = getApplicationLabel(item.packageName),
+            appLabel = item.appLabel,
             title = item.title,
             text = item.text,
             largeIcon = item.largeIcon ?: appIcon,
-            smallIcon = appIcon
+            smallIcon = appIcon,
+            isClone = item.isClone
         )
         view.setSystemFunctions(currentFunctions)
         view.contentDescription = "${item.title}. ${item.text}"
@@ -520,11 +532,12 @@ class GenericIslandOverlay(
             expanded = true
 
             view.bindNotification(
-                appLabel = getApplicationLabel(item.packageName),
+                appLabel = item.appLabel,
                 title = item.title,
                 text = item.text,
                 largeIcon = item.largeIcon ?: appIcon,
-                smallIcon = appIcon
+                smallIcon = appIcon,
+                isClone = item.isClone
             )
             view.setStackCount(items.size)
             view.setOnClickListener {
@@ -761,12 +774,13 @@ class GenericIslandOverlay(
         activeNotificationKey = nextKey
         val appIcon = nextItem.smallIcon ?: getNotificationIcon(nextItem.packageName)
         view.bindNotification(
-            appLabel = getApplicationLabel(nextItem.packageName),
+            appLabel = nextItem.appLabel,
             title = nextItem.title,
             text = nextItem.text,
             largeIcon = nextItem.largeIcon ?: appIcon,
             smallIcon = appIcon,
-            showCollapsed = !expanded
+            showCollapsed = !expanded,
+            isClone = nextItem.isClone
         )
         view.setStackCount(items.size)
         view.setPendingCircle(appIcon, pendingCountFor(nextItem))
@@ -1058,6 +1072,7 @@ class GenericIslandOverlay(
         private val highlightSweep = View(context)
         private var pulseAnimator: ValueAnimator? = null
         private var currentAppLabel: String = ""
+        private var currentIsClone: Boolean = false
         private var lastSystemSignature: String = ""
         var onPendingCircleClick: (() -> Unit)? = null
         private val glassEdge = PathInterpolator(0.2f, 0f, 0f, 1f)
@@ -1097,22 +1112,33 @@ class GenericIslandOverlay(
             text: String,
             largeIcon: Drawable,
             smallIcon: Drawable,
-            showCollapsed: Boolean = true
+            showCollapsed: Boolean = true,
+            isClone: Boolean = false
         ) {
             currentAppLabel = appLabel
+            currentIsClone = isClone
+            val displayLabel = decoratedAppLabel()
             expandedIcon.clearColorFilter()
             collapsedIcon.clearColorFilter()
             expandedIcon.setImageDrawable(largeIcon)
             collapsedIcon.setImageDrawable(smallIcon)
             // The collapsed capsule shows the app name on the left; the
             // notification title is reserved for the expanded card.
-            collapsedTitle.text = appLabel
-            appLabelView.text = appLabel
+            collapsedTitle.text = displayLabel
+            appLabelView.text = displayLabel
             titleView.text = title
             bodyView.text = text
             bodyView.visibility = if (text.isBlank() || text == title) GONE else VISIBLE
             if (showCollapsed) showCollapsedNotification()
         }
+
+        /** Adds a visible "clon" marker so cloned apps are recognisable. */
+        private fun decoratedAppLabel(): String =
+            if (currentIsClone) {
+                "$currentAppLabel · ${context.getString(R.string.clone_badge)}"
+            } else {
+                currentAppLabel
+            }
 
         /** Refreshes content without collapsing the card that is already open. */
         fun updateNotification(title: String, text: String, largeIcon: Drawable, smallIcon: Drawable) {
@@ -1137,6 +1163,7 @@ class GenericIslandOverlay(
             accent: Int
         ) {
             currentAppLabel = function.label
+            currentIsClone = false
             val icon = tintedIcon(function.iconRes, accent)
             collapsedIcon.setImageDrawable(icon)
             expandedIcon.setImageDrawable(icon)
@@ -1183,7 +1210,8 @@ class GenericIslandOverlay(
             stackBadge.text = if (count > 9) "9+" else count.toString()
             pendingBadge.visibility = if (stacked) VISIBLE else GONE
             pendingBadge.text = if (count > 9) "9+" else count.toString()
-            appLabelView.text = if (stacked) "$currentAppLabel · $count" else currentAppLabel
+            val label = decoratedAppLabel()
+            appLabelView.text = if (stacked) "$label · $count" else label
         }
 
         fun setPendingCircle(icon: Drawable, count: Int) {
@@ -1310,6 +1338,7 @@ class GenericIslandOverlay(
         }
 
         fun bindPermanent() {
+            currentIsClone = false
             showPermanent()
             startPulse()
         }

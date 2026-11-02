@@ -47,12 +47,12 @@ jobs:
           tag_name: v${{ steps.version.outputs.version }}
           name: Ryx Isla v${{ steps.version.outputs.version }}
           body: |
-            Ryx Isla 1.1.6.
+            Ryx Isla 1.1.7.
 
-            - Compilación reparada: se corrigieron bloques duplicados y referencias rotas del motor de la isla.
-            - Isla estable: morphing, gestos y contadores restaurados sin funciones duplicadas.
-            - Sistema: refresco correcto al cambiar de orientación y estado de funciones activas.
-            - Notificaciones: servicio de lectura y detección de apps clonadas reparados.
+            - Isla permanente restaurada: la cápsula vuelve a mostrarse al activarla en Ajustes, incluso antes de que el sistema enlace el lector de notificaciones.
+            - Clones reconocidos: detección por paquete y nombre visible (clon, dual, paralelo, second space y perfil de trabajo) con el distintivo «clon» en la isla.
+            - Notificaciones: el servicio de lectura vuelve a alimentar la isla y respeta las apps permitidas, incluidos sus clones.
+            - Estabilidad: la isla se recoloca al girar el dispositivo y se libera al cerrar el servicio.
             - Mantenimiento general con compilación debug y release verificadas.
             - Creador: David Joel, Perú. Inspirado en HyperOS y en Hyper Bridge; proyecto independiente bajo Apache 2.0.
           files: RyxIsla.apk

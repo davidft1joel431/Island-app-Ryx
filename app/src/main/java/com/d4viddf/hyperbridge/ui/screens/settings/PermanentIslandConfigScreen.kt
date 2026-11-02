@@ -1,5 +1,6 @@
 package com.d4viddf.hyperbridge.ui.screens.settings
 
+import android.content.Intent
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -37,6 +38,7 @@ import androidx.compose.ui.unit.dp
 import com.d4viddf.hyperbridge.R
 import com.d4viddf.hyperbridge.data.AppPreferences
 import com.d4viddf.hyperbridge.models.IslandAlignment
+import com.d4viddf.hyperbridge.service.NotificationReaderService
 import com.d4viddf.hyperbridge.ui.components.PermanentIslandPreview
 import com.d4viddf.hyperbridge.ui.theme.HyperBridgeTheme
 import kotlinx.coroutines.launch
@@ -58,7 +60,19 @@ fun PermanentIslandConfigScreen(onBack: () -> Unit) {
         hideInLandscape = hideInLandscape,
         positionY = positionY,
         alignment = alignment,
-        onEnabledChange = { checked -> scope.launch { prefs.setPermanentIslandEnabled(checked) } },
+        onEnabledChange = { checked ->
+            scope.launch {
+                prefs.setPermanentIslandEnabled(checked)
+                // Applies the switch immediately instead of waiting for the
+                // next trip through onResume.
+                runCatching {
+                    context.startService(
+                        Intent(context, NotificationReaderService::class.java)
+                            .setAction(NotificationReaderService.ACTION_REFRESH_ISLAND)
+                    )
+                }
+            }
+        },
         onHideInLandscapeChange = { hide -> scope.launch { prefs.setHidePermanentIslandLandscape(hide) } },
         onBack = onBack
     )

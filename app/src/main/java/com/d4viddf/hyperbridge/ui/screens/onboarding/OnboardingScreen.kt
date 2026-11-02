@@ -107,6 +107,7 @@ import com.d4viddf.hyperbridge.models.IslandConfig
 import com.d4viddf.hyperbridge.models.IslandAlignment
 import com.d4viddf.hyperbridge.models.IslandLimitMode
 import com.d4viddf.hyperbridge.models.NotificationType
+import com.d4viddf.hyperbridge.service.NotificationReaderService
 import com.d4viddf.hyperbridge.ui.components.EngineOptionCard
 import com.d4viddf.hyperbridge.ui.components.EnginePreview
 import com.d4viddf.hyperbridge.ui.components.ListOptionCard
@@ -1288,6 +1289,7 @@ fun AutoHidePagePreview(){
 
 @Composable
 fun PermanentIslandConfigPage(prefs: AppPreferences) {
+    val context = LocalContext.current
     val isEnabled by prefs.isPermanentIslandEnabledFlow.collectAsState(initial = false)
     val hideInLandscape by prefs.hidePermanentIslandLandscapeFlow.collectAsState(initial = false)
     val positionY by prefs.islandPositionYFlow.collectAsState(initial = 0)
@@ -1335,7 +1337,15 @@ fun PermanentIslandConfigPage(prefs: AppPreferences) {
                     Switch(
                         checked = isEnabled,
                         onCheckedChange = { checked ->
-                            scope.launch { prefs.setPermanentIslandEnabled(checked) }
+                            scope.launch {
+                                prefs.setPermanentIslandEnabled(checked)
+                                runCatching {
+                                    context.startService(
+                                        Intent(context, NotificationReaderService::class.java)
+                                            .setAction(NotificationReaderService.ACTION_REFRESH_ISLAND)
+                                    )
+                                }
+                            }
                         }
                     )
                 }

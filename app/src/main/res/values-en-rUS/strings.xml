@@ -581,6 +581,8 @@
     <string name="changelog_1_0_6">Adds an update checker that always consults Ryx Isla\'s official GitHub repository. Removes every HyperOS/Xiaomi requirement: the floating island works on all Android 15+ devices. Improves manufacturer/ROM detection and fixes the app and notification icons.</string>
     <string name="title_1_1_6">Repaired build and stability</string>
     <string name="changelog_1_1_6">&#8226; &lt;b&gt;Fixed build:&lt;/b&gt; duplicate blocks and broken references in the island engine were repaired.\n&#8226; &lt;b&gt;Stable island:&lt;/b&gt; morphing, gestures and counters were restored without duplicate functions.\n&#8226; &lt;b&gt;System:&lt;/b&gt; fixed island refresh on orientation changes and the active function state.\n&#8226; &lt;b&gt;Notifications:&lt;/b&gt; repaired the reader service and clone-app detection.\n&#8226; &lt;b&gt;Maintenance:&lt;/b&gt; version 1.1.6 with verified debug and release builds.</string>
+    <string name="title_1_1_7">Permanent island and clones</string>
+    <string name="changelog_1_1_7">&#8226; &lt;b&gt;Permanent island:&lt;/b&gt; the overlay engine that draws the capsule when the permanent island is enabled in Settings is restored.\n&#8226; &lt;b&gt;Clones recognized:&lt;/b&gt; detection by package and visible name (clone, dual, parallel, second space and work profile) with a “clone” badge in the island.\n&#8226; &lt;b&gt;Notifications:&lt;/b&gt; the reader service feeds the island again and respects the allowed apps, including their clones.\n&#8226; &lt;b&gt;Stability:&lt;/b&gt; the island repositions on rotation and is released when the service stops.\n&#8226; &lt;b&gt;Maintenance:&lt;/b&gt; version 1.1.7 with verified debug and release builds.</string>
     <string name="title_1_1_1">Capsule, gestures and counters</string>
     <string name="changelog_1_1_1">• &lt;b&gt;Growing capsule:&lt;/b&gt; the collapsed island widens for queued notifications and active system functions.\n• &lt;b&gt;Requested order:&lt;/b&gt; app name on the left and that app\'s notification counter on the right.\n• &lt;b&gt;Animated circle:&lt;/b&gt; the waiting app icon slides out from the right edge with an animation.\n• &lt;b&gt;Full gestures:&lt;/b&gt; swipe up/down dismisses, left/right changes app, tap expands or opens.\n• &lt;b&gt;Finger detection:&lt;/b&gt; 30 dp threshold or a quick velocity fling, more responsive than before.\n• &lt;b&gt;Hotspot:&lt;/b&gt; shows the number of connected devices on the icon.\n• &lt;b&gt;Clones:&lt;/b&gt; stronger detection by app name and package tokens.</string>
     <string name="title_1_1_0">Stacking, clones and system</string>
@@ -596,5 +598,6 @@
     <string name="changelog_inspiration_link">View the project that inspired Ryx Isla</string>
     <string name="permanent_island_hide_landscape_desc">The capsule disappears when the device is rotated.</string>
     <string name="permanent_island_preview_note">The preview uses the island\'s real size and position.</string>
+    <string name="clone_badge">clone</string>
 </resources>
 

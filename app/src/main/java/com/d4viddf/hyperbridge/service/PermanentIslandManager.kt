@@ -6,13 +6,14 @@ import com.d4viddf.hyperbridge.data.AppPreferences
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
 /** Connects the permanent-island settings to Ryx Isla's own Android overlay. */
 class PermanentIslandManager(
     context: Context,
-    scope: CoroutineScope,
-    preferences: AppPreferences,
+    private val scope: CoroutineScope,
+    private val preferences: AppPreferences,
     private val overlay: GenericIslandOverlay
 ) {
     companion object {
@@ -34,6 +35,20 @@ class PermanentIslandManager(
                 enabled = isEnabled
                 overlay.setPermanentIsland(isEnabled, hideInLandscape)
             }
+        }
+    }
+
+    /**
+     * Re-reads the settings and re-applies them. Used when the app returns to
+     * the foreground, so granting the overlay permission or enabling the
+     * permanent island immediately brings the capsule back.
+     */
+    fun refresh() {
+        scope.launch {
+            val isEnabled = preferences.isPermanentIslandEnabledFlow.first()
+            val hideInLandscape = preferences.hidePermanentIslandLandscapeFlow.first()
+            enabled = isEnabled
+            overlay.setPermanentIsland(isEnabled, hideInLandscape)
         }
     }
 

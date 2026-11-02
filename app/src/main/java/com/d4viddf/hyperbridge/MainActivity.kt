@@ -1,7 +1,9 @@
 package com.d4viddf.hyperbridge
 
 import android.content.Context
+import android.content.Intent
 import android.os.Bundle
+import android.util.Log
 import androidx.activity.BackEventCompat
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
@@ -41,6 +43,7 @@ import androidx.compose.ui.unit.dp
 import androidx.navigation3.ui.NavDisplay
 import com.d4viddf.hyperbridge.data.AppPreferences
 import com.d4viddf.hyperbridge.data.db.AppDatabase
+import com.d4viddf.hyperbridge.service.NotificationReaderService
 import com.d4viddf.hyperbridge.ui.components.ChangelogSheet
 import com.d4viddf.hyperbridge.ui.components.UpdateDialog
 import com.d4viddf.hyperbridge.ui.navigation.Navigator
@@ -63,12 +66,36 @@ class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        startIslandService()
         setContent {
             HyperBridgeTheme {
                 Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
                     MainRootNavigation(onExit = { finish() })
                 }
             }
+        }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        // Re-apply the settings on every return to the app: this makes the
+        // permanent island appear immediately after granting the overlay
+        // permission or enabling the switch.
+        startIslandService(NotificationReaderService.ACTION_REFRESH_ISLAND)
+    }
+
+    /**
+     * Creates the overlay host as soon as the app opens, so the permanent
+     * island is available even before the system binds the notification
+     * listener. The listener keeps the same instance alive afterwards.
+     */
+    private fun startIslandService(action: String? = null) {
+        runCatching {
+            val intent = Intent(this, NotificationReaderService::class.java)
+            if (action != null) intent.action = action
+            startService(intent)
+        }.onFailure { error ->
+            Log.w("RyxIsla", "Could not start the island service", error)
         }
     }
 }
@@ -90,7 +117,7 @@ fun MainRootNavigation(onExit: () -> Unit) {
     }
     @Suppress("DEPRECATION")
     val currentVersionCode = packageInfo?.longVersionCode?.toInt() ?: 0
-    val currentVersionName = packageInfo?.versionName ?: "1.1.6"
+    val currentVersionName = packageInfo?.versionName ?: "1.1.7"
 
     val isSetupComplete by produceState<Boolean?>(initialValue = null) {
         preferences.isSetupComplete.collect { value = it }
@@ -242,7 +269,7 @@ private fun MainNavigationContent(
     if (showChangelog) {
         ChangelogSheet(
             currentVersionName = currentVersionName,
-            changelogText = stringResource(R.string.changelog_1_1_6),
+            changelogText = stringResource(R.string.changelog_1_1_7),
             onDismiss = {
                 showChangelog = false
                 scope.launch {
