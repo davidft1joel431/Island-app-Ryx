@@ -7,6 +7,8 @@ import android.content.Context
 import android.content.Intent
 import android.content.res.Configuration
 import android.graphics.*;
+import android.graphics.drawable.ColorDrawable;
+import android.graphics.drawable.Drawable;
 import android.graphics.drawable.GradientDrawable;
 import android.os.Handler;
 import android.os.Looper;
@@ -680,6 +682,7 @@ class GenericIslandOverlay(
                         ) -> cycleSelection(forward = dx < 0)
                         else -> touched.performClick()
                     }
+                    true
                 }
                 MotionEvent.ACTION_CANCEL -> {
                     val dy = lastY - downY
@@ -984,17 +987,17 @@ class GenericIslandOverlay(
     /** The actual pill view: black glass capsule with lens, compact icon and expanded copy. */
     private inner class HyperIslandView(context: Context) : FrameLayout(context) {
         // ── colors (HyperOS palette) ──────────────────────────────────────
-        private val COLOR_BLACK = 0xFF000000
-        private val COLOR_BLACK_SOFT = 0xAA000000
-        private val COLOR_ICON_TILE = 0xFF1D1D1D
-        private val COLOR_TEXT_PRIMARY = 0xFFFFFFFF
-        private val COLOR_TEXT_SECONDARY = 0xB2FFFFFF
-        private val COLOR_TEXT_TERTIARY = 0x66FFFFFF
-        private val COLOR_STROKE = 0x44FFFFFF
-        private val COLOR_BRAND_GREEN = 0xFF38BD5E
-        private val COLOR_CAMERA_RING = 0xFFFFFFFF
-        private val COLOR_CAMERA = 0x4DFFFFFF
-        private val COLOR_CAMERA_HIGHLIGHT = 0x1AFFFFFF
+        private val COLOR_BLACK = 0xFF000000.toInt()
+        private val COLOR_BLACK_SOFT = 0xAA000000.toInt()
+        private val COLOR_ICON_TILE = 0xFF1D1D1D.toInt()
+        private val COLOR_TEXT_PRIMARY = 0xFFFFFFFF.toInt()
+        private val COLOR_TEXT_SECONDARY = 0xB2FFFFFF.toInt()
+        private val COLOR_TEXT_TERTIARY = 0x66FFFFFF.toInt()
+        private val COLOR_STROKE = 0x44FFFFFF.toInt()
+        private val COLOR_BRAND_GREEN = 0xFF38BD5E.toInt()
+        private val COLOR_CAMERA_RING = 0xFFFFFFFF.toInt()
+        private val COLOR_CAMERA = 0x4DFFFFFF.toInt()
+        private val COLOR_CAMERA_HIGHLIGHT = 0x1AFFFFFF.toInt()
 
         private val backgroundDrawable: GradientDrawable
         private val pill: FrameLayout
@@ -1031,6 +1034,24 @@ class GenericIslandOverlay(
         private var lastWidth = 0f
 
         init {
+            // ── content views ───────────────────────────────────────────────
+            collapsedContent = LinearLayout(context)
+            iconHolder = FrameLayout(context)
+            collapsedIcon = ImageView(context)
+            stackBadge = TextView(context)
+            collapsedTitle = TextView(context)
+            pendingCircle = FrameLayout(context)
+            pendingIcon = ImageView(context)
+            permanentContent = LinearLayout(context)
+            permanentDot = View(context)
+            permanentSystemRow = LinearLayout(context)
+            expandedContent = LinearLayout(context)
+            expandedIcon = ImageView(context)
+            appLabelView = TextView(context)
+            titleView = TextView(context)
+            bodyView = TextView(context)
+            systemRow = LinearLayout(context)
+
             // ── background: pure black rectangle with soft inner shadow ────
             backgroundDrawable = GradientDrawable(
                 GradientDrawable.Orientation.TOP_BOTTOM,
@@ -1061,8 +1082,13 @@ class GenericIslandOverlay(
             // ── camera lens (right edge) ────────────────────────────────────
             cameraLens = createCameraLens()
 
-            highlightSweep.isFillAfter = false
-            highlightSweep.alpha = 0f
+            highlightSweep = View(context).apply {
+                background = GradientDrawable(
+                    GradientDrawable.Orientation.LEFT_RIGHT,
+                    intArrayOf(Color.TRANSPARENT, 0x2EFFFFFF, Color.TRANSPARENT)
+                )
+                alpha = 0f
+            }
             // the sweep lives behind the pill, spans the full height
             pill.addView(highlightSweep, FrameLayout.LayoutParams(dp(90), ViewGroup.LayoutParams.MATCH_PARENT))
 
@@ -1086,12 +1112,11 @@ class GenericIslandOverlay(
                 FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT))
             countBubble.visibility = GONE
             // placed on the right, same height as pill, 5dp gap
-            val bubbleParams = FrameLayout.LayoutParams(
+            bubbleParams = FrameLayout.LayoutParams(
                 dp(BUBBLE_SIZE_DP),      // width = diameter
                 dp(BUBBLE_SIZE_DP),      // height = diameter
                 Gravity.END or Gravity.CENTER_VERTICAL
-            )
-            bubbleParams.setMargins(0, 0, dp(BUBBLE_GAP_DP), 0)
+            ).apply { setMargins(0, 0, dp(BUBBLE_GAP_DP), 0) }
             addView(countBubble, bubbleParams)
 
             // ── content containers ──────────────────────────────────────────
@@ -1206,6 +1231,157 @@ class GenericIslandOverlay(
             countBubble.visibility = if (visible) VISIBLE else GONE
         }
 
+        /** stack badge inside the icon holder plus the detached counter. */
+        fun setStackCount(count: Int) {
+            val stacked = count > 1
+            stackBadge.visibility = if (stacked) VISIBLE else GONE
+            stackBadge.text = if (count > 9) "9+" else count.toString()
+            setNotificationCount(count)
+        }
+
+        /** icon shown by the small circle inside the collapsed capsule. */
+        fun setPendingCircle(icon: Drawable, count: Int) {
+            pendingIcon.setImageDrawable(icon)
+            val wasVisible = pendingCircle.visibility == VISIBLE
+            pendingCircle.visibility = VISIBLE
+            cameraLens.visibility = GONE
+
+            if (!wasVisible) {
+                pendingCircle.alpha = 0f
+                pendingCircle.scaleX = 0.35f
+                pendingCircle.scaleY = 0.35f
+                pendingCircle.translationX = px(14f)
+                pendingCircle.animate()
+                    .alpha(1f)
+                    .scaleX(1f)
+                    .scaleY(1f)
+                    .translationX(0f)
+                    .setDuration(280L)
+                    .setInterpolator(OvershootInterpolator(1.5f))
+                    .start()
+            }
+            setNotificationCount(count)
+        }
+
+        /** end icon for the system capsule; hides the circle when null. */
+        fun setEndIcon(icon: Drawable?) {
+            if (icon == null) {
+                pendingCircle.visibility = GONE
+                return
+            }
+            pendingIcon.setImageDrawable(icon)
+            pendingCircle.visibility = VISIBLE
+        }
+
+        /** live system-function rows, refreshed only when the signature changes. */
+        fun setSystemFunctions(functions: List<SystemStatusReader.Function>) {
+            val signature = functions.joinToString("|") { "${it.id}:${it.badge}" }
+            if (signature == lastSystemSignature) return
+            lastSystemSignature = signature
+            renderFunctionRow(systemRow, functions.take(MAX_SYSTEM_ICONS), 24, 5, 8f)
+            renderFunctionRow(permanentSystemRow, functions.take(MAX_COLLAPSED_SYSTEM_ICONS), 18, 4, 7f)
+        }
+
+        private fun renderFunctionRow(
+            row: LinearLayout,
+            functions: List<SystemStatusReader.Function>,
+            sizeDp: Int,
+            gapDp: Int,
+            badgeTextSp: Float
+        ) {
+            row.removeAllViews()
+            if (functions.isEmpty()) {
+                row.visibility = GONE
+                return
+            }
+            row.visibility = VISIBLE
+            val animate = preferences.islandAnimationsEnabledSync()
+            functions.forEachIndexed { index, function ->
+                val accent = HyperIslandSpec.systemFunctionColor(function.id)
+                val holder = FrameLayout(context)
+                val icon = ImageView(context).apply {
+                    setImageResource(function.iconRes)
+                    scaleType = ImageView.ScaleType.FIT_CENTER
+                    val innerPadding = if (sizeDp >= 24) 5 else 4
+                    setPadding(
+                        dp(innerPadding),
+                        dp(innerPadding),
+                        dp(innerPadding),
+                        dp(innerPadding)
+                    )
+                    background = circularTile(accent)
+                    setColorFilter(HyperIslandSpec.mutedTileColor(accent))
+                    contentDescription = function.label
+                }
+                holder.addView(
+                    icon,
+                    FrameLayout.LayoutParams(
+                        FrameLayout.LayoutParams.MATCH_PARENT,
+                        FrameLayout.LayoutParams.MATCH_PARENT
+                    )
+                )
+                if (function.badge > 0) {
+                    val badge = TextView(context).apply {
+                        text = if (function.badge > 9) "9+" else function.badge.toString()
+                        setTextColor(HyperIslandSpec.COLOR_TEXT_PRIMARY)
+                        setTextSize(TypedValue.COMPLEX_UNIT_SP, badgeTextSp)
+                        typeface = Typeface.create("sans-serif-black", Typeface.NORMAL)
+                        gravity = Gravity.CENTER
+                        includeFontPadding = false
+                        background = GradientDrawable().apply {
+                            shape = GradientDrawable.OVAL
+                            setColor(accent)
+                            setStroke(dp(1).coerceAtLeast(1), COLOR_BLACK)
+                        }
+                    }
+                    holder.addView(
+                        badge,
+                        FrameLayout.LayoutParams(dp(13), dp(13), Gravity.TOP or Gravity.END)
+                    )
+                }
+                row.addView(
+                    holder,
+                    LinearLayout.LayoutParams(dp(sizeDp), dp(sizeDp)).apply {
+                        if (index > 0) marginStart = dp(gapDp)
+                    }
+                )
+                if (animate) {
+                    holder.alpha = 0f
+                    holder.scaleX = 0.5f
+                    holder.scaleY = 0.5f
+                    holder.animate()
+                        .alpha(1f)
+                        .scaleX(1f)
+                        .scaleY(1f)
+                        .setStartDelay(index * 45L)
+                        .setDuration(260L)
+                        .setInterpolator(OvershootInterpolator(1.4f))
+                        .start()
+                }
+            }
+        }
+
+        fun updateCornerRadius(radiusPx: Float) {
+            backgroundDrawable.cornerRadius = radiusPx.coerceAtLeast(0f)
+            invalidateOutline()
+        }
+
+        /** natural width of the collapsed capsule for the current content. */
+        fun measureCollapsedWidth(): Int {
+            val unspecified = MeasureSpec.makeMeasureSpec(0, MeasureSpec.UNSPECIFIED)
+            val height = MeasureSpec.makeMeasureSpec(
+                dp(HyperIslandSpec.COLLAPSED_HEIGHT_DP),
+                MeasureSpec.AT_MOST
+            )
+            val content = if (permanentContent.visibility == VISIBLE) {
+                permanentContent
+            } else {
+                collapsedContent
+            }
+            content.measure(unspecified, height)
+            return content.measuredWidth
+        }
+
         /** ── expanded card (music player / live activity) ──────────────── */
         private fun buildExpandedContent() {
             expandedContent.apply {
@@ -1300,49 +1476,7 @@ class GenericIslandOverlay(
                 setPadding(dp(4), 0, dp(4), 0)
                 visibility = VISIBLE
             }
-            // individual system function pill
-            private fun addSystemFunctionPill(function: SystemStatusReader.Function, accent: Int, gapDp: Int) {
-                val holder = LinearLayout(context).apply {
-                    orientation = LinearLayout.HORIZONTAL
-                    gravity = Gravity.CENTER_VERTICAL
-                    setPadding(0, 0, dp(gapDp), 0)
-                }
-                val icon = ImageView(context).apply {
-                    setImageResource(function.iconRes)
-                    scaleType = ImageView.ScaleType.FIT_CENTER
-                    background = circularTile(accent)
-                    setColorFilter(HyperIslandSpec.mutedTileColor(accent))
-                    padding = dp(5)
-                }
-                val badge = if (function.badge > 0) {
-                    val b = TextView(context).apply {
-                        text = if (function.badge > 9) "9+" else function.badge.toString()
-                        setTextColor(HyperIslandSpec.COLOR_TEXT_PRIMARY)
-                        setTextSize(TypedValue.COMPLEX_UNIT_SP, 9f)
-                        typeface = Typeface.create("sans-serif-black", Typeface.NORMAL)
-                        gravity = Gravity.CENTER
-                        includeFontPadding = false
-                        background = GradientDrawable().apply {
-                            shape = GradientDrawable.OVAL
-                            setColor(accent)
-                            setStroke(dp(1).coerceAtLeast(1), HyperIslandSpec.COLOR_BLACK)
-                        }
-                    }
-                    addView(b, FrameLayout.LayoutParams(dp(13), dp(13), Gravity.TOP or Gravity.END))
-                } else {
-                    holder
-                }
-                holder.addView(icon)
-                holder.addView(badge)
-                systemRow.addView(holder,
-                    LinearLayout.LayoutParams(dp(24), dp(24))
-                )
-            }
-            // render up to MAX_COLLAPSED_SYSTEM_ICONS functions
-            currentFunctions.take(MAX_COLLAPSED_SYSTEM_ICONS).forEachIndexed { index, function ->
-                val accent = HyperIslandSpec.systemFunctionColor(function.id)
-                addSystemFunctionPill(function, accent, 4)
-            }
+            // rows are populated by setSystemFunctions()
             expandedContent.addView(systemRow,
                 LinearLayout.LayoutParams(
                     ViewGroup.LayoutParams.WRAP_CONTENT,
@@ -1574,7 +1708,7 @@ class GenericIslandOverlay(
         private fun createCameraLens(): View {
             val lens = FrameLayout(context).apply {
                 background = GradientDrawable(
-                    GradientOrientation.TL_BR,
+                    GradientDrawable.Orientation.TL_BR,
                     intArrayOf(COLOR_CAMERA_RING, COLOR_CAMERA)
                 ).apply {
                     shape = GradientDrawable.OVAL
