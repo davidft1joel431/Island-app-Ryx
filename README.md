@@ -1,92 +1,131 @@
 <div align="center">
 
-<img src="app/src/main/ic_launcher-playstore.png" alt="Logotipo oficial de Ryx Isla" width="280" />
+<img src="app/src/main/ic_launcher-playstore.png" alt="Logotipo de Ryx Isla" width="190" />
 
 # Ryx Isla
 
 ### Tus notificaciones, reunidas en una isla dinámica.
 
-<img src="https://img.shields.io/github/v/release/davidft1joel431/Island-app-Ryx?label=versi%C3%B3n&color=E5A900" alt="Última versión" />
-<img src="https://img.shields.io/badge/Android-15%2B-3DDC84?logo=android&logoColor=white" alt="Android 15 o posterior" />
-<img src="https://img.shields.io/badge/idioma-espa%C3%B1ol%20(Per%C3%BA)-F5B700" alt="Español de Perú" />
+<p>
+  <img src="https://img.shields.io/github/v/release/davidft1joel431/Island-app-Ryx?label=versi%C3%B3n&color=7C6CFF" alt="Última versión" />
+  <img src="https://img.shields.io/badge/Android-15%2B-3DDC84?logo=android&logoColor=white" alt="Android 15 o posterior" />
+  <img src="https://img.shields.io/badge/idioma-espa%C3%B1ol%20(Per%C3%BA)-F5B700" alt="Español de Perú" />
+  <img src="https://img.shields.io/badge/estado-en%20desarrollo-8B5CF6" alt="Estado del proyecto" />
+</p>
 
-<br />
-
-[⬇️ Descargar APK](https://github.com/davidft1joel431/Island-app-Ryx/releases/latest/download/RyxIsla.apk) · [📋 Ver versiones](https://github.com/davidft1joel431/Island-app-Ryx/releases) · [🐛 Informar de un problema](https://github.com/davidft1joel431/Island-app-Ryx/issues)
+[⬇️ **Descargar APK**](https://github.com/davidft1joel431/Island-app-Ryx/releases/latest/download/RyxIsla.apk)
+· [📋 Versiones](https://github.com/davidft1joel431/Island-app-Ryx/releases)
+· [🐛 Reportar un problema](https://github.com/davidft1joel431/Island-app-Ryx/issues)
 
 </div>
 
 ---
 
-Ryx Isla convierte notificaciones compatibles en una isla flotante personalizable. Reúne música, navegación, llamadas, descargas y mensajes en una experiencia visual inspirada en Hyper Island.
+## ✨ Una isla, toda tu actividad
+
+Ryx Isla transforma las notificaciones compatibles en una isla flotante, práctica y personalizable. Consulta música, navegación, llamadas, descargas y mensajes sin perder de vista lo que ocurre en tus aplicaciones.
+
+<div align="center">
+
+![Vista animada de la isla dinámica de Ryx Isla](docs/hyperos-island-preview.gif)
+
+<sub>Vista conceptual animada de la experiencia de Ryx Isla. La información mostrada depende de cada aplicación compatible.</sub>
+
+</div>
 
 ## 🔔 ¿Cómo funciona?
 
-![Diagrama ilustrado: las notificaciones llegan a Ryx Isla y se muestran en la isla dinámica](docs/ryx-isla-flujo.svg)
+![Diagrama del flujo de notificaciones de Ryx Isla](docs/ryx-isla-flujo.svg)
 
-1. 📲 Eliges qué aplicaciones pueden enviar avisos a la isla.
-2. 🔐 Concedes acceso a las notificaciones y permiso para mostrar contenido sobre otras aplicaciones.
-3. ✨ Ryx Isla presenta la información activa en una isla flotante que puedes personalizar.
+1. 📲 Selecciona qué aplicaciones pueden mostrar avisos en la isla.
+2. 🔐 Concede el acceso a las notificaciones y el permiso para mostrarse sobre otras aplicaciones.
+3. ✨ Ryx Isla presenta la actividad compatible en una isla flotante que puedes adaptar a tu estilo.
 
-## ✨ Funciones principales
+## 🚀 Funciones principales
 
-| Función | Qué puedes hacer |
-| --- | --- |
-| 🎵 Contenido multimedia | Ver la reproducción y la carátula cuando la aplicación de música las incluye en su notificación. |
-| 🧭 Navegación | Consultar indicaciones y progreso de viaje de aplicaciones compatibles. |
-| 📞 Llamadas | Mantener a la vista la información de llamadas compatibles. |
-| 📥 Descargas y tareas | Seguir el progreso de notificaciones compatibles. |
-| 🎨 Apariencia | Ajustar colores, formas, temas y diseño de la isla. |
-| 🎛️ Posición | Elegir la altura, la alineación y las animaciones de la isla flotante. |
-| 🔔 Historial | Consultar y borrar las últimas notificaciones que mostró la isla. |
-| 🧩 Widgets | Añadir widgets compatibles y personalizar su presentación. |
-| ⚙️ Control por aplicación | Elegir qué aplicaciones y tipos de aviso aparecen. |
-| 🛡️ Privacidad | El procesamiento de notificaciones se realiza en el dispositivo. |
+| Función | Descripción |
+|:--|:--|
+| 🎵 **Contenido multimedia** | Consulta la reproducción y la carátula cuando la aplicación de música las incluye en su notificación. |
+| 🧭 **Navegación** | Visualiza indicaciones y progreso de viaje de aplicaciones compatibles. |
+| 📞 **Llamadas** | Mantén a la vista la información de llamadas compatibles. |
+| 📥 **Descargas y tareas** | Sigue el progreso de las notificaciones compatibles. |
+| 🎨 **Personalización** | Ajusta colores, formas, temas y diseño de la isla. |
+| 🎛️ **Posición y animaciones** | Configura la altura, alineación y comportamiento visual de la isla flotante. |
+| 🔔 **Historial** | Consulta y elimina las notificaciones recientes mostradas por la isla. |
+| 🧩 **Widgets** | Añade widgets compatibles y personaliza su presentación. |
+| ⚙️ **Control por aplicación** | Decide qué aplicaciones y tipos de avisos aparecen. |
+| 🛡️ **Privacidad** | El procesamiento de las notificaciones se realiza en el dispositivo. |
 
-La información visible depende del contenido que envíe cada aplicación. La isla no puede inventar datos que no vengan en la notificación.
+> **Importante:** Ryx Isla muestra los datos que recibe de las aplicaciones. La disponibilidad de cada función depende del contenido de sus notificaciones y de la compatibilidad del sistema.
 
 ## 📱 Compatibilidad
 
-![Resumen visual de compatibilidad, permisos de Android e integración opcional con HyperOS](docs/compatibilidad.svg)
+![Resumen de compatibilidad de Ryx Isla](docs/compatibilidad.svg)
 
-| Sistema | Compatibilidad |
-| --- | --- |
-| Android 15 o posterior | Requisito mínimo de esta versión. |
-| Todas las marcas y ROM Android 15+ | Un solo motor usa la ventana flotante de Ryx Isla, incluida la isla permanente. |
-| Permisos | Debes habilitar el acceso a notificaciones y permitir que Ryx Isla se muestre sobre otras aplicaciones. |
+| Requisito | Detalle |
+|:--|:--|
+| **Sistema operativo** | Android 15 o posterior. |
+| **Dispositivos** | Marcas y ROM basadas en Android 15 o posterior. |
+| **Permiso de notificaciones** | Necesario para leer y presentar los avisos seleccionados. |
+| **Mostrar sobre otras aplicaciones** | Necesario para visualizar la isla flotante. |
 
-Durante la configuración, la app muestra el fabricante, la ROM detectada y la versión/API de Android para que puedas revisar el estado de tu dispositivo.
+Durante la configuración, la aplicación muestra el fabricante, la ROM detectada y la versión/API de Android para que puedas comprobar el estado de tu dispositivo.
 
-## 🚀 Instalación y primeros pasos
+## 🧩 Inspiración visual
+
+Ryx Isla toma como referencia el concepto de las islas dinámicas y las experiencias de notificación de **HyperOS**. La propuesta busca reunir información útil en una interfaz compacta, fluida y personalizable.
+
+La apariencia de Ryx Isla es un desarrollo independiente: no es una aplicación oficial de Xiaomi ni está afiliada a Xiaomi o HyperOS.
+
+## 📦 Instalación
 
 1. Descarga la versión más reciente desde [GitHub Releases](https://github.com/davidft1joel431/Island-app-Ryx/releases/latest).
-2. Instala el archivo `RyxIsla.apk` en un dispositivo con Android 15 o posterior.
+2. Instala `RyxIsla.apk` en un dispositivo con Android 15 o posterior.
 3. Abre Ryx Isla y completa la comprobación de compatibilidad.
 4. Activa **Acceso a notificaciones** y **Mostrar sobre otras aplicaciones** cuando Android lo solicite.
-5. Selecciona tus aplicaciones y ajusta el diseño de la isla.
+5. Selecciona las aplicaciones que quieras y personaliza tu isla.
 
-💡 Si la isla deja de aparecer, revisa la pantalla **Compatibilidad del sistema** y permite la actividad en segundo plano en los ajustes de batería del teléfono.
+💡 **¿La isla no aparece?** Revisa la pantalla **Compatibilidad del sistema** y comprueba que el teléfono permita la actividad en segundo plano en los ajustes de batería.
 
-## 🧱 Compilar desde el código fuente
+## 🛠️ Compilar desde el código fuente
 
-Abre el proyecto en Android Studio o ejecuta en PowerShell:
+Puedes abrir el proyecto en Android Studio o compilarlo desde PowerShell:
 
 ```powershell
 .\gradlew.bat assembleDebug
 ```
 
-Se necesita **JDK 21** y **Android SDK 36**. El APK de depuración se genera en `app/build/outputs/apk/debug/`.
+**Requisitos de compilación:**
+- JDK 21
+- Android SDK 36
 
-## 👤 Autoría y licencias
+El APK de depuración se genera en:
 
-- ✍️ Creador de Ryx Isla: **David Joel**, Perú.
-- 🌱 Proyecto de origen: [Hyper Bridge](https://github.com/D4vidDf/HyperBridge), de D4vidDf.
-- 📜 Licencia del proyecto de origen: [Apache 2.0](LICENSE). Los avisos y cambios de Ryx Isla están en [NOTICE.md](NOTICE.md).
+```text
+app/build/outputs/apk/debug/
+```
 
-Ryx Isla es un proyecto independiente derivado de Hyper Bridge. Conserva la atribución y licencia del código de origen.
+## 👤 Autoría, inspiración y licencias
 
-## Actualizaciones
+- **Proyecto:** Ryx Isla.
+- **Creador de Ryx Isla:** David Joel.
+- **Inspiración:** Hyper Bridge y el concepto de isla dinámica de HyperOS.
+- **Licencia:** consulta [`LICENSE`](LICENSE) y [`NOTICE.md`](NOTICE.md) para conocer las condiciones y los avisos de atribución correspondientes.
 
-Ryx Isla comprueba automáticamente si hay una versión nueva en su repositorio oficial de GitHub al iniciar la app. También puedes lanzar la comprobación manualmente desde **Ajustes > Buscar actualizaciones**. El diálogo muestra las novedades y abre la descarga del APK publicado en [GitHub Releases](https://github.com/davidft1joel431/Island-app-Ryx/releases).
+Ryx Isla es un proyecto independiente. La mención de Hyper Bridge indica una referencia de inspiración y no implica afiliación con sus autores ni con Xiaomi. Los avisos de autoría y licencia que correspondan al código de origen se mantienen en `NOTICE.md`.
 
-La comprobación usa siempre `https://github.com/davidft1joel431/Island-app-Ryx` y no depende de HyperOS, Xiaomi ni del proyecto de origen.
+## 🔄 Actualizaciones
+
+Ryx Isla comprueba si existe una versión nueva en su repositorio oficial de GitHub al iniciar la aplicación. También puedes iniciar la comprobación desde **Ajustes > Buscar actualizaciones**.
+
+El diálogo muestra las novedades y permite abrir la descarga publicada en [GitHub Releases](https://github.com/davidft1joel431/Island-app-Ryx/releases). Esta comprobación utiliza el repositorio oficial de Ryx Isla y no depende de HyperOS, Xiaomi ni de proyectos externos.
+
+---
+
+<div align="center">
+
+**Ryx Isla** · Una forma más clara de ver lo que sucede en tu Android.
+
+<sub>Hecho con dedicación. Personaliza tu isla y disfruta la experiencia.</sub>
+
+</div>
