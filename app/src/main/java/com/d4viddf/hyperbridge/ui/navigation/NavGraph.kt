@@ -109,7 +109,10 @@ fun mainNavGraph(
         ChangelogHistoryScreen(onBack = { navigator.goBack() })
     }
     entry<Screen.NotificationHistory> {
-        NotificationHistoryScreen(onBack = { navigator.goBack() })
+        NotificationHistoryScreen(
+            onBack = { navigator.goBack() },
+            preferences = preferences
+        )
     }
     entry<Screen.GlobalBlocklist> {
         GlobalBlocklistScreen(

@@ -378,5 +378,39 @@
         <item quantity="one">%1$d custom action</item>
         <item quantity="other">%1$d custom actions</item>
     </plurals>
+    <string name="perm_dnd_title">Accés a No molestar</string>
+    <string name="perm_dnd_desc">Permet que l\'illa detecti quan el mode No molestar està actiu</string>
+    <string name="perm_bluetooth_title">Permís de Bluetooth</string>
+    <string name="perm_bluetooth_desc">Mostra l\'estat del Bluetooth i els dispositius connectats</string>
+    <string name="optional_permissions">Permisos opcionals</string>
+    <string name="notification_history_title">Historial general</string>
+    <string name="notification_history_subtitle">Totes les notificacions llegides en aquest dispositiu</string>
+    <string name="notification_history_empty_title">Encara no hi ha notificacions</string>
+    <string name="notification_history_empty_desc">Quan Ryx Isla llegeixi una notificació, apareixerà aquí.</string>
+    <string name="notification_history_clear">Esborra l\'historial</string>
+    <string name="notification_history_clear_title">Vols esborrar l\'historial?</string>
+    <string name="notification_history_clear_desc">S\'eliminaran totes les notificacions desades en aquest dispositiu. Aquesta acció no es pot desfer.</string>
+    <string name="notification_history_clear_confirm">Esborra</string>
+    <string name="notification_history_search_hint">Cerca per aplicació, títol o text</string>
+    <string name="notification_history_search_clear">Neteja la cerca</string>
+    <string name="notification_history_filter_all">Totes</string>
+    <string name="notification_history_filter_messages">Missatges</string>
+    <string name="notification_history_filter_calls">Trucades</string>
+    <string name="notification_history_filter_downloads">Baixades</string>
+    <string name="notification_history_filter_other">Altres</string>
+    <string name="notification_history_today">Avui</string>
+    <string name="notification_history_yesterday">Ahir</string>
+    <string name="notification_history_count">%1$d notificacions</string>
+    <string name="notification_history_results">%1$d resultats</string>
+    <string name="notification_history_empty_search_title">Sense resultats</string>
+    <string name="notification_history_empty_search_desc">Prova una altra cerca o canvia el filtre.</string>
+    <string name="notification_history_delete">Elimina de l\'historial</string>
+    <string name="notification_history_group_by_day">Per dia</string>
+    <string name="notification_history_group_by_app">Per aplicació</string>
+    <string name="notification_history_sort">Ordena</string>
+    <string name="notification_history_sort_recent">Més recents primer</string>
+    <string name="notification_history_sort_app">Per aplicació</string>
+    <string name="title_2_0_3">Expansió reparada i historial general</string>
+    <string name="changelog_2_0_3">&#8226; &lt;b&gt;Illa expandida reparada:&lt;/b&gt; la targeta ampliada torna a mostrar l\'aplicació, el títol i el text en obrir l\'illa.\n&#8226; &lt;b&gt;Lectura millorada:&lt;/b&gt; textos més grans i amb més contrast, text complet de la notificació i fins a dues línies de contingut.\n&#8226; &lt;b&gt;Més permisos:&lt;/b&gt; accés a No molestar, bateria sense restriccions i permís de Bluetooth des dels Ajustos i l\'assistent.\n&#8226; &lt;b&gt;Historial general:&lt;/b&gt; cerca, filtres per tipus, agrupació per dia o per aplicació, ordre configurable i esborrat individual.\n&#8226; &lt;b&gt;Manteniment:&lt;/b&gt; versió 2.0.3.</string>
 </resources>
 

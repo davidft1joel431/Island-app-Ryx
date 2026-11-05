@@ -1,9 +1,12 @@
 package com.d4viddf.hyperbridge.ui.screens.settings
 
+import android.Manifest
 import android.content.Context
 import android.content.Intent
 import android.os.PowerManager
 import android.provider.Settings
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
@@ -24,9 +27,11 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.BatteryAlert
+import androidx.compose.material.icons.filled.Bluetooth
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Error
 import androidx.compose.material.icons.filled.NotificationsActive
+import androidx.compose.material.icons.outlined.DoNotDisturbOn
 import androidx.compose.material.icons.filled.RestartAlt
 import androidx.compose.material.icons.filled.Smartphone
 import androidx.compose.material.icons.filled.Visibility
@@ -65,6 +70,8 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import com.d4viddf.hyperbridge.R
 import com.d4viddf.hyperbridge.util.DeviceUtils
+import com.d4viddf.hyperbridge.util.isBluetoothPermissionGranted
+import com.d4viddf.hyperbridge.util.isDndAccessGranted
 import com.d4viddf.hyperbridge.util.isNotificationServiceEnabled
 import com.d4viddf.hyperbridge.util.isPostNotificationsEnabled
 import com.d4viddf.hyperbridge.util.openAutoStartSettings
@@ -84,6 +91,13 @@ fun SetupHealthScreen(onBack: () -> Unit) {
     var isPostGranted by remember { mutableStateOf(isPostNotificationsEnabled(context)) }
     var isOverlayGranted by remember { mutableStateOf(Settings.canDrawOverlays(context)) }
     var isBatteryOptimized by remember { mutableStateOf(isIgnoringBatteryOptimizations(context)) }
+    var isDndGranted by remember { mutableStateOf(isDndAccessGranted(context)) }
+    var isBluetoothGranted by remember { mutableStateOf(isBluetoothPermissionGranted(context)) }
+
+    val bluetoothPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission(),
+        onResult = { isBluetoothGranted = it }
+    )
 
     // --- LIFECYCLE ---
     val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
@@ -94,6 +108,8 @@ fun SetupHealthScreen(onBack: () -> Unit) {
                 isPostGranted = isPostNotificationsEnabled(context)
                 isOverlayGranted = Settings.canDrawOverlays(context)
                 isBatteryOptimized = isIgnoringBatteryOptimizations(context)
+                isDndGranted = isDndAccessGranted(context)
+                isBluetoothGranted = isBluetoothPermissionGranted(context)
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
@@ -217,6 +233,30 @@ fun SetupHealthScreen(onBack: () -> Unit) {
                             context.startActivity(intent)
                         } catch (_: Exception) { }
                     }
+                )
+
+                // Do Not Disturb policy access
+                HorizontalDivider(modifier = Modifier.padding(horizontal = 20.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(0.2f))
+                HealthItem(
+                    title = stringResource(R.string.perm_dnd_title),
+                    subtitle = stringResource(R.string.perm_dnd_desc),
+                    icon = Icons.Outlined.DoNotDisturbOn,
+                    isGranted = isDndGranted,
+                    onClick = {
+                        try {
+                            context.startActivity(Intent(Settings.ACTION_NOTIFICATION_POLICY_ACCESS_SETTINGS))
+                        } catch (_: Exception) { }
+                    }
+                )
+
+                // Bluetooth status
+                HorizontalDivider(modifier = Modifier.padding(horizontal = 20.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(0.2f))
+                HealthItem(
+                    title = stringResource(R.string.perm_bluetooth_title),
+                    subtitle = stringResource(R.string.perm_bluetooth_desc),
+                    icon = Icons.Default.Bluetooth,
+                    isGranted = isBluetoothGranted,
+                    onClick = { bluetoothPermissionLauncher.launch(Manifest.permission.BLUETOOTH_CONNECT) }
                 )
             }
             Spacer(modifier = Modifier.height(24.dp))

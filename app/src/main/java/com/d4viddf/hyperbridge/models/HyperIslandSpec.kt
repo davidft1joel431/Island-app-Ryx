@@ -11,7 +11,7 @@ package com.d4viddf.hyperbridge.models
 object HyperIslandSpec {
     const val COLLAPSED_WIDTH_DP = 132
     const val COLLAPSED_HEIGHT_DP = 32
-    const val EXPANDED_HEIGHT_DP = 68
+    const val EXPANDED_HEIGHT_DP = 84
     const val EXPANDED_MAX_WIDTH_DP = 380
     const val SCREEN_SIDE_MARGIN_DP = 16
     const val CAMERA_DOT_DP = 12

@@ -991,8 +991,8 @@ class GenericIslandOverlay(
         private val COLOR_BLACK_SOFT = 0xAA000000.toInt()
         private val COLOR_ICON_TILE = 0xFF1D1D1D.toInt()
         private val COLOR_TEXT_PRIMARY = 0xFFFFFFFF.toInt()
-        private val COLOR_TEXT_SECONDARY = 0xB2FFFFFF.toInt()
-        private val COLOR_TEXT_TERTIARY = 0x66FFFFFF.toInt()
+        private val COLOR_TEXT_SECONDARY = 0xCCFFFFFF.toInt()
+        private val COLOR_TEXT_TERTIARY = 0x99FFFFFF.toInt()
         private val COLOR_STROKE = 0x44FFFFFF.toInt()
         private val COLOR_BRAND_GREEN = 0xFF38BD5E.toInt()
         private val COLOR_CAMERA_RING = 0xFFFFFFFF.toInt()
@@ -1059,8 +1059,6 @@ class GenericIslandOverlay(
             ).apply {
                 shape = GradientDrawable.RECTANGLE
                 setStroke(dp(1).coerceAtLeast(1), COLOR_BLACK)
-                // inner semi‑transparent strip creates a “glass” bottom edge
-                setPadding(dp(8), dp(8), dp(8), dp(12))
             }
 
             pill = FrameLayout(context).apply {
@@ -1387,11 +1385,12 @@ class GenericIslandOverlay(
             expandedContent.apply {
                 orientation = LinearLayout.HORIZONTAL
                 gravity = Gravity.CENTER_VERTICAL
+                visibility = GONE
                 setPadding(
                     dp(HyperIslandSpec.CONTENT_START_DP),   // left padding
-                    0,
+                    dp(6),
                     dp(HyperIslandSpec.CONTENT_END_DP),   // right padding (space for circle)
-                    0
+                    dp(6)
                 )
             }
 
@@ -1422,7 +1421,7 @@ class GenericIslandOverlay(
 
             appLabelView.apply {
                 setTextColor(COLOR_TEXT_SECONDARY)
-                setTextSize(TypedValue.COMPLEX_UNIT_SP, 9.5f)
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, 10f)
                 typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
                 maxLines = 1
                 ellipsize = TextUtils.TruncateAt.END
@@ -1437,12 +1436,12 @@ class GenericIslandOverlay(
 
             titleView.apply {
                 setTextColor(COLOR_TEXT_PRIMARY)
-                setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f)
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, 15f)
                 typeface = Typeface.create("sans-serif", Typeface.BOLD)
                 maxLines = 1
                 ellipsize = TextUtils.TruncateAt.END
                 includeFontPadding = false
-                setPadding(0, dp(1), 0, 0)
+                setPadding(0, dp(2), 0, 0)
             }
             copy.addView(titleView,
                 LinearLayout.LayoutParams(
@@ -1452,12 +1451,13 @@ class GenericIslandOverlay(
 
             bodyView.apply {
                 setTextColor(COLOR_TEXT_TERTIARY)
-                setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f)
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
                 typeface = Typeface.create("sans-serif", Typeface.NORMAL)
-                maxLines = 1
+                maxLines = 2
                 ellipsize = TextUtils.TruncateAt.END
                 includeFontPadding = false
-                setPadding(0, dp(1), 0, 0)
+                setLineSpacing(dp(1).toFloat(), 1f)
+                setPadding(0, dp(2), 0, 0)
             }
             copy.addView(bodyView,
                 LinearLayout.LayoutParams(
@@ -1483,6 +1483,16 @@ class GenericIslandOverlay(
                     ViewGroup.LayoutParams.WRAP_CONTENT
                 ).apply { marginStart = dp(8) }
             )
+
+            // The expanded card must be attached to the pill: without this the
+            // island grows but shows an empty black capsule.
+            pill.addView(
+                expandedContent,
+                FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.MATCH_PARENT
+                )
+            )
         }
 
         /** ── permanent‑resting pill UI ─────────────────────────────────── */
@@ -1496,6 +1506,9 @@ class GenericIslandOverlay(
             stopPulse()
             expandedContent.visibility = GONE
             expandedContent.alpha = 0f
+            expandedContent.scaleX = 1f
+            expandedContent.scaleY = 1f
+            expandedContent.translationY = 0f
             permanentContent.visibility = GONE
             collapsedContent.visibility = VISIBLE
             collapsedContent.alpha = 1f
@@ -1556,6 +1569,7 @@ class GenericIslandOverlay(
             expandedContent.alpha = 1f
             expandedContent.scaleX = 1f
             expandedContent.scaleY = 1f
+            expandedContent.translationY = 0f
         }
 
         /** ── permanent‑rest UI ─────────────────────────────────────────── */

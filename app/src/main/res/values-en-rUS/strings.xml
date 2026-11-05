@@ -443,10 +443,10 @@
     <string name="design_history_desc">See the latest notifications shown by the island.</string>
     <string name="design_inspiration">Inspired by HyperOS and Hyper Bridge. Independent project.</string>
     <string name="design">Design</string>
-    <string name="notification_history_title">Notification history</string>
-    <string name="notification_history_subtitle">Latest notifications shown by the island</string>
+    <string name="notification_history_title">General history</string>
+    <string name="notification_history_subtitle">All notifications read on this device</string>
     <string name="notification_history_empty_title">No notifications yet</string>
-    <string name="notification_history_empty_desc">When Ryx Isla shows a notification, it will appear here.</string>
+    <string name="notification_history_empty_desc">When Ryx Isla reads a notification, it will appear here.</string>
     <string name="notification_history_clear">Clear history</string>
     <string name="notification_history_clear_title">Clear history?</string>
     <string name="notification_history_clear_desc">All notifications saved on this device will be deleted. This cannot be undone.</string>
@@ -604,5 +604,31 @@
     <string name="permanent_island_hide_landscape_desc">The capsule disappears when the device is rotated.</string>
     <string name="permanent_island_preview_note">The preview uses the island\'s real size and position.</string>
     <string name="clone_badge">clone</string>
+    <string name="perm_dnd_title">Do Not Disturb access</string>
+    <string name="perm_dnd_desc">Lets the island detect when Do Not Disturb mode is active</string>
+    <string name="perm_bluetooth_title">Bluetooth permission</string>
+    <string name="perm_bluetooth_desc">Shows Bluetooth status and connected devices</string>
+    <string name="optional_permissions">Optional permissions</string>
+    <string name="notification_history_search_hint">Search by app, title or text</string>
+    <string name="notification_history_search_clear">Clear search</string>
+    <string name="notification_history_filter_all">All</string>
+    <string name="notification_history_filter_messages">Messages</string>
+    <string name="notification_history_filter_calls">Calls</string>
+    <string name="notification_history_filter_downloads">Downloads</string>
+    <string name="notification_history_filter_other">Other</string>
+    <string name="notification_history_today">Today</string>
+    <string name="notification_history_yesterday">Yesterday</string>
+    <string name="notification_history_count">%1$d notifications</string>
+    <string name="notification_history_results">%1$d results</string>
+    <string name="notification_history_empty_search_title">No results</string>
+    <string name="notification_history_empty_search_desc">Try a different search or change the filter.</string>
+    <string name="notification_history_delete">Remove from history</string>
+    <string name="notification_history_group_by_day">By day</string>
+    <string name="notification_history_group_by_app">By app</string>
+    <string name="notification_history_sort">Sort</string>
+    <string name="notification_history_sort_recent">Most recent first</string>
+    <string name="notification_history_sort_app">By app</string>
+    <string name="title_2_0_3">Expansion fixed and general history</string>
+    <string name="changelog_2_0_3">&#8226; &lt;b&gt;Expanded island fixed:&lt;/b&gt; the expanded card shows the app, title and text again when opening the island.\n&#8226; &lt;b&gt;Better reading:&lt;/b&gt; larger, higher-contrast text, the full notification text and up to two lines of content.\n&#8226; &lt;b&gt;More permissions:&lt;/b&gt; Do Not Disturb access, unrestricted battery and Bluetooth permission from Settings and the setup wizard.\n&#8226; &lt;b&gt;General history:&lt;/b&gt; search, type filters, grouping by day or by app, configurable sorting and individual deletion.\n&#8226; &lt;b&gt;Maintenance:&lt;/b&gt; version 2.0.3.</string>
 </resources>
 

@@ -1,12 +1,16 @@
 package com.d4viddf.hyperbridge.util
 
+import android.Manifest
 import android.annotation.SuppressLint
+import android.app.NotificationManager
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.net.Uri
 import android.provider.Settings
 import android.widget.Toast
+import androidx.core.content.ContextCompat
 import androidx.core.net.toUri
 
 /**
@@ -140,10 +144,30 @@ fun isNotificationServiceEnabled(context: Context): Boolean {
  * Checks if Post Notification permission (Android 13+) is granted.
  */
 fun isPostNotificationsEnabled(context: Context): Boolean {
-    return androidx.core.content.ContextCompat.checkSelfPermission(
+    return ContextCompat.checkSelfPermission(
         context,
-        android.Manifest.permission.POST_NOTIFICATIONS
-    ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+        Manifest.permission.POST_NOTIFICATIONS
+    ) == PackageManager.PERMISSION_GRANTED
+}
+
+/**
+ * Checks if the app can read the system Do Not Disturb state (needed by the
+ * island's auto-detect option).
+ */
+fun isDndAccessGranted(context: Context): Boolean {
+    val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+    return manager.isNotificationPolicyAccessGranted
+}
+
+/**
+ * Checks if the runtime Bluetooth permission (Android 12+) is granted, which
+ * the island needs to read the Bluetooth state reliably.
+ */
+fun isBluetoothPermissionGranted(context: Context): Boolean {
+    return ContextCompat.checkSelfPermission(
+        context,
+        Manifest.permission.BLUETOOTH_CONNECT
+    ) == PackageManager.PERMISSION_GRANTED
 }
 
 /**

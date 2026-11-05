@@ -23,11 +23,13 @@ import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextIndent
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.d4viddf.hyperbridge.R
@@ -41,8 +43,15 @@ fun ChangelogSheet(
     changelogText: String,
     onDismiss: () -> Unit
 ) {
-    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = false)
+    // Long changelogs (German, Russian, ...) need the full sheet height so the
+    // text does not look cut off when it first opens.
+    val sheetState = rememberModalBottomSheetState(
+        skipPartiallyExpanded = changelogText.length > 400
+    )
     val coroutineScope = androidx.compose.runtime.rememberCoroutineScope()
+    val changelogLines = remember(changelogText) {
+        changelogText.split('\n').filter { it.isNotBlank() }
+    }
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -84,12 +93,26 @@ fun ChangelogSheet(
             Spacer(Modifier.height(24.dp))
 
             // --- CONTENT ---
-            Text(
-                text = changelogText.parseBold(),
-                style = MaterialTheme.typography.bodyLarge,
-                lineHeight = 24.sp,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
+            // One paragraph per bullet: long German/Russian bullets wrap cleanly
+            // instead of being rendered as a single dense block.
+            changelogLines.forEachIndexed { index, line ->
+                Text(
+                    text = line.parseBold(),
+                    modifier = Modifier.fillMaxWidth(),
+                    style = MaterialTheme.typography.bodyLarge.copy(
+                        textIndent = if (line.trimStart().startsWith("•")) {
+                            TextIndent(restLine = 14.sp)
+                        } else {
+                            TextIndent.None
+                        }
+                    ),
+                    lineHeight = 24.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                if (index != changelogLines.lastIndex) {
+                    Spacer(Modifier.height(10.dp))
+                }
+            }
 
             Spacer(Modifier.height(32.dp))
 

@@ -116,6 +116,8 @@ import com.d4viddf.hyperbridge.ui.components.formatSeconds
 import com.d4viddf.hyperbridge.ui.components.timeoutSteps
 import com.d4viddf.hyperbridge.ui.theme.HyperBridgeTheme
 import com.d4viddf.hyperbridge.util.DeviceUtils
+import com.d4viddf.hyperbridge.util.isBluetoothPermissionGranted
+import com.d4viddf.hyperbridge.util.isDndAccessGranted
 import com.d4viddf.hyperbridge.util.isNotificationServiceEnabled
 import com.d4viddf.hyperbridge.util.isPostNotificationsEnabled
 import com.d4viddf.hyperbridge.util.openAutoStartSettings
@@ -1145,6 +1147,25 @@ fun ListenerPermissionPage(context: Context, isGranted: Boolean) {
 
 @Composable
 fun OptimizationPage(context: Context) {
+    var isDndGranted by remember { mutableStateOf(isDndAccessGranted(context)) }
+    var isBluetoothGranted by remember { mutableStateOf(isBluetoothPermissionGranted(context)) }
+    val bluetoothLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission(),
+        onResult = { isBluetoothGranted = it }
+    )
+
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                isDndGranted = isDndAccessGranted(context)
+                isBluetoothGranted = isBluetoothPermissionGranted(context)
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+
     OnboardingPageLayout(
         title = stringResource(R.string.optimization_title),
         description = stringResource(R.string.optimization_desc),
@@ -1171,6 +1192,49 @@ fun OptimizationPage(context: Context) {
             shape = RoundedCornerShape(16.dp)
         ) {
             Text(stringResource(R.string.set_battery_no_restrictions), style = MaterialTheme.typography.bodyLarge)
+        }
+
+        Spacer(modifier = Modifier.height(24.dp))
+
+        Text(
+            text = stringResource(R.string.optional_permissions),
+            style = MaterialTheme.typography.titleSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(bottom = 8.dp)
+        )
+
+        OutlinedButton(
+            onClick = {
+                if (!isDndGranted) {
+                    context.startActivity(Intent(Settings.ACTION_NOTIFICATION_POLICY_ACCESS_SETTINGS))
+                }
+            },
+            enabled = !isDndGranted,
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(56.dp),
+            shape = RoundedCornerShape(16.dp)
+        ) {
+            Text(
+                stringResource(if (isDndGranted) R.string.perm_granted else R.string.perm_dnd_title),
+                style = MaterialTheme.typography.bodyLarge
+            )
+        }
+
+        Spacer(modifier = Modifier.height(12.dp))
+
+        OutlinedButton(
+            onClick = { bluetoothLauncher.launch(Manifest.permission.BLUETOOTH_CONNECT) },
+            enabled = !isBluetoothGranted,
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(56.dp),
+            shape = RoundedCornerShape(16.dp)
+        ) {
+            Text(
+                stringResource(if (isBluetoothGranted) R.string.perm_granted else R.string.perm_bluetooth_title),
+                style = MaterialTheme.typography.bodyLarge
+            )
         }
     }
 }

@@ -801,11 +801,14 @@ class NotificationReaderService : NotificationListenerService() {
     }
 
     private fun resolveText(extras: Bundle): String {
-        val text = extras.getCharSequence(Notification.EXTRA_TEXT)?.toString()?.trim()
-        val bigText = extras.getCharSequence(Notification.EXTRA_BIG_TEXT)?.toString()?.trim()
+        val text = extras.getCharSequence(Notification.EXTRA_TEXT)?.toString()?.trim().orEmpty()
+        val bigText = extras.getCharSequence(Notification.EXTRA_BIG_TEXT)?.toString()?.trim().orEmpty()
 
-        if (!text.isNullOrEmpty()) return text
-        return bigText ?: ""
+        // The expanded copy usually carries the whole message. Prefer it when
+        // it adds content, so the island and the history show readable text.
+        if (bigText.length > text.length) return bigText
+        if (text.isNotEmpty()) return text
+        return extras.getCharSequence(Notification.EXTRA_SUB_TEXT)?.toString()?.trim().orEmpty()
     }
 
     private suspend fun ensureValidSbn(sbn: StatusBarNotification): StatusBarNotification {

@@ -23,6 +23,10 @@ jobs:
           yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null
           "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-36" "build-tools;36.0.0"
       - uses: gradle/actions/setup-gradle@v4
+      - name: Report missing string translations
+        run: |
+          chmod +x gradlew
+          ./gradlew :app:checkMissingStrings --no-daemon
       - name: Prepare signing key
         run: |
           mkdir -p "$HOME/.android"

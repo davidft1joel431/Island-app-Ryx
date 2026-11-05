@@ -578,6 +578,42 @@ class AppPreferences(context: Context) {
     }
 
     // ========================================================================
+    //                    NOTIFICATION HISTORY VIEW STATE
+    // ========================================================================
+
+    private val HISTORY_QUERY = "notification_history_view_query"
+    private val HISTORY_FILTER = "notification_history_view_filter"
+    private val HISTORY_GROUPING = "notification_history_view_grouping"
+    private val HISTORY_SORT = "notification_history_view_sort"
+
+    fun notificationHistoryQuerySync(): String = memoryCache[HISTORY_QUERY] ?: ""
+    fun notificationHistoryFilterSync(): String = memoryCache[HISTORY_FILTER] ?: ""
+    fun notificationHistoryGroupingSync(): String = memoryCache[HISTORY_GROUPING] ?: ""
+    fun notificationHistorySortSync(): String = memoryCache[HISTORY_SORT] ?: ""
+
+    // Update the in-memory cache first so the values are already available when
+    // the user comes back to the history screen, without waiting for the DB flow.
+    suspend fun setNotificationHistoryQuery(value: String) {
+        memoryCache[HISTORY_QUERY] = value
+        save(HISTORY_QUERY, value)
+    }
+
+    suspend fun setNotificationHistoryFilter(value: String) {
+        memoryCache[HISTORY_FILTER] = value
+        save(HISTORY_FILTER, value)
+    }
+
+    suspend fun setNotificationHistoryGrouping(value: String) {
+        memoryCache[HISTORY_GROUPING] = value
+        save(HISTORY_GROUPING, value)
+    }
+
+    suspend fun setNotificationHistorySort(value: String) {
+        memoryCache[HISTORY_SORT] = value
+        save(HISTORY_SORT, value)
+    }
+
+    // ========================================================================
     //                        SYNCHRONOUS CACHE GETTERS
     // ========================================================================
 

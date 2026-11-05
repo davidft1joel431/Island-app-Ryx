@@ -117,7 +117,7 @@ fun MainRootNavigation(onExit: () -> Unit) {
     }
     @Suppress("DEPRECATION")
     val currentVersionCode = packageInfo?.longVersionCode?.toInt() ?: 0
-    val currentVersionName = packageInfo?.versionName ?: "2.0.2"
+    val currentVersionName = packageInfo?.versionName ?: "2.0.3"
 
     val isSetupComplete by produceState<Boolean?>(initialValue = null) {
         preferences.isSetupComplete.collect { value = it }
@@ -269,7 +269,7 @@ private fun MainNavigationContent(
     if (showChangelog) {
         ChangelogSheet(
             currentVersionName = currentVersionName,
-            changelogText = stringResource(R.string.changelog_2_0_1),
+            changelogText = stringResource(R.string.changelog_2_0_3),
             onDismiss = {
                 showChangelog = false
                 scope.launch {

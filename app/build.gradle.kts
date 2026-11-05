@@ -16,8 +16,8 @@ android {
         applicationId = "com.dav.isla"
         minSdk = 35
         targetSdk = 37
-        versionCode = 202
-        versionName = "2.0.2"
+        versionCode = 203
+        versionName = "2.0.3"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
@@ -92,4 +92,88 @@ dependencies {
 
 configurations.all {
     exclude(group = "com.intellij", module = "annotations")
+}
+
+// ---------------------------------------------------------------------------
+// Missing string translations
+//
+// Compares the keys of every values-*/strings.xml with values/strings.xml.
+// Existing locales are partially translated, so by default the task only
+// reports the gaps; pass -PfailOnMissingStrings=true to make them fail a build.
+// ---------------------------------------------------------------------------
+
+val missingStringsReport = layout.buildDirectory.file("reports/missing-strings.txt")
+val failOnMissingStrings = providers.gradleProperty("failOnMissingStrings")
+    .map { it.toBoolean() }
+    .orElse(false)
+
+tasks.register("checkMissingStrings") {
+    group = "verification"
+    description = "Lists string keys from values/strings.xml that are missing in each locale. " +
+        "Use -PfailOnMissingStrings=true to fail when any key is missing."
+
+    val resDir = file("src/main/res")
+    val reportFile = missingStringsReport.get().asFile
+    val shouldFail = failOnMissingStrings.get()
+
+    doLast {
+        val baseFile = File(resDir, "values/strings.xml")
+        check(baseFile.isFile) { "Base strings file not found: $baseFile" }
+
+        fun readKeys(file: File): Set<String> {
+            val factory = javax.xml.parsers.DocumentBuilderFactory.newInstance().apply {
+                setFeature("http://apache.org/xml/features/disallow-doctype-decl", true)
+            }
+            val nodes = factory.newDocumentBuilder().parse(file).getElementsByTagName("string")
+            return (0 until nodes.length).mapNotNull { index ->
+                val element = nodes.item(index) as org.w3c.dom.Element
+                element.getAttribute("name")
+                    .takeIf { element.getAttribute("translatable") != "false" }
+            }.toSet()
+        }
+
+        val baseKeys = readKeys(baseFile)
+        val localeDirPattern = Regex("values-[a-z]{2,3}(-r[A-Z]{2})?")
+        val localeDirs = resDir.listFiles()
+            ?.filter { it.isDirectory && localeDirPattern.matches(it.name) && File(it, "strings.xml").isFile }
+            ?.sortedBy { it.name }
+            .orEmpty()
+
+        val missing = localeDirs.map { dir ->
+            dir.name to (baseKeys - readKeys(File(dir, "strings.xml"))).sorted()
+        }
+        val affected = missing.filter { it.second.isNotEmpty() }
+        val total = affected.sumOf { it.second.size }
+
+        reportFile.parentFile?.mkdirs()
+        reportFile.writeText(buildString {
+            appendLine("Missing string translations")
+            appendLine("Base: values/strings.xml (${baseKeys.size} keys)")
+            appendLine("Locales checked: ${localeDirs.size}")
+            appendLine()
+            affected.forEach { (locale, keys) ->
+                appendLine("$locale (${keys.size} missing)")
+                keys.forEach { appendLine("  $it") }
+                appendLine()
+            }
+            appendLine(
+                "Summary: $total missing keys across ${affected.size} of ${localeDirs.size} locales"
+            )
+        })
+
+        if (affected.isEmpty()) {
+            logger.lifecycle("Missing strings: none (${baseKeys.size} keys present in all ${localeDirs.size} locales).")
+        } else {
+            logger.lifecycle("Missing strings: $total keys across ${affected.size} of ${localeDirs.size} locales.")
+            affected.forEach { (locale, keys) -> logger.lifecycle("  $locale: ${keys.size} missing") }
+            logger.lifecycle("Full report: ${reportFile.absolutePath}")
+        }
+
+        if (shouldFail && total > 0) {
+            throw GradleException(
+                "$total string keys are missing in ${affected.size} locales. " +
+                    "See ${reportFile.absolutePath}"
+            )
+        }
+    }
 }

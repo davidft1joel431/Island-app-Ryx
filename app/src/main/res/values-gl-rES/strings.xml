@@ -378,5 +378,39 @@
         <item quantity="one">%1$d custom action</item>
         <item quantity="other">%1$d custom actions</item>
     </plurals>
+    <string name="perm_dnd_title">Acceso a Non molestar</string>
+    <string name="perm_dnd_desc">Permite que a illa detecte cando está activo o modo Non molestar</string>
+    <string name="perm_bluetooth_title">Permiso de Bluetooth</string>
+    <string name="perm_bluetooth_desc">Amosa o estado do Bluetooth e os dispositivos conectados</string>
+    <string name="optional_permissions">Permisos opcionais</string>
+    <string name="notification_history_title">Historial xeral</string>
+    <string name="notification_history_subtitle">Todas as notificacións lidas neste dispositivo</string>
+    <string name="notification_history_empty_title">Aínda non hai notificacións</string>
+    <string name="notification_history_empty_desc">Cando Ryx Isla lea unha notificación, aparecerá aquí.</string>
+    <string name="notification_history_clear">Borrar historial</string>
+    <string name="notification_history_clear_title">¿Borrar o historial?</string>
+    <string name="notification_history_clear_desc">Eliminaranse todas as notificacións gardadas neste dispositivo. Esta acción non se pode desfacer.</string>
+    <string name="notification_history_clear_confirm">Borrar</string>
+    <string name="notification_history_search_hint">Buscar por app, título ou texto</string>
+    <string name="notification_history_search_clear">Limpar busca</string>
+    <string name="notification_history_filter_all">Todas</string>
+    <string name="notification_history_filter_messages">Mensaxes</string>
+    <string name="notification_history_filter_calls">Chamadas</string>
+    <string name="notification_history_filter_downloads">Descargas</string>
+    <string name="notification_history_filter_other">Outras</string>
+    <string name="notification_history_today">Hoxe</string>
+    <string name="notification_history_yesterday">Onte</string>
+    <string name="notification_history_count">%1$d notificacións</string>
+    <string name="notification_history_results">%1$d resultados</string>
+    <string name="notification_history_empty_search_title">Sen resultados</string>
+    <string name="notification_history_empty_search_desc">Proba con outra busca ou cambia o filtro.</string>
+    <string name="notification_history_delete">Eliminar do historial</string>
+    <string name="notification_history_group_by_day">Por día</string>
+    <string name="notification_history_group_by_app">Por app</string>
+    <string name="notification_history_sort">Ordenar</string>
+    <string name="notification_history_sort_recent">Máis recentes primeiro</string>
+    <string name="notification_history_sort_app">Por aplicación</string>
+    <string name="title_2_0_3">Expansión reparada e historial xeral</string>
+    <string name="changelog_2_0_3">&#8226; &lt;b&gt;Illa expandida reparada:&lt;/b&gt; a tarxeta ampliada volve amosar a app, o título e o texto ao abrir a illa.\n&#8226; &lt;b&gt;Lectura mellorada:&lt;/b&gt; textos máis grandes e con mellor contraste, texto completo da notificación e ata dúas liñas de contido.\n&#8226; &lt;b&gt;Máis permisos:&lt;/b&gt; acceso a Non molestar, batería sen restricións e permiso de Bluetooth desde Axustes e o asistente.\n&#8226; &lt;b&gt;Historial xeral:&lt;/b&gt; busca, filtros por tipo, agrupación por día ou por app, orde configurable e borrado individual.\n&#8226; &lt;b&gt;Mantemento:&lt;/b&gt; versión 2.0.3.</string>
 </resources>
 
