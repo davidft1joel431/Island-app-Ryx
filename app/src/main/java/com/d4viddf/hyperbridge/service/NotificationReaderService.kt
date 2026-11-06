@@ -185,7 +185,7 @@ class NotificationReaderService : NotificationListenerService() {
         
         preferences = AppPreferences(applicationContext)
         notificationHistoryRepository = NotificationHistoryRepository(applicationContext)
-        genericIslandOverlay = GenericIslandOverlay(this, preferences)
+        genericIslandOverlay = GenericIslandOverlay(this, preferences, ::cleanupCache)
         createChannels()
 
         // [INIT] Theme Engine
@@ -671,6 +671,7 @@ class NotificationReaderService : NotificationListenerService() {
                 isOngoing = sbn.isOngoing,
                 timeoutSeconds = finalConfig.timeout ?: 5,
                 appLabel = getCachedAppLabel(sbn.packageName),
+                contentIntent = sbn.notification.contentIntent,
                 // Another Android user is a work profile, second space or a
                 // dual-app instance even when the package id is the same.
                 isWorkProfile = sbn.user != Process.myUserHandle()

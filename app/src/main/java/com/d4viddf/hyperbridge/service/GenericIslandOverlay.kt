@@ -3,6 +3,7 @@ package com.d4viddf.hyperbridge.service
 import android.animation.Animator
 import android.animation.AnimatorListenerAdapter
 import android.animation.ValueAnimator
+import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.content.res.Configuration
@@ -47,7 +48,8 @@ const val GLURRY_SAMPLING = 5;
 /** Draws the Ryx Isla dynamic island following HyperOS 4 visual language exactly. */
 class GenericIslandOverlay(
     private val context: Context,
-    private val preferences: AppPreferences
+    private val preferences: AppPreferences,
+    private val onNotificationOpened: (String) -> Unit = {}
 ) {
     private val mainHandler = Handler(Looper.getMainLooper())
     private val windowManager = context.getSystemService(Context.WINDOW_SERVICE) as WindowManager
@@ -79,6 +81,7 @@ class GenericIslandOverlay(
         val text: String,
         val largeIcon: Drawable?,
         val smallIcon: Drawable?,
+        val contentIntent: PendingIntent?,
         val postedAt: Long
     )
 
@@ -174,7 +177,9 @@ class GenericIslandOverlay(
         )
         view.setStackCount(items.size)
         view.setPendingCircle(appIcon, pendingCountFor(item))
-        view.setOnClickListener { expandSelected() }
+        view.setOnClickListener {
+            if (expanded) openSelectedNotification() else expandSelected()
+        }
         view.onPendingCircleClick = { expandSelected() }
         attachGestures(view, item)
         updateCollapsedWidth(view)
@@ -237,11 +242,14 @@ class GenericIslandOverlay(
             if (expanded) {
                 params.width = expandedWidthPx()
                 params.height = dp(HyperIslandSpec.EXPANDED_HEIGHT_DP)
+                view.setExpandedGeometry(true)
             } else {
                 params.width = collapsedWidthPx()
-                params.height = dp(HyperIslandSpec.COLLAPSED_HEIGHT_DP)
+                params.height = dp(HyperIslandSpec.TOUCH_TARGET_HEIGHT_DP)
+                view.setExpandedGeometry(false)
             }
-            view.updateCornerRadius(HyperIslandSpec.cornerRadiusPx(params.height.toFloat()))
+            val visualHeight = if (expanded) params.height else dp(HyperIslandSpec.COLLAPSED_HEIGHT_DP)
+            view.updateCornerRadius(HyperIslandSpec.cornerRadiusPx(visualHeight.toFloat()))
             runCatching { windowManager.updateViewLayout(view, params) }
         }
     }
@@ -267,7 +275,8 @@ class GenericIslandOverlay(
         isOngoing: Boolean,
         timeoutSeconds: Int,
         appLabel: String? = null,
-        isWorkProfile: Boolean = false
+        isWorkProfile: Boolean = false,
+        contentIntent: PendingIntent? = null
     ) {
         mainHandler.post {
             if (!Settings.canDrawOverlays(context)) return@post
@@ -286,6 +295,7 @@ class GenericIslandOverlay(
                 text = text,
                 largeIcon = notificationImage ?: appIcon,
                 smallIcon = appIcon,
+                contentIntent = contentIntent,
                 postedAt = System.currentTimeMillis()
             )
 
@@ -398,13 +408,13 @@ class GenericIslandOverlay(
 
         val params = newParams(
             collapsedWidthPx(view),
-            dp(HyperIslandSpec.COLLAPSED_HEIGHT_DP)
+            dp(HyperIslandSpec.TOUCH_TARGET_HEIGHT_DP)
         )
         try {
             windowManager.addView(view, params)
             root = view
             rootParams = params
-            view.updateCornerRadius(HyperIslandSpec.cornerRadiusPx(params.height.toFloat()))
+            view.updateCornerRadius(HyperIslandSpec.cornerRadiusPx(dp(HyperIslandSpec.COLLAPSED_HEIGHT_DP).toFloat()))
             applyCollapsedPresentation(view)
             animateIn(view)
         } catch (error: Exception) {
@@ -447,13 +457,13 @@ class GenericIslandOverlay(
 
         val params = newParams(
             collapsedWidthPx(view),
-            dp(HyperIslandSpec.COLLAPSED_HEIGHT_DP)
+            dp(HyperIslandSpec.TOUCH_TARGET_HEIGHT_DP)
         )
         try {
             windowManager.addView(view, params)
             root = view
             rootParams = params
-            view.updateCornerRadius(HyperIslandSpec.cornerRadiusPx(params.height.toFloat()))
+            view.updateCornerRadius(HyperIslandSpec.cornerRadiusPx(dp(HyperIslandSpec.COLLAPSED_HEIGHT_DP).toFloat()))
             view.showCollapsedNotification()
             animateIn(view)
         } catch (error: Exception) {
@@ -484,6 +494,7 @@ class GenericIslandOverlay(
             activeNotificationKey = item.key
             permanentVisible = false
             expanded = true
+            view.setExpandedGeometry(true)
 
             view.bindNotification(
                 appLabel = item.appLabel,
@@ -494,10 +505,7 @@ class GenericIslandOverlay(
                 isClone = item.isClone
             )
             view.setStackCount(items.size)
-            view.setOnClickListener {
-                launchApp(item.packageName)
-                collapseCurrent()
-            }
+            view.setOnClickListener { openNotification(item) }
             attachGestures(view, item)
             view.setSystemFunctions(systemStatus.snapshot())
 
@@ -523,6 +531,21 @@ class GenericIslandOverlay(
         }
     }
 
+    private fun openSelectedNotification() {
+        val key = selectedNotificationKey ?: activeNotificationKey ?: return
+        items[key]?.let(::openNotification)
+    }
+
+    private fun openNotification(item: IslandItem) {
+        val opened = if (item.contentIntent != null) {
+            runCatching { item.contentIntent.send() }.isSuccess
+        } else {
+            launchApp(item.packageName)
+            true
+        }
+        if (opened) onNotificationOpened(item.key)
+    }
+
     /** Expands the dominant system function when there are no notifications. */
     private fun expandSystemStatus() {
         mainHandler.post {
@@ -542,6 +565,7 @@ class GenericIslandOverlay(
             val params = rootParams ?: return@post
 
             expanded = true
+            view.setExpandedGeometry(true)
             permanentVisible = false
             activeNotificationKey = null
             view.bindSystemCapsule(
@@ -585,7 +609,7 @@ class GenericIslandOverlay(
         view.showCollapsedNotification()
         applyCollapsedPresentation(view)
         val targetWidth = collapsedWidthPx()
-        val targetHeight = dp(HyperIslandSpec.COLLAPSED_HEIGHT_DP)
+        val targetHeight = dp(HyperIslandSpec.TOUCH_TARGET_HEIGHT_DP)
         if (preferences.islandAnimationsEnabledSync()) {
             animateSize(
                 view = view,
@@ -593,12 +617,19 @@ class GenericIslandOverlay(
                 targetWidth = targetWidth,
                 targetHeight = targetHeight,
                 durationMs = 240L,
-                interpolator = PathInterpolator(0.4f, 0f, 0.2f, 1f)
+                interpolator = PathInterpolator(0.4f, 0f, 0.2f, 1f),
+                onEnd = {
+                    view.setExpandedGeometry(false)
+                    view.updateCornerRadius(
+                        HyperIslandSpec.cornerRadiusPx(dp(HyperIslandSpec.COLLAPSED_HEIGHT_DP).toFloat())
+                    )
+                }
             )
         } else {
             params.width = targetWidth
             params.height = targetHeight
-            view.updateCornerRadius(HyperIslandSpec.cornerRadiusPx(targetHeight.toFloat()))
+            view.setExpandedGeometry(false)
+            view.updateCornerRadius(HyperIslandSpec.cornerRadiusPx(dp(HyperIslandSpec.COLLAPSED_HEIGHT_DP).toFloat()))
             runCatching { windowManager.updateViewLayout(view, params) }
         }
     }
@@ -633,7 +664,7 @@ class GenericIslandOverlay(
                 .start()
         }
 
-        view.setOnTouchListener { touched, event ->
+        val gestureListener = View.OnTouchListener { touched, event ->
             when (event.actionMasked) {
                 MotionEvent.ACTION_DOWN -> {
                     start(event)
@@ -700,6 +731,15 @@ class GenericIslandOverlay(
                 else -> false
             }
         }
+        view.setOnTouchListener(gestureListener)
+        fun attachToClickableChildren(parent: ViewGroup) {
+            for (index in 0 until parent.childCount) {
+                val child = parent.getChildAt(index)
+                if (child.hasOnClickListeners()) child.setOnTouchListener(gestureListener)
+                if (child is ViewGroup) attachToClickableChildren(child)
+            }
+        }
+        attachToClickableChildren(view)
     }
 
     /** Moves the selection between queued apps without losing the stack. */
@@ -769,7 +809,7 @@ class GenericIslandOverlay(
 
         val params = newParams(
             collapsedWidthPx(view),
-            dp(HyperIslandSpec.COLLAPSED_HEIGHT_DP)
+            dp(HyperIslandSpec.TOUCH_TARGET_HEIGHT_DP)
         )
 
         try {
@@ -778,7 +818,7 @@ class GenericIslandOverlay(
             rootParams = params
             permanentVisible = true
             view.showPermanent()
-            view.updateCornerRadius(HyperIslandSpec.cornerRadiusPx(params.height.toFloat()))
+            view.updateCornerRadius(HyperIslandSpec.cornerRadiusPx(dp(HyperIslandSpec.COLLAPSED_HEIGHT_DP).toFloat()))
             view.setSystemFunctions(systemStatus.snapshot())
             animateIn(view, durationMs = 300L)
         } catch (error: Exception) {
@@ -912,9 +952,10 @@ class GenericIslandOverlay(
     private fun islandTopOffset(): Int {
         val barPx = statusBarInsetPx()
         val centeredPx = ((barPx - dp(HyperIslandSpec.COLLAPSED_HEIGHT_DP)) / 2).coerceAtLeast(0)
+        val touchTargetExtra = dp(HyperIslandSpec.TOUCH_TARGET_HEIGHT_DP - HyperIslandSpec.COLLAPSED_HEIGHT_DP) / 2
         val offset = preferences.islandPositionYSync()
             .coerceIn(AppPreferences.MIN_POSITION_Y, AppPreferences.MAX_POSITION_Y)
-        return (centeredPx + dp(offset)).coerceAtLeast(0)
+        return centeredPx - touchTargetExtra + dp(offset)
     }
 
     private fun horizontalGravity(): Int = when (preferences.islandAlignmentSync()) {
@@ -995,9 +1036,6 @@ class GenericIslandOverlay(
         private val COLOR_TEXT_TERTIARY = 0x99FFFFFF.toInt()
         private val COLOR_STROKE = 0x44FFFFFF.toInt()
         private val COLOR_BRAND_GREEN = 0xFF38BD5E.toInt()
-        private val COLOR_CAMERA_RING = 0xFFFFFFFF.toInt()
-        private val COLOR_CAMERA = 0x4DFFFFFF.toInt()
-        private val COLOR_CAMERA_HIGHLIGHT = 0x1AFFFFFF.toInt()
 
         private val backgroundDrawable: GradientDrawable
         private val pill: FrameLayout
@@ -1013,7 +1051,6 @@ class GenericIslandOverlay(
         private val pendingCircle: FrameLayout
         private val pendingIcon: ImageView
         private val permanentContent: LinearLayout
-        private val permanentDot: View
         private val permanentSystemRow: LinearLayout
         private val expandedContent: LinearLayout
         private val expandedIcon: ImageView
@@ -1021,9 +1058,7 @@ class GenericIslandOverlay(
         private val titleView: TextView
         private val bodyView: TextView
         private val systemRow: LinearLayout
-        private val cameraLens: View
         private val highlightSweep: View
-        private var pulseAnimator: ValueAnimator? = null
         private var currentAppLabel: String = ""
         private var currentIsClone: Boolean = false
         private var lastSystemSignature: String = ""
@@ -1043,7 +1078,6 @@ class GenericIslandOverlay(
             pendingCircle = FrameLayout(context)
             pendingIcon = ImageView(context)
             permanentContent = LinearLayout(context)
-            permanentDot = View(context)
             permanentSystemRow = LinearLayout(context)
             expandedContent = LinearLayout(context)
             expandedIcon = ImageView(context)
@@ -1073,12 +1107,12 @@ class GenericIslandOverlay(
             }
             pillParams = FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.MATCH_PARENT
+                dp(HyperIslandSpec.COLLAPSED_HEIGHT_DP),
+                Gravity.CENTER
             )
             addView(pill, pillParams)
 
             // ── camera lens (right edge) ────────────────────────────────────
-            cameraLens = createCameraLens()
 
             highlightSweep = View(context).apply {
                 background = GradientDrawable(
@@ -1123,14 +1157,6 @@ class GenericIslandOverlay(
             buildExpandedContent()
 
             // ── camera lens position on top‑right of pill ───────────────────
-            pill.addView(
-                cameraLens,
-                FrameLayout.LayoutParams(
-                    dp(HyperIslandSpec.CAMERA_DOT_DP),
-                    dp(HyperIslandSpec.CAMERA_DOT_DP),
-                    Gravity.END or Gravity.CENTER_VERTICAL
-                ).apply { marginEnd = dp(HyperIslandSpec.CAMERA_END_MARGIN_DP) }
-            )
         }
 
         /** ── bind a regular notification ──────────────────────────────── */
@@ -1204,7 +1230,6 @@ class GenericIslandOverlay(
             bodyView.visibility = VISIBLE
 
             setEndIcon(pendingIcon)
-            cameraLens.visibility = GONE
             setNotificationCount(pendingCount)
             showCollapsedNotification()
         }
@@ -1242,7 +1267,6 @@ class GenericIslandOverlay(
             pendingIcon.setImageDrawable(icon)
             val wasVisible = pendingCircle.visibility == VISIBLE
             pendingCircle.visibility = VISIBLE
-            cameraLens.visibility = GONE
 
             if (!wasVisible) {
                 pendingCircle.alpha = 0f
@@ -1362,6 +1386,16 @@ class GenericIslandOverlay(
         fun updateCornerRadius(radiusPx: Float) {
             backgroundDrawable.cornerRadius = radiusPx.coerceAtLeast(0f)
             invalidateOutline()
+        }
+
+        fun setExpandedGeometry(expanded: Boolean) {
+            pillParams.height = if (expanded) {
+                ViewGroup.LayoutParams.MATCH_PARENT
+            } else {
+                dp(HyperIslandSpec.COLLAPSED_HEIGHT_DP)
+            }
+            pillParams.gravity = Gravity.CENTER
+            pill.requestLayout()
         }
 
         /** natural width of the collapsed capsule for the current content. */
@@ -1499,11 +1533,9 @@ class GenericIslandOverlay(
         fun bindPermanent() {
             currentIsClone = false
             showPermanent()
-            startPulse()
         }
 
         fun showCollapsedNotification() {
-            stopPulse()
             expandedContent.visibility = GONE
             expandedContent.alpha = 0f
             expandedContent.scaleX = 1f
@@ -1518,14 +1550,12 @@ class GenericIslandOverlay(
         }
 
         fun showPermanent() {
-            stopPulse()
             collapsedContent.visibility = GONE
             expandedContent.visibility = GONE
             expandedContent.alpha = 0f
             permanentContent.visibility = VISIBLE
             permanentContent.alpha = 1f
             pendingCircle.visibility = GONE
-            cameraLens.visibility = VISIBLE
             setNotificationCount(0)
         }
 
@@ -1573,32 +1603,6 @@ class GenericIslandOverlay(
         }
 
         /** ── permanent‑rest UI ─────────────────────────────────────────── */
-        private fun startPulse() {
-            stopPulse()
-            val animator = ValueAnimator.ofFloat(0f, 1f).apply {
-                duration = 1450
-                repeatCount = ValueAnimator.INFINITE
-                repeatMode = ValueAnimator.REVERSE
-                interpolator = PathInterpolator(0.4f, 0f, 0.6f, 1f)
-                addUpdateListener { animation ->
-                    val value = animation.animatedValue as Float
-                    permanentDot.alpha = 0.45f + 0.55f * value
-                    permanentDot.scaleX = 0.82f + 0.18f * value
-                    permanentDot.scaleY = 0.82f + 0.18f * value
-                }
-                start()
-            }
-            pulseAnimator = animator
-        }
-
-        private fun stopPulse() {
-            pulseAnimator?.cancel()
-            pulseAnimator = null
-            permanentDot.alpha = 1f
-            permanentDot.scaleX = 1f
-            permanentDot.scaleY = 1f
-        }
-
         // ── UI builder methods ──────────────────────────────────────────
 
         private fun buildCollapsedContent() {
@@ -1689,20 +1693,9 @@ class GenericIslandOverlay(
 
         private fun buildPermanentContent() {
             permanentContent.orientation = LinearLayout.HORIZONTAL
-            permanentContent.gravity = Gravity.CENTER_VERTICAL
-            // leaves room for the camera lens at the right end of the resting pill
-            permanentContent.setPadding(0, 0, dp(26), 0)
+            permanentContent.gravity = Gravity.CENTER
+            permanentContent.setPadding(0, 0, 0, 0)
 
-            // tiny green dot ( indicator while permanent is resting )
-            permanentDot.apply {
-                background = GradientDrawable().apply {
-                    shape = GradientDrawable.OVAL
-                    setColor(COLOR_BRAND_GREEN)
-                }
-                elevation = dp(2).toFloat()
-            }
-            permanentContent.addView(permanentDot,
-                LinearLayout.LayoutParams(dp(7), dp(7)).apply { marginStart = dp(14) })
 
             // system‑function row (hotspot, wifi, etc.) – hidden by default
             permanentSystemRow.apply {
@@ -1711,7 +1704,7 @@ class GenericIslandOverlay(
                 visibility = GONE
             }
             permanentContent.addView(permanentSystemRow,
-                LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { marginStart = dp(9) })
+                LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT))
 
             permanentContent.visibility = GONE
             pill.addView(permanentContent,
@@ -1719,35 +1712,6 @@ class GenericIslandOverlay(
         }
 
         // ── camera lens (right‑hand circle) ─────────────────────────────
-        private fun createCameraLens(): View {
-            val lens = FrameLayout(context).apply {
-                background = GradientDrawable(
-                    GradientDrawable.Orientation.TL_BR,
-                    intArrayOf(COLOR_CAMERA_RING, COLOR_CAMERA)
-                ).apply {
-                    shape = GradientDrawable.OVAL
-                    setStroke(dp(1).coerceAtLeast(1), COLOR_CAMERA_HIGHLIGHT)
-                }
-            }
-            lens.addView(View(context).apply {
-                background = GradientDrawable().apply {
-                    shape = GradientDrawable.OVAL
-                    setColor(COLOR_CAMERA)
-                }
-            }, FrameLayout.LayoutParams(dp(7), dp(7), Gravity.CENTER))
-
-            lens.addView(View(context).apply {
-                background = GradientDrawable().apply {
-                    shape = GradientDrawable.OVAL
-                    setColor(COLOR_CAMERA_HIGHLIGHT)
-                }
-            }, FrameLayout.LayoutParams(dp(2), dp(2)).apply {
-                topMargin = dp(2)
-                leftMargin = dp(2)
-            })
-            return lens
-        }
-
         /** semi‑transparent gradient bar that sweeps across the pill on expand. */
         private fun playHighlightSweep() {
             if (!preferences.islandAnimationsEnabledSync()) return
@@ -1795,7 +1759,6 @@ class GenericIslandOverlay(
         private fun px(value: Float): Float = value * resources.displayMetrics.density
 
         override fun onDetachedFromWindow() {
-            stopPulse()
             highlightSweep.animate().cancel()
             super.onDetachedFromWindow()
         }
@@ -1803,11 +1766,10 @@ class GenericIslandOverlay(
 
     private companion object {
         const val TAG = "RyxIslandOverlay"
-        // Vertical swipes need the full 50 dp HyperOS uses before dismissing;
-        // a fast flick still counts once it travels a third of that distance.
-        const val GESTURE_DISMISS_MIN_DP = 30
-        const val GESTURE_CYCLE_DP = 90
-        const val GESTURE_CYCLE_MIN_DP = 60
+        // Short swipes and flicks dismiss the island without requiring a long drag.
+        const val GESTURE_DISMISS_MIN_DP = 16
+        const val GESTURE_CYCLE_DP = 56
+        const val GESTURE_CYCLE_MIN_DP = 28
         /** Detached counter circle diameter and its gap from the capsule. */
         const val BUBBLE_SIZE_DP = HyperIslandSpec.COLLAPSED_HEIGHT_DP
         const val BUBBLE_GAP_DP = 5

@@ -1,14 +1,10 @@
 package com.d4viddf.hyperbridge.ui.components
 
 import androidx.compose.animation.AnimatedContent
-import androidx.compose.animation.core.LinearEasing
-import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
@@ -258,7 +254,6 @@ fun HyperIslandPreviewHero(
         }
     }
 }
-
 @Composable
 private fun StatusBarChrome(statusBarHeight: Dp, modifier: Modifier = Modifier) {
     Row(
@@ -300,7 +295,6 @@ private fun StatusBarChrome(statusBarHeight: Dp, modifier: Modifier = Modifier) 
         }
     }
 }
-
 @Composable
 private fun HyperIslandMock(
     expanded: Boolean,
@@ -366,21 +360,12 @@ private fun HyperIslandMock(
             if (isExpanded) {
                 ExpandedIslandContent()
             } else if (permanent) {
-                PermanentIslandContent(animationsEnabled)
+                PermanentIslandContent()
             } else {
                 CollapsedIslandContent()
             }
         }
 
-        // The notification capsule replaces the lens with the app circle.
-        if (expanded || permanent) {
-            CameraLens(
-                modifier = Modifier
-                    .align(Alignment.CenterEnd)
-                    .padding(end = HyperIslandSpec.CAMERA_END_MARGIN_DP.dp)
-                    .size(HyperIslandSpec.CAMERA_DOT_DP.dp)
-            )
-        }
     }
 }
 
@@ -457,35 +442,13 @@ private fun CollapsedIslandContent() {
 }
 
 @Composable
-private fun PermanentIslandContent(animationsEnabled: Boolean) {
-    val transition = rememberInfiniteTransition(label = "permanentPulse")
-    val pulse by transition.animateFloat(
-        initialValue = 0f,
-        targetValue = 1f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 1450, easing = LinearEasing),
-            repeatMode = RepeatMode.Reverse
-        ),
-        label = "permanentPulseValue"
-    )
+private fun PermanentIslandContent() {
     Row(
         modifier = Modifier
             .fillMaxSize()
-            .padding(start = 14.dp, end = 28.dp),
+            .padding(horizontal = 8.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Box(
-            modifier = Modifier
-                .size(7.dp)
-                .graphicsLayer {
-                    val scale = if (animationsEnabled) 0.82f + 0.18f * pulse else 1f
-                    scaleX = scale
-                    scaleY = scale
-                    alpha = if (animationsEnabled) 0.45f + 0.55f * pulse else 1f
-                }
-                .background(BrandGreen, CircleShape)
-        )
-        Spacer(Modifier.width(9.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
             SystemFunctionBadge(R.drawable.ic_system_flashlight, 18.dp)
             SystemFunctionBadge(R.drawable.ic_system_hotspot, 18.dp, badge = 2)
@@ -599,38 +562,5 @@ private fun SystemFunctionBadge(iconRes: Int, size: Dp, badge: Int? = null) {
                 )
             }
         }
-    }
-}
-
-@Composable
-private fun CameraLens(modifier: Modifier = Modifier) {
-    Box(
-        modifier = modifier
-            .clip(CircleShape)
-            .background(
-                Brush.linearGradient(
-                    colors = listOf(
-                        Color(HyperIslandSpec.COLOR_CAMERA_RING),
-                        Color(HyperIslandSpec.COLOR_CAMERA)
-                    )
-                )
-            )
-            .border(1.dp, Color(HyperIslandSpec.COLOR_CAMERA_HIGHLIGHT), CircleShape),
-        contentAlignment = Alignment.Center
-    ) {
-        Box(
-            modifier = Modifier
-                .size(7.dp)
-                .clip(CircleShape)
-                .background(Color(HyperIslandSpec.COLOR_CAMERA))
-        )
-        Box(
-            modifier = Modifier
-                .align(Alignment.TopStart)
-                .offset(x = 2.dp, y = 2.dp)
-                .size(2.dp)
-                .clip(CircleShape)
-                .background(Color.White.copy(alpha = 0.45f))
-        )
     }
 }

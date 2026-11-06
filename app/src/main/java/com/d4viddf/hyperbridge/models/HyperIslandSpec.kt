@@ -11,11 +11,10 @@ package com.d4viddf.hyperbridge.models
 object HyperIslandSpec {
     const val COLLAPSED_WIDTH_DP = 132
     const val COLLAPSED_HEIGHT_DP = 32
+    const val TOUCH_TARGET_HEIGHT_DP = 48
     const val EXPANDED_HEIGHT_DP = 84
     const val EXPANDED_MAX_WIDTH_DP = 380
     const val SCREEN_SIDE_MARGIN_DP = 16
-    const val CAMERA_DOT_DP = 12
-    const val CAMERA_END_MARGIN_DP = 11
     const val ICON_SIZE_DP = 40
     const val ICON_CORNER_DP = 12
     const val CONTENT_START_DP = 12
@@ -23,7 +22,7 @@ object HyperIslandSpec {
     const val ALIGNMENT_MARGIN_DP = 12
 
     /** Vertical travel (dp) needed to dismiss the island with a swipe. */
-    const val TOUCH_SENSITIVITY_DP = 50
+    const val TOUCH_SENSITIVITY_DP = 24
 
     /** Simulated status-bar height used when a real inset is unavailable. */
     const val PREVIEW_STATUS_BAR_DP = 34
@@ -42,9 +41,6 @@ object HyperIslandSpec {
     val COLOR_TEXT_PRIMARY = 0xFFFFFFFF.toInt()
     val COLOR_TEXT_SECONDARY = 0xFFB9B9BE.toInt()
     val COLOR_TEXT_TERTIARY = 0xFF8E8E93.toInt()
-    val COLOR_CAMERA = 0xFF0B0B0D.toInt()
-    val COLOR_CAMERA_RING = 0xFF2B2B30.toInt()
-    val COLOR_CAMERA_HIGHLIGHT = 0xFF55555F.toInt()
     val COLOR_ICON_TILE = 0xFF1A1A1D.toInt()
     val COLOR_BRAND = 0xFFFFC83D.toInt()
     val COLOR_BRAND_GREEN = 0xFF35D07A.toInt()
