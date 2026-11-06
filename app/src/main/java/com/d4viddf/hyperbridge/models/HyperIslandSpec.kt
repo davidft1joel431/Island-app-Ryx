@@ -13,12 +13,13 @@ object HyperIslandSpec {
     const val COLLAPSED_HEIGHT_DP = 36
     const val TOUCH_TARGET_HEIGHT_DP = 48
     const val EXPANDED_HEIGHT_DP = 104
+    const val MEDIA_EXPANDED_HEIGHT_DP = 188
     const val EXPANDED_CORNER_DP = 26
     const val EXPANDED_MAX_WIDTH_DP = 380
     const val EXPAND_DURATION_MS = 440L
     const val EXPAND_OVERSHOOT_TENSION = 0.32f
     const val SCREEN_SIDE_MARGIN_DP = 16
-    const val ICON_SIZE_DP = 40
+    const val ICON_SIZE_DP = 44
     const val ICON_CORNER_DP = 12
     const val CONTENT_START_DP = 12
     const val CONTENT_END_DP = 16
@@ -68,6 +69,8 @@ object HyperIslandSpec {
         "bluetooth" -> COLOR_ACCENT_BLUE
         "recorder" -> COLOR_ACCENT_RED
         "music" -> COLOR_ACCENT_ORANGE
+        "battery" -> COLOR_ACCENT_GREEN
+        "dnd" -> COLOR_ACCENT_BLUE
         else -> COLOR_LIVE
     }
 

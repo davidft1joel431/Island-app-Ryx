@@ -5,6 +5,7 @@ import android.animation.AnimatorListenerAdapter
 import android.animation.ValueAnimator
 import android.app.ActivityOptions
 import android.app.PendingIntent
+import android.media.session.MediaController
 import android.content.Context
 import android.content.Intent
 import android.content.res.Configuration
@@ -13,6 +14,8 @@ import android.graphics.Rect;
 import android.graphics.drawable.ColorDrawable;
 import android.graphics.drawable.Drawable;
 import android.graphics.drawable.GradientDrawable;
+import android.media.MediaMetadata;
+import android.media.session.PlaybackState;
 import android.os.Handler;
 import android.os.Looper;
 import android.provider.Settings;
@@ -34,6 +37,7 @@ import android.view.animation.PathInterpolator;
 import android.widget.FrameLayout;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
+import android.widget.SeekBar;
 import android.widget.TextView;
 import androidx.core.content.ContextCompat;
 import com.d4viddf.hyperbridge.R;
@@ -42,6 +46,7 @@ import com.d4viddf.hyperbridge.data.widget.WidgetManager;
 import com.d4viddf.hyperbridge.models.HyperIslandSpec;
 import com.d4viddf.hyperbridge.models.IslandAlignment;
 import com.d4viddf.hyperbridge.models.NotificationCloneDetector;
+import com.d4viddf.hyperbridge.models.NotificationType;
 import kotlin.math.abs;
 import kotlin.math.roundToInt;
 import kotlinx.coroutines.CoroutineScope;
@@ -63,6 +68,13 @@ class GenericIslandOverlay(
     private val onNotificationOpened: (String) -> Unit = {}
 ) {
     private val mainHandler = Handler(Looper.getMainLooper())
+    private val mediaProgressTask = object : Runnable {
+        override fun run() {
+            if (!expanded) return
+            root?.refreshMediaProgress()
+            mainHandler.postDelayed(this, 1_000L)
+        }
+    }
     private val widgetScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private var widgetPreviewJob: Job? = null
     private val windowManager = context.getSystemService(Context.WINDOW_SERVICE) as WindowManager
@@ -96,6 +108,7 @@ class GenericIslandOverlay(
         val smallIcon: Drawable?,
         val contentIntent: PendingIntent?,
         val actions: List<Pair<String, PendingIntent>>,
+        val type: NotificationType,
         val postedAt: Long
     )
 
@@ -166,7 +179,7 @@ class GenericIslandOverlay(
         val accent = function?.let { HyperIslandSpec.systemFunctionColor(it.id) }
             ?: HyperIslandSpec.COLOR_ICON_TILE
 
-        if (function != null) {
+        if (function != null && item == null) {
             val appIcon = item?.smallIcon
             activeNotificationKey = item?.key
             permanentVisible = false
@@ -201,6 +214,7 @@ class GenericIslandOverlay(
             largeIcon = item.largeIcon ?: appIcon,
             smallIcon = appIcon,
             actions = item.actions,
+            type = item.type,
             isClone = item.isClone
         )
         view.setStackCount(items.size)
@@ -269,7 +283,7 @@ class GenericIslandOverlay(
             params.y = islandTopOffset()
             if (expanded) {
                 params.width = expandedWidthPx()
-                params.height = dp(HyperIslandSpec.EXPANDED_HEIGHT_DP)
+                params.height = expandedHeightPx()
                 view.setExpandedGeometry(true)
             } else {
                 params.width = collapsedWidthPx()
@@ -305,7 +319,8 @@ class GenericIslandOverlay(
         appLabel: String? = null,
         isWorkProfile: Boolean = false,
         contentIntent: PendingIntent? = null,
-        actions: List<Pair<String, PendingIntent>> = emptyList()
+        actions: List<Pair<String, PendingIntent>> = emptyList(),
+        notificationType: NotificationType = NotificationType.STANDARD
     ) {
         mainHandler.post {
             if (!Settings.canDrawOverlays(context)) return@post
@@ -326,6 +341,7 @@ class GenericIslandOverlay(
                 smallIcon = appIcon,
                 contentIntent = contentIntent,
                 actions = actions,
+                type = notificationType,
                 postedAt = System.currentTimeMillis()
             )
 
@@ -337,7 +353,7 @@ class GenericIslandOverlay(
             val view = root
             if (view != null && expanded) {
                 if (wasVisible) {
-                    view.updateNotification(displayTitle, text, item.largeIcon ?: appIcon, appIcon)
+                    view.updateNotification(displayTitle, text, item.largeIcon ?: appIcon, appIcon, item.type, item.actions)
                     view.renderNotificationActions(item.actions)
                 }
                 view.setStackCount(items.size)
@@ -433,6 +449,7 @@ class GenericIslandOverlay(
             largeIcon = item.largeIcon ?: appIcon,
             smallIcon = appIcon,
             actions = item.actions,
+            type = item.type,
             isClone = item.isClone
         )
         view.setSystemFunctions(currentFunctions)
@@ -538,6 +555,7 @@ class GenericIslandOverlay(
                 largeIcon = item.largeIcon ?: appIcon,
                 smallIcon = appIcon,
                 actions = item.actions,
+                type = item.type,
                 isClone = item.isClone
             )
             view.setStackCount(items.size)
@@ -545,9 +563,11 @@ class GenericIslandOverlay(
             attachGestures(view, item)
             view.setSystemFunctions(systemStatus.snapshot())
             loadSavedWidgetPreview(view)
+            mainHandler.removeCallbacks(mediaProgressTask)
+            mainHandler.postDelayed(mediaProgressTask, 1_000L)
 
             val expandedWidth = expandedWidthPx()
-            val expandedHeight = dp(HyperIslandSpec.EXPANDED_HEIGHT_DP)
+            val expandedHeight = expandedHeightPx()
             if (!preferences.islandAnimationsEnabledSync()) {
                 view.expandInstant()
                 params.width = expandedWidth
@@ -675,6 +695,8 @@ class GenericIslandOverlay(
             val params = rootParams ?: return@post
 
             expanded = true
+            params.gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL
+            params.x = 0
             view.setExpandedGeometry(true)
             permanentVisible = false
             activeNotificationKey = null
@@ -688,9 +710,11 @@ class GenericIslandOverlay(
             attachGestures(view, null)
             view.setSystemFunctions(currentFunctions)
             loadSavedWidgetPreview(view)
+            mainHandler.removeCallbacks(mediaProgressTask)
+            mainHandler.postDelayed(mediaProgressTask, 1_000L)
 
             val expandedWidth = expandedWidthPx()
-            val expandedHeight = dp(HyperIslandSpec.EXPANDED_HEIGHT_DP)
+            val expandedHeight = expandedHeightPx()
             if (!preferences.islandAnimationsEnabledSync()) {
                 view.expandInstant()
                 params.width = expandedWidth
@@ -716,6 +740,7 @@ class GenericIslandOverlay(
         val params = rootParams ?: return
         if (!expanded) return
         expanded = false
+        mainHandler.removeCallbacks(mediaProgressTask)
         view.showCollapsedNotification()
         applyCollapsedPresentation(view)
         val targetWidth = collapsedWidthPx()
@@ -912,6 +937,7 @@ class GenericIslandOverlay(
             largeIcon = nextItem.largeIcon ?: appIcon,
             smallIcon = appIcon,
             actions = nextItem.actions,
+            type = nextItem.type,
             showCollapsed = !expanded,
             isClone = nextItem.isClone
         )
@@ -1123,6 +1149,12 @@ class GenericIslandOverlay(
             .coerceAtMost(screenWidthPx() - dp(4))
     }
 
+    private fun expandedHeightPx(): Int {
+        val isMedia = selectedItem()?.type == NotificationType.MEDIA ||
+            (activeNotificationKey == null && dominantFunction()?.id == "music")
+        return dp(if (isMedia) HyperIslandSpec.MEDIA_EXPANDED_HEIGHT_DP else HyperIslandSpec.EXPANDED_HEIGHT_DP)
+    }
+
     private fun loadSavedWidgetPreview(view: HyperIslandView) {
         widgetPreviewJob?.cancel()
         view.setWidgetPreview(null)
@@ -1205,13 +1237,21 @@ class GenericIslandOverlay(
         private val stackBadge: TextView
         private val collapsedTitle: TextView
         private val collapsedAction: TextView
-        private val centerAnchor: View
+        private val collapsedIndicators: LinearLayout
         private val pendingCircle: FrameLayout
         private val pendingIcon: ImageView
         private val permanentContent: LinearLayout
         private val permanentSystemRow: LinearLayout
         private val expandedContent: LinearLayout
+        private val mediaExpandedContent: LinearLayout
         private val expandedIcon: ImageView
+        private val mediaArtView: ImageView
+        private val mediaTitleView: TextView
+        private val mediaArtistView: TextView
+        private val mediaProgress: SeekBar
+        private val mediaElapsedView: TextView
+        private val mediaDurationView: TextView
+        private val mediaControls: LinearLayout
         private val appLabelView: TextView
         private val titleView: TextView
         private val bodyView: TextView
@@ -1225,6 +1265,11 @@ class GenericIslandOverlay(
         private var currentAppLabel: String = ""
         private var currentIsClone: Boolean = false
         private var currentActions: List<Pair<String, PendingIntent>> = emptyList()
+        private var mediaMode = false
+        private var currentNotificationType = NotificationType.STANDARD
+        private var activeMediaController: MediaController? = null
+        private var mediaDurationMs = 0L
+        private var userSeekingMedia = false
         private var lastSystemSignature: String = ""
         var onPendingCircleClick: (() -> Unit)? = null
         private val glassEdge = PathInterpolator(0.2f, 0f, 0f, 1f)
@@ -1240,13 +1285,21 @@ class GenericIslandOverlay(
             stackBadge = TextView(context)
             collapsedTitle = TextView(context)
             collapsedAction = TextView(context)
-            centerAnchor = View(context)
+            collapsedIndicators = LinearLayout(context)
             pendingCircle = FrameLayout(context)
             pendingIcon = ImageView(context)
             permanentContent = LinearLayout(context)
             permanentSystemRow = LinearLayout(context)
             expandedContent = LinearLayout(context)
+            mediaExpandedContent = LinearLayout(context)
             expandedIcon = ImageView(context)
+            mediaArtView = ImageView(context)
+            mediaTitleView = TextView(context)
+            mediaArtistView = TextView(context)
+            mediaProgress = SeekBar(context)
+            mediaElapsedView = TextView(context)
+            mediaDurationView = TextView(context)
+            mediaControls = LinearLayout(context)
             appLabelView = TextView(context)
             titleView = TextView(context)
             bodyView = TextView(context)
@@ -1325,6 +1378,7 @@ class GenericIslandOverlay(
             buildCollapsedContent()
             buildPermanentContent()
             buildExpandedContent()
+            buildMediaExpandedContent()
 
             // ── camera lens position on top‑right of pill ───────────────────
         }
@@ -1337,12 +1391,16 @@ class GenericIslandOverlay(
             largeIcon: Drawable,
             smallIcon: Drawable,
             actions: List<Pair<String, PendingIntent>> = emptyList(),
+            type: NotificationType = NotificationType.STANDARD,
             showCollapsed: Boolean = true,
             isClone: Boolean = false
         ) {
             currentAppLabel = appLabel
             currentIsClone = isClone
             currentActions = actions
+            currentNotificationType = type
+            mediaMode = type == NotificationType.MEDIA
+            activeMediaController = systemStatus.snapshot().firstOrNull { it.id == "music" }?.mediaController
             primarySystemFunctionId = null
             systemStatusDot.visibility = GONE
             val displayLabel = decoratedAppLabel()
@@ -1353,10 +1411,21 @@ class GenericIslandOverlay(
             expandedIcon.background = roundedTile(COLOR_ICON_TILE, dp(HyperIslandSpec.ICON_CORNER_DP), dp(1))
             expandedIcon.setImageDrawable(largeIcon)
             collapsedIcon.setImageDrawable(smallIcon)
+            bindMediaContent(activeMediaController, title, text, largeIcon)
 
             // collapsed capsule shows the (possibly “cloned”) app label
-            collapsedTitle.text = displayLabel
-            collapsedAction.text = "Notificación"
+            collapsedTitle.text = when (type) {
+                NotificationType.MEDIA, NotificationType.TIMER -> title
+                else -> displayLabel
+            }
+            collapsedTitle.maxWidth = dp(if (type == NotificationType.MEDIA) 112 else 54)
+            collapsedAction.text = when (type) {
+                NotificationType.MEDIA -> text.substringAfter(" · ", "Música").ifBlank { "Música" }
+                NotificationType.TIMER -> "Temporizador"
+                NotificationType.CALL -> "Llamada"
+                NotificationType.DOWNLOAD, NotificationType.PROGRESS -> text
+                else -> "Notificación"
+            }
             appLabelView.text = displayLabel
             titleView.text = title
             bodyView.text = text
@@ -1372,7 +1441,14 @@ class GenericIslandOverlay(
             else currentAppLabel
 
         /** refresh content without collapsing the open card. */
-        fun updateNotification(title: String, text: String, largeIcon: Drawable, smallIcon: Drawable) {
+        fun updateNotification(
+            title: String,
+            text: String,
+            largeIcon: Drawable,
+            smallIcon: Drawable,
+            type: NotificationType,
+            actions: List<Pair<String, PendingIntent>>
+        ) {
             expandedIcon.clearColorFilter()
             collapsedIcon.clearColorFilter()
             expandedIcon.setImageDrawable(largeIcon)
@@ -1380,6 +1456,12 @@ class GenericIslandOverlay(
             titleView.text = title
             bodyView.text = text
             bodyView.visibility = if (text.isBlank() || text == title) GONE else VISIBLE
+            currentActions = actions
+            currentNotificationType = type
+            mediaMode = type == NotificationType.MEDIA
+            activeMediaController = systemStatus.snapshot().firstOrNull { it.id == "music" }?.mediaController
+            bindMediaContent(activeMediaController, title, text, largeIcon)
+            renderNotificationActions(actions)
         }
 
         /** ── system‑function capsule (no notification active) ──────────── */
@@ -1406,12 +1488,19 @@ class GenericIslandOverlay(
             expandedIcon.background = roundedTile(accent, dp(HyperIslandSpec.ICON_CORNER_DP), 0)
             expandedIcon.setColorFilter(Color.WHITE)
 
-            collapsedTitle.text = function.label
-            collapsedAction.text = function.detail.ifBlank { "Activo" }
+            collapsedTitle.text = if (function.id == "music") {
+                function.detail.substringBefore(" · ").ifBlank { function.label }
+            } else function.label
+            collapsedTitle.maxWidth = dp(if (function.id == "music") 112 else 54)
+            collapsedAction.text = if (function.id == "music") "Música" else function.detail.ifBlank { "Activo" }
             appLabelView.text = context.getString(R.string.island_system_label)
             titleView.text = function.label
             bodyView.text = function.detail.ifBlank { "Activo" }
             bodyView.visibility = VISIBLE
+
+            mediaMode = function.id == "music"
+            activeMediaController = function.mediaController
+            bindMediaContent(function.mediaController, function.detail, function.label, icon)
 
             setEndIcon(pendingIcon)
             setNotificationCount(pendingCount)
@@ -1493,7 +1582,20 @@ class GenericIslandOverlay(
                 5,
                 8f
             )
+            renderFunctionRow(
+                collapsedIndicators,
+                functions.filterNot { it.id == primarySystemFunctionId }.take(2),
+                14,
+                3,
+                6f
+            )
             renderMusicControls(if (currentActions.isEmpty()) functions.firstOrNull { it.id == "music" } else null)
+            functions.firstOrNull { it.id == "music" }?.let { music ->
+                if (mediaMode) {
+                    activeMediaController = music.mediaController
+                    bindMediaContent(music.mediaController, music.detail, music.label, expandedIcon.drawable)
+                }
+            }
             renderFunctionRow(permanentSystemRow, functions.take(MAX_COLLAPSED_SYSTEM_ICONS), 18, 4, 7f)
         }
 
@@ -1514,7 +1616,11 @@ class GenericIslandOverlay(
                     else -> HyperIslandSpec.COLOR_ICON_TILE
                 }
                 val button = TextView(context).apply {
-                    text = label.take(1).uppercase()
+                    text = when {
+                        currentNotificationType == NotificationType.CALL && index == 0 -> "×"
+                        currentNotificationType == NotificationType.CALL && index == 1 -> "✓"
+                        else -> label.take(1).uppercase()
+                    }
                     gravity = Gravity.CENTER
                     setTextColor(Color.WHITE)
                     setTextSize(TypedValue.COMPLEX_UNIT_SP, 15f)
@@ -1529,7 +1635,7 @@ class GenericIslandOverlay(
                     if (index > 0) marginStart = dp(8)
                 })
             }
-            actionsRow.visibility = if (actions.isEmpty()) GONE else VISIBLE
+            actionsRow.visibility = if (actions.isEmpty() || mediaMode) GONE else VISIBLE
         }
 
         private fun renderMusicControls(music: SystemStatusReader.Function?) {
@@ -1583,6 +1689,10 @@ class GenericIslandOverlay(
             functions.forEachIndexed { index, function ->
                 val accent = HyperIslandSpec.systemFunctionColor(function.id)
                 val holder = FrameLayout(context)
+                holder.isClickable = true
+                holder.isFocusable = true
+                holder.contentDescription = function.label
+                holder.setOnClickListener { openSystemFunctionSettings(function, inFreeform = false) }
                 val icon = ImageView(context).apply {
                     setImageResource(function.iconRes)
                     scaleType = ImageView.ScaleType.FIT_CENTER
@@ -1658,6 +1768,201 @@ class GenericIslandOverlay(
             }
             pillParams.gravity = Gravity.CENTER
             pill.requestLayout()
+        }
+
+        private fun bindMediaContent(
+            controller: MediaController?,
+            fallbackTitle: String,
+            fallbackArtist: String,
+            fallbackArtwork: Drawable?
+        ) {
+            activeMediaController = controller
+            val metadata = controller?.metadata
+            val trackTitle = metadata?.getString(MediaMetadata.METADATA_KEY_TITLE)
+                ?.takeIf { it.isNotBlank() } ?: fallbackTitle.substringBefore(" · ").ifBlank { "Reproduciendo" }
+            val artist = metadata?.getString(MediaMetadata.METADATA_KEY_ARTIST)
+                ?.takeIf { it.isNotBlank() }
+                ?: metadata?.getString(MediaMetadata.METADATA_KEY_ALBUM_ARTIST)?.takeIf { it.isNotBlank() }
+                ?: fallbackArtist.substringAfter(" · ", fallbackArtist).ifBlank { currentAppLabel }
+            mediaTitleView.text = trackTitle
+            mediaArtistView.text = artist
+            val artwork = metadata?.getBitmap(MediaMetadata.METADATA_KEY_ART)
+                ?: metadata?.getBitmap(MediaMetadata.METADATA_KEY_ALBUM_ART)
+            if (artwork != null) mediaArtView.setImageBitmap(artwork) else mediaArtView.setImageDrawable(fallbackArtwork)
+            mediaArtView.contentDescription = "Carátula de $trackTitle"
+            mediaDurationMs = metadata?.getLong(MediaMetadata.METADATA_KEY_DURATION)?.coerceAtLeast(0L) ?: 0L
+            mediaProgress.max = mediaDurationMs.coerceAtMost(Int.MAX_VALUE.toLong()).toInt().coerceAtLeast(1)
+            val position = controller?.playbackState?.position?.coerceAtLeast(0L) ?: 0L
+            mediaProgress.progress = position.coerceAtMost(mediaDurationMs).coerceAtMost(Int.MAX_VALUE.toLong()).toInt()
+            mediaElapsedView.text = formatMediaTime(position)
+            mediaDurationView.text = formatMediaTime(mediaDurationMs)
+            val state = controller?.playbackState
+            val isPlaying = state?.state == PlaybackState.STATE_PLAYING
+                || (controller == null && currentActions.any { it.first.contains("pause", true) })
+            mediaControls.getChildAt(2)?.let { (it as? TextView)?.text = if (isPlaying) "Ⅱ" else "▶" }
+            mediaControls.getChildAt(4)?.visibility = if (state?.customActions?.any {
+                    it.name.contains("favorite", true) || it.name.contains("like", true)
+                } == true) VISIBLE else GONE
+        }
+
+        fun refreshMediaProgress() {
+            val controller = activeMediaController ?: return
+            val state = controller.playbackState ?: return
+            if (!userSeekingMedia) {
+                val position = state.position.coerceAtLeast(0L)
+                mediaProgress.progress = position.coerceAtMost(mediaDurationMs).coerceAtMost(Int.MAX_VALUE.toLong()).toInt()
+                mediaElapsedView.text = formatMediaTime(position)
+            }
+            mediaControls.getChildAt(2)?.let { (it as? TextView)?.text = if (state.state == PlaybackState.STATE_PLAYING) "Ⅱ" else "▶" }
+        }
+
+        private fun formatMediaTime(milliseconds: Long): String {
+            val seconds = milliseconds.coerceAtLeast(0L) / 1000L
+            return "%d:%02d".format(seconds / 60, seconds % 60)
+        }
+
+        private fun buildMediaExpandedContent() {
+            mediaExpandedContent.apply {
+                orientation = LinearLayout.VERTICAL
+                gravity = Gravity.CENTER_VERTICAL
+                visibility = GONE
+                setPadding(dp(16), dp(12), dp(16), dp(8))
+            }
+            val header = LinearLayout(context).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+            }
+            mediaArtView.apply {
+                scaleType = ImageView.ScaleType.CENTER_CROP
+                background = roundedTile(COLOR_ICON_TILE, dp(10), dp(1))
+                clipToOutline = true
+                outlineProvider = ViewOutlineProvider.BACKGROUND
+            }
+            header.addView(mediaArtView, LinearLayout.LayoutParams(dp(54), dp(54)).apply { marginEnd = dp(12) })
+            val metadataColumn = LinearLayout(context).apply {
+                orientation = LinearLayout.VERTICAL
+                gravity = Gravity.CENTER_VERTICAL
+            }
+            mediaTitleView.apply {
+                setTextColor(COLOR_TEXT_PRIMARY)
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, 15f)
+                typeface = Typeface.create("sans-serif", Typeface.BOLD)
+                maxLines = 1
+                ellipsize = TextUtils.TruncateAt.END
+                includeFontPadding = false
+            }
+            mediaArtistView.apply {
+                setTextColor(COLOR_TEXT_SECONDARY)
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
+                maxLines = 1
+                ellipsize = TextUtils.TruncateAt.END
+                includeFontPadding = false
+                setPadding(0, dp(4), 0, 0)
+            }
+            metadataColumn.addView(mediaTitleView)
+            metadataColumn.addView(mediaArtistView)
+            header.addView(metadataColumn, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+            val outputButton = TextView(context).apply {
+                text = "⌁"
+                gravity = Gravity.CENTER
+                setTextColor(COLOR_TEXT_SECONDARY)
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, 23f)
+                contentDescription = "Salida de audio"
+                background = circularTile(COLOR_ICON_TILE)
+                isClickable = true
+                setOnClickListener {
+                    runCatching {
+                        context.startActivity(Intent("android.settings.panel.action.MEDIA_OUTPUT").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                    }
+                }
+            }
+            header.addView(outputButton, LinearLayout.LayoutParams(dp(38), dp(38)).apply { marginStart = dp(8) })
+            mediaExpandedContent.addView(header, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(58)))
+
+            val timeline = LinearLayout(context).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+            }
+            listOf(mediaElapsedView, mediaDurationView).forEach { label ->
+                label.setTextColor(COLOR_TEXT_TERTIARY)
+                label.setTextSize(TypedValue.COMPLEX_UNIT_SP, 10f)
+                label.includeFontPadding = false
+            }
+            timeline.addView(mediaElapsedView)
+            mediaProgress.apply {
+                max = 1
+                progress = 0
+                progressTintList = android.content.res.ColorStateList.valueOf(COLOR_TEXT_PRIMARY)
+                thumbTintList = android.content.res.ColorStateList.valueOf(COLOR_TEXT_PRIMARY)
+                setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+                    override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
+                        if (fromUser) mediaElapsedView.text = formatMediaTime(progress.toLong())
+                    }
+                    override fun onStartTrackingTouch(seekBar: SeekBar?) { userSeekingMedia = true }
+                    override fun onStopTrackingTouch(seekBar: SeekBar?) {
+                        userSeekingMedia = false
+                        runCatching { activeMediaController?.transportControls?.seekTo(seekBar?.progress?.toLong() ?: 0L) }
+                    }
+                })
+            }
+            timeline.addView(mediaProgress, LinearLayout.LayoutParams(0, dp(28), 1f).apply {
+                marginStart = dp(8); marginEnd = dp(8)
+            })
+            timeline.addView(mediaDurationView)
+            mediaExpandedContent.addView(timeline, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(30)))
+
+            mediaControls.apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER
+            }
+            val glyphs = listOf("⇄", "‹", "Ⅱ", "›", "♡")
+            glyphs.forEachIndexed { index, glyph ->
+                val control = TextView(context).apply {
+                    text = glyph
+                    gravity = Gravity.CENTER
+                    setTextColor(if (index == 2) Color.BLACK else COLOR_TEXT_PRIMARY)
+                    setTextSize(TypedValue.COMPLEX_UNIT_SP, if (index == 2) 17f else 19f)
+                    background = if (index == 2) circularTile(COLOR_TEXT_PRIMARY) else ColorDrawable(Color.TRANSPARENT)
+                    contentDescription = listOf("Aleatorio", "Pista anterior", "Reproducir o pausar", "Pista siguiente", "Me gusta")[index]
+                    isClickable = true
+                    isFocusable = true
+                    setOnClickListener {
+                        val controller = activeMediaController
+                        if (controller == null) {
+                            val keywords = when (index) {
+                                0 -> listOf("shuffle", "aleatorio")
+                                1 -> listOf("previous", "prev", "anterior")
+                                2 -> listOf("pause", "play", "paus", "reproduc")
+                                3 -> listOf("next", "siguiente")
+                                else -> listOf("favorite", "like", "me gusta", "favorito")
+                            }
+                            currentActions.firstOrNull { action -> keywords.any { action.first.contains(it, true) } }
+                                ?.second?.let { runCatching { it.send() } }
+                            return@setOnClickListener
+                        }
+                        runCatching {
+                            when (index) {
+                                0 -> controller.playbackState?.customActions?.firstOrNull {
+                                    it.name.contains("shuffle", true) || it.action.contains("shuffle", true)
+                                }?.let { controller.transportControls.sendCustomAction(it.action, it.extras) }
+                                1 -> controller.transportControls.skipToPrevious()
+                                2 -> if (controller.playbackState?.state == PlaybackState.STATE_PLAYING) controller.transportControls.pause() else controller.transportControls.play()
+                                3 -> controller.transportControls.skipToNext()
+                                4 -> controller.playbackState?.customActions?.firstOrNull {
+                                    it.name.contains("favorite", true) || it.name.contains("like", true)
+                                }?.let { controller.transportControls.sendCustomAction(it.action, it.extras) }
+                            }
+                        }
+                    }
+                }
+                val buttonWidth = if (index == 2) dp(46) else dp(42)
+                addView(control, LinearLayout.LayoutParams(buttonWidth, dp(42)))
+            }
+            mediaExpandedContent.addView(mediaControls, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(44)))
+
+            pill.addView(mediaExpandedContent, FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT
+            ))
         }
 
         /** natural width of the collapsed capsule for the current content. */
@@ -1828,6 +2133,7 @@ class GenericIslandOverlay(
         }
 
         fun showCollapsedNotification() {
+            mediaExpandedContent.visibility = GONE
             expandedContent.visibility = GONE
             expandedContent.alpha = 0f
             expandedContent.scaleX = 1f
@@ -1846,6 +2152,7 @@ class GenericIslandOverlay(
             systemStatusDot.visibility = GONE
             collapsedContent.visibility = GONE
             expandedContent.visibility = GONE
+            mediaExpandedContent.visibility = GONE
             expandedContent.alpha = 0f
             permanentContent.visibility = VISIBLE
             permanentContent.alpha = 1f
@@ -1867,12 +2174,14 @@ class GenericIslandOverlay(
                 .withEndAction { collapsedContent.visibility = GONE }
                 .start()
 
-            expandedContent.visibility = VISIBLE
-            expandedContent.alpha = 0f
-            expandedContent.scaleX = 0.94f
-            expandedContent.scaleY = 0.94f
-            expandedContent.translationY = px(5f)
-            expandedContent.animate()
+            val activeExpandedContent = if (mediaMode) mediaExpandedContent else expandedContent
+            expandedContent.visibility = if (mediaMode) GONE else VISIBLE
+            mediaExpandedContent.visibility = if (mediaMode) VISIBLE else GONE
+            activeExpandedContent.alpha = 0f
+            activeExpandedContent.scaleX = 0.94f
+            activeExpandedContent.scaleY = 0.94f
+            activeExpandedContent.translationY = px(5f)
+            activeExpandedContent.animate()
                 .alpha(1f)
                 .scaleX(1f)
                 .scaleY(1f)
@@ -1889,11 +2198,13 @@ class GenericIslandOverlay(
             applyBubbleVisible(false)
             collapsedContent.visibility = GONE
             collapsedContent.alpha = 0f
-            expandedContent.visibility = VISIBLE
-            expandedContent.alpha = 1f
-            expandedContent.scaleX = 1f
-            expandedContent.scaleY = 1f
-            expandedContent.translationY = 0f
+            expandedContent.visibility = if (mediaMode) GONE else VISIBLE
+            mediaExpandedContent.visibility = if (mediaMode) VISIBLE else GONE
+            val activeExpandedContent = if (mediaMode) mediaExpandedContent else expandedContent
+            activeExpandedContent.alpha = 1f
+            activeExpandedContent.scaleX = 1f
+            activeExpandedContent.scaleY = 1f
+            activeExpandedContent.translationY = 0f
         }
 
         /** ── permanent‑rest UI ─────────────────────────────────────────── */
@@ -1953,10 +2264,14 @@ class GenericIslandOverlay(
             )
 
             // Overlay the marker on the pill's true geometric midpoint.
-            centerAnchor.apply {
-                background = circularTile(0xFF66666B.toInt())
-                contentDescription = "Centro de expansión"
+            collapsedIndicators.apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                visibility = GONE
             }
+            collapsedContent.addView(collapsedIndicators,
+                LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+                    .apply { marginStart = dp(6) })
 
             collapsedAction.apply {
                 setTextColor(COLOR_TEXT_SECONDARY)
@@ -1992,13 +2307,9 @@ class GenericIslandOverlay(
             pendingCircle.addView(pendingIcon,
                 FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT))
 
-            // The tiny center marker replaces the old detached app icon; the
-            // pending count remains available through the separate badge.
-
             // pill itself
             pill.addView(collapsedContent,
                 FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
-            pill.addView(centerAnchor, FrameLayout.LayoutParams(dp(7), dp(7), Gravity.CENTER))
         }
 
         private fun buildPermanentContent() {

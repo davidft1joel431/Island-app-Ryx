@@ -708,6 +708,7 @@ class NotificationReaderService : NotificationListenerService() {
                     val intent = action.actionIntent ?: return@mapNotNull null
                     action.title?.toString().orEmpty().ifBlank { "Acción" } to intent
                 },
+                notificationType = type,
                 // Another Android user is a work profile, second space or a
                 // dual-app instance even when the package id is the same.
                 isWorkProfile = sbn.user != Process.myUserHandle()

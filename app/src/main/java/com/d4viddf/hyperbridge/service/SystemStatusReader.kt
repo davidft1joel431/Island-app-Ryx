@@ -12,6 +12,8 @@ import android.media.session.MediaController
 import android.media.session.MediaSessionManager
 import android.media.session.PlaybackState
 import android.net.wifi.WifiManager
+import android.app.NotificationManager
+import android.os.BatteryManager
 import android.os.Handler
 import android.os.Looper
 import androidx.core.content.ContextCompat
@@ -26,7 +28,7 @@ import rikka.shizuku.Shizuku
 
 /**
  * Reads the live state of the system functions HyperOS shows in its island:
- * flashlight, hotspot, Bluetooth, recorder and music. Everything is read-only
+ * charging, do-not-disturb, flashlight, hotspot, Bluetooth, recorder and music. Everything is read-only
  * and guarded, so a denied permission simply hides that indicator instead of
  * breaking the island. Connectivity indicators (Wi-Fi, mobile data, internet)
  * are intentionally not included: the status bar already shows them.
@@ -128,6 +130,8 @@ class SystemStatusReader(
         val filter = IntentFilter().apply {
             addAction(WIFI_AP_STATE_CHANGED)
             addAction(android.bluetooth.BluetoothAdapter.ACTION_STATE_CHANGED)
+            addAction(Intent.ACTION_BATTERY_CHANGED)
+            addAction("android.app.action.INTERRUPTION_FILTER_CHANGED")
         }
         runCatching {
             ContextCompat.registerReceiver(
@@ -186,6 +190,28 @@ class SystemStatusReader(
     fun snapshot(): List<Function> {
         val active = mutableListOf<Function>()
 
+        val battery = runCatching {
+            appContext.registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
+        }.getOrNull()
+        val batteryStatus = battery?.getIntExtra(BatteryManager.EXTRA_STATUS, -1) ?: -1
+        val plugged = battery?.getIntExtra(BatteryManager.EXTRA_PLUGGED, 0) ?: 0
+        if (batteryStatus == BatteryManager.BATTERY_STATUS_CHARGING ||
+            batteryStatus == BatteryManager.BATTERY_STATUS_FULL || plugged != 0
+        ) {
+            val level = battery?.getIntExtra(BatteryManager.EXTRA_LEVEL, -1) ?: -1
+            active += Function(
+                "battery", R.drawable.ic_system_battery,
+                if (level >= 0) "$level%" else "Batería",
+                detail = "Cargando"
+            )
+        }
+
+        val notificationManager = appContext.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager
+        val interruptionFilter = runCatching { notificationManager?.currentInterruptionFilter }.getOrNull()
+        if (interruptionFilter != null && interruptionFilter != NotificationManager.INTERRUPTION_FILTER_ALL) {
+            active += Function("dnd", R.drawable.ic_system_dnd, "No molestar", detail = "Activado")
+        }
+
         val wifiManager = appContext.getSystemService(Context.WIFI_SERVICE) as? WifiManager
         if (hotspotOn ?: isHotspotEnabled(wifiManager) ?: false) {
             val hotspotName = cachedHotspotName?.takeIf { it.isNotBlank() }
@@ -240,7 +266,18 @@ class SystemStatusReader(
             active += Function("recorder", R.drawable.ic_system_recorder, "Grabadora")
         }
 
-        return active
+        return active.sortedBy { function ->
+            when (function.id) {
+                "music" -> 0
+                "hotspot" -> 1
+                "flashlight" -> 2
+                "bluetooth" -> 3
+                "recorder" -> 4
+                "battery" -> 5
+                "dnd" -> 6
+                else -> 7
+            }
+        }
     }
 
     /**

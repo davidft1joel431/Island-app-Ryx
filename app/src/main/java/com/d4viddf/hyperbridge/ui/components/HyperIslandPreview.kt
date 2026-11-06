@@ -193,7 +193,7 @@ fun HyperIslandPreviewHero(
             IslandAlignment.CENTER -> Modifier
             IslandAlignment.RIGHT -> Modifier.padding(end = HyperIslandSpec.ALIGNMENT_MARGIN_DP.dp)
         }
-        val boxAlignment = when (alignment) {
+        val boxAlignment = if (expanded) Alignment.TopCenter else when (alignment) {
             IslandAlignment.LEFT -> Alignment.TopStart
             IslandAlignment.CENTER -> Alignment.TopCenter
             IslandAlignment.RIGHT -> Alignment.TopEnd
@@ -207,7 +207,7 @@ fun HyperIslandPreviewHero(
             modifier = Modifier
                 .align(boxAlignment)
                 .padding(top = top)
-                .then(horizontal)
+                .then(if (expanded) Modifier else horizontal)
         )
 
         Row(
@@ -250,7 +250,7 @@ fun HyperIslandPreviewHero(
                     append("  ·  ")
                     append(expandedWidth.value.roundToInt())
                     append("×")
-                    append(HyperIslandSpec.EXPANDED_HEIGHT_DP)
+                    append(HyperIslandSpec.MEDIA_EXPANDED_HEIGHT_DP)
                     append(" dp")
                 },
                 color = Color.White.copy(alpha = 0.48f),
@@ -323,7 +323,7 @@ private fun HyperIslandMock(
         label = "islandPreviewWidth"
     )
     val height by animateDpAsState(
-        targetValue = if (expanded) HyperIslandSpec.EXPANDED_HEIGHT_DP.dp else HyperIslandSpec.COLLAPSED_HEIGHT_DP.dp,
+        targetValue = if (expanded) HyperIslandSpec.MEDIA_EXPANDED_HEIGHT_DP.dp else HyperIslandSpec.COLLAPSED_HEIGHT_DP.dp,
         animationSpec = if (animationsEnabled && expanded) {
             tween(HyperIslandSpec.EXPAND_DURATION_MS.toInt(), easing = IslandExpandEasing)
         } else if (animationsEnabled) {
@@ -388,50 +388,37 @@ private fun HyperIslandMock(
 
 @Composable
 private fun CollapsedIslandContent() {
-    Box(Modifier.fillMaxSize()) {
-      Row(
-          modifier = Modifier.fillMaxSize().padding(horizontal = 10.dp),
-          verticalAlignment = Alignment.CenterVertically
-      ) {
+    Row(
+        modifier = Modifier.fillMaxSize().padding(horizontal = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
         Box(
             modifier = Modifier
-                .size(21.dp)
-                .clip(RoundedCornerShape(7.dp))
-                .background(IslandTile)
-                .border(1.dp, IslandStroke, RoundedCornerShape(7.dp)),
+                .size(23.dp)
+                .clip(CircleShape)
+                .background(Color(0xFF282733)),
             contentAlignment = Alignment.Center
         ) {
-            Image(
-                painter = painterResource(R.drawable.ryx_logo),
-                contentDescription = null,
-                modifier = Modifier
-                    .fillMaxWidth(0.88f)
-                    .height(14.dp),
-                contentScale = ContentScale.Fit
-            )
+            Text("♫", color = Color(0xFF9E91FF), fontSize = 15.sp, fontWeight = FontWeight.Bold)
         }
-        Spacer(Modifier.width(7.dp))
         Text(
-            text = "Alice",
+            text = "03:58",
             color = Color.White,
-            fontSize = 13.sp,
-            fontWeight = FontWeight.Medium,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.width(52.dp)
-        )
-        Spacer(Modifier.weight(1f))
-        Text(
-            text = "Incoming",
-            color = Color(HyperIslandSpec.COLOR_TEXT_SECONDARY),
-            fontSize = 11.sp,
+            fontSize = 12.sp,
             fontWeight = FontWeight.Medium,
             maxLines = 1
         )
-      }
-      Box(
-          Modifier.align(Alignment.Center).size(7.dp).clip(CircleShape).background(Color(0xFF66666B))
-      )
+        Spacer(Modifier.weight(1f))
+        MiniControl("Ⅱ", Color(0xFF5D8EFF))
+        MiniControl("×", Color(0xFF39393F))
+    }
+}
+
+@Composable
+private fun MiniControl(glyph: String, tint: Color) {
+    Box(Modifier.size(24.dp).clip(CircleShape).background(tint), contentAlignment = Alignment.Center) {
+        Text(glyph, color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
     }
 }
 
@@ -444,86 +431,62 @@ private fun PermanentIslandContent() {
         verticalAlignment = Alignment.CenterVertically
     ) {
         Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-            SystemFunctionBadge(R.drawable.ic_system_flashlight, 18.dp)
+            SystemFunctionBadge(R.drawable.ic_system_music, 18.dp)
             SystemFunctionBadge(R.drawable.ic_system_hotspot, 18.dp)
-            SystemFunctionBadge(R.drawable.ic_system_bluetooth, 18.dp)
+            SystemFunctionBadge(R.drawable.ic_system_battery, 18.dp)
         }
     }
 }
 
 @Composable
 private fun ExpandedIslandContent() {
-    Row(
+    Column(
         modifier = Modifier
             .fillMaxSize()
-            .padding(start = HyperIslandSpec.CONTENT_START_DP.dp, end = HyperIslandSpec.CONTENT_END_DP.dp),
-        verticalAlignment = Alignment.CenterVertically
+            .padding(horizontal = 18.dp, vertical = 12.dp),
+        verticalArrangement = Arrangement.SpaceBetween
     ) {
-        Box(
-            modifier = Modifier
-                .size(HyperIslandSpec.ICON_SIZE_DP.dp)
-                .clip(RoundedCornerShape(HyperIslandSpec.ICON_CORNER_DP.dp))
-                .background(IslandTile)
-                .border(
-                    1.dp,
-                    IslandStroke,
-                    RoundedCornerShape(HyperIslandSpec.ICON_CORNER_DP.dp)
-                ),
-            contentAlignment = Alignment.Center
-        ) {
-            Image(
-                painter = painterResource(R.drawable.ryx_logo),
-                contentDescription = null,
-                modifier = Modifier
-                    .fillMaxWidth(0.84f)
-                    .height(26.dp),
-                contentScale = ContentScale.Fit
-            )
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Box(
+                Modifier.size(58.dp).clip(RoundedCornerShape(13.dp))
+                    .background(Brush.linearGradient(listOf(Color(0xFF8C4CFF), Color(0xFFFF805D)))),
+                contentAlignment = Alignment.Center
+            ) {
+                Text("♫", color = Color.White.copy(alpha = 0.92f), fontSize = 31.sp, fontWeight = FontWeight.Light)
+            }
+            Spacer(Modifier.width(13.dp))
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.Center) {
+                Text("Far Closer", color = Color.White, fontSize = 17.sp, fontWeight = FontWeight.SemiBold,
+                    maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text("David E. Smith", color = Color.White.copy(alpha = 0.64f), fontSize = 12.sp,
+                    maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+            Text("⌁", color = Color.White.copy(alpha = 0.82f), fontSize = 24.sp)
         }
-        Spacer(Modifier.width(11.dp))
-        Column(
-            modifier = Modifier.weight(1f),
-            verticalArrangement = Arrangement.Center
-        ) {
-            Text(
-                text = "Alice",
-                color = Color(HyperIslandSpec.COLOR_TEXT_SECONDARY),
-                fontSize = 10.sp,
-                fontWeight = FontWeight.SemiBold,
-                letterSpacing = 0.6.sp,
-                maxLines = 1
-            )
-            Text(
-                text = "Incoming Call",
-                color = Color(HyperIslandSpec.COLOR_TEXT_PRIMARY),
-                fontSize = 15.sp,
-                fontWeight = FontWeight.Bold,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-            Text(
-                text = stringResource(R.string.design_preview_island_text),
-                color = Color(HyperIslandSpec.COLOR_TEXT_TERTIARY),
-                fontSize = 12.sp,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-        }
-        Spacer(Modifier.width(12.dp))
-        Row(horizontalArrangement = Arrangement.spacedBy(9.dp)) {
-            CallActionButton("×", Color(0xFFFF4D55))
-            CallActionButton("✓", Color(0xFF32C96A))
-        }
-    }
-}
 
-@Composable
-private fun CallActionButton(label: String, color: Color) {
-    Box(
-        modifier = Modifier.size(38.dp).clip(CircleShape).background(color),
-        contentAlignment = Alignment.Center
-    ) {
-        Text(label, color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.SemiBold)
+        Column {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                Text("2:54", color = Color.White.copy(alpha = 0.62f), fontSize = 10.sp)
+                Text("3:56", color = Color.White.copy(alpha = 0.62f), fontSize = 10.sp)
+            }
+            Box(Modifier.fillMaxWidth().height(4.dp).clip(CircleShape).background(Color.White.copy(alpha = 0.18f))) {
+                Box(Modifier.fillMaxWidth(0.68f).height(4.dp).clip(CircleShape).background(Color.White))
+            }
+        }
+
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
+            Text("⇄", color = Color.White.copy(alpha = 0.74f), fontSize = 18.sp)
+            Spacer(Modifier.width(25.dp))
+            Text("‹", color = Color.White, fontSize = 29.sp)
+            Spacer(Modifier.width(21.dp))
+            Box(Modifier.size(42.dp).clip(CircleShape).background(Color.White), contentAlignment = Alignment.Center) {
+                Text("Ⅱ", color = IslandBlack, fontSize = 19.sp, fontWeight = FontWeight.Bold)
+            }
+            Spacer(Modifier.width(21.dp))
+            Text("›", color = Color.White, fontSize = 29.sp)
+            Spacer(Modifier.width(25.dp))
+            Text("♡", color = Color.White.copy(alpha = 0.74f), fontSize = 20.sp)
+        }
     }
 }
 
