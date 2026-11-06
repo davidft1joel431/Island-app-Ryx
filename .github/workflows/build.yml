@@ -51,9 +51,9 @@ jobs:
           tag_name: v${{ steps.version.outputs.version }}
           name: Ryx Isla v${{ steps.version.outputs.version }}
           body: |
-            Ryx Isla 2.0.2.
+            Ryx Isla ${{ steps.version.outputs.version }}.
 
-            - Versión 2.0.2: compilación reparada; se corrigieron los errores que impedían generar el APK release.
+            - Versión 2.0.5: widgets en la isla, controles de música y expansión Hyper Island mejorada.
             - Compilación: el APK release se genera y se publica automáticamente en cada push a main.
             - Creador: David Joel, Perú. Inspirado en HyperOS y en Hyper Bridge; proyecto independiente bajo Apache 2.0.
           files: RyxIsla.apk

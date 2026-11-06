@@ -36,7 +36,9 @@ class SystemStatusReader(
         val label: String,
         val badge: Int = 0,
         val detail: String = "",
-        val packageName: String? = null
+        val packageName: String? = null,
+        val mediaController: MediaController? = null,
+        val isPlaying: Boolean = false
     )
 
     private val appContext = context.applicationContext
@@ -207,7 +209,9 @@ class SystemStatusReader(
             active += Function(
                 "music", R.drawable.ic_system_music, "Música",
                 detail = listOf(track, artist).filter { it.isNotBlank() }.joinToString(" · "),
-                packageName = playing?.packageName
+                packageName = playing?.packageName,
+                mediaController = playing,
+                isPlaying = true
             )
         }
 

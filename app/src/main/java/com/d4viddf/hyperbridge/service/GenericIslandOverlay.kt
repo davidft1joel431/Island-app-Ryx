@@ -38,11 +38,20 @@ import android.widget.TextView;
 import androidx.core.content.ContextCompat;
 import com.d4viddf.hyperbridge.R;
 import com.d4viddf.hyperbridge.data.AppPreferences;
+import com.d4viddf.hyperbridge.data.widget.WidgetManager;
 import com.d4viddf.hyperbridge.models.HyperIslandSpec;
 import com.d4viddf.hyperbridge.models.IslandAlignment;
 import com.d4viddf.hyperbridge.models.NotificationCloneDetector;
 import kotlin.math.abs;
 import kotlin.math.roundToInt;
+import kotlinx.coroutines.CoroutineScope;
+import kotlinx.coroutines.Dispatchers;
+import kotlinx.coroutines.Job;
+import kotlinx.coroutines.SupervisorJob;
+import kotlinx.coroutines.flow.first;
+import kotlinx.coroutines.flow.collect;
+import kotlinx.coroutines.launch;
+import kotlinx.coroutines.withContext;
 
 const val GLURRY_SIZE = 24f;
 const val GLURRY_SAMPLING = 5;
@@ -54,6 +63,8 @@ class GenericIslandOverlay(
     private val onNotificationOpened: (String) -> Unit = {}
 ) {
     private val mainHandler = Handler(Looper.getMainLooper())
+    private val widgetScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+    private var widgetPreviewJob: Job? = null
     private val windowManager = context.getSystemService(Context.WINDOW_SERVICE) as WindowManager
     private var root: HyperIslandView? = null
     private var rootParams: WindowManager.LayoutParams? = null
@@ -376,6 +387,8 @@ class GenericIslandOverlay(
 
     fun shutdown() {
         mainHandler.post {
+            widgetPreviewJob?.cancel()
+            widgetScope.coroutineContext[Job]?.cancel()
             systemStatus.stop()
             items.clear()
             activeNotificationKey = null
@@ -522,6 +535,7 @@ class GenericIslandOverlay(
             view.setOnClickListener { openNotification(item) }
             attachGestures(view, item)
             view.setSystemFunctions(systemStatus.snapshot())
+            loadSavedWidgetPreview(view)
 
             val expandedWidth = expandedWidthPx()
             val expandedHeight = dp(HyperIslandSpec.EXPANDED_HEIGHT_DP)
@@ -574,7 +588,10 @@ class GenericIslandOverlay(
     ) {
         if (function.id == "music" && function.packageName != null &&
             launchApp(function.packageName, inFreeform)
-        ) return
+        ) {
+            collapseCurrent()
+            return
+        }
         collapseCurrent()
         val intents = when (function.id) {
             "hotspot" -> listOf(
@@ -661,6 +678,7 @@ class GenericIslandOverlay(
             view.setOnClickListener { openSystemFunctionSettings(function, inFreeform = false) }
             attachGestures(view, null)
             view.setSystemFunctions(currentFunctions)
+            loadSavedWidgetPreview(view)
 
             val expandedWidth = expandedWidthPx()
             val expandedHeight = dp(HyperIslandSpec.EXPANDED_HEIGHT_DP)
@@ -1086,6 +1104,26 @@ class GenericIslandOverlay(
             .coerceAtMost(screenWidthPx() - dp(4))
     }
 
+    private fun loadSavedWidgetPreview(view: HyperIslandView) {
+        widgetPreviewJob?.cancel()
+        view.setWidgetPreview(null)
+        widgetPreviewJob = widgetScope.launch {
+            val widgetId = runCatching { preferences.savedWidgetIdsFlow.first().firstOrNull() }.getOrNull()
+                ?: return@launch
+            suspend fun refreshPreview() {
+                val bitmap = runCatching {
+                    WidgetManager.init(context)
+                    WidgetManager.getWidgetBitmap(context, widgetId, dp(144), dp(88))
+                }.getOrNull()
+                if (root === view && expanded) view.setWidgetPreview(bitmap)
+            }
+            refreshPreview()
+            WidgetManager.widgetUpdates.collect { updatedId ->
+                if (updatedId == widgetId && root === view && expanded) refreshPreview()
+            }
+        }
+    }
+
     private fun screenWidthPx(): Int = runCatching {
         windowManager.currentWindowMetrics.bounds.width()
     }.getOrElse { context.resources.displayMetrics.widthPixels }
@@ -1157,6 +1195,8 @@ class GenericIslandOverlay(
         private val titleView: TextView
         private val bodyView: TextView
         private val systemRow: LinearLayout
+        private val musicControlRow: LinearLayout
+        private val widgetPreviewView: ImageView
         private val systemStatusDot: View
         private var primarySystemFunctionId: String? = null
         private val highlightSweep: View
@@ -1186,6 +1226,8 @@ class GenericIslandOverlay(
             titleView = TextView(context)
             bodyView = TextView(context)
             systemRow = LinearLayout(context)
+            musicControlRow = LinearLayout(context)
+            widgetPreviewView = ImageView(context)
             systemStatusDot = View(context)
 
             // ── background: pure black rectangle with soft inner shadow ────
@@ -1408,7 +1450,9 @@ class GenericIslandOverlay(
 
         /** live system-function rows, refreshed only when the signature changes. */
         fun setSystemFunctions(functions: List<SystemStatusReader.Function>) {
-            val signature = functions.joinToString("|") { "${it.id}:${it.label}:${it.detail}:${it.badge}" }
+            val signature = functions.joinToString("|") {
+                "${it.id}:${it.label}:${it.detail}:${it.badge}:${it.packageName}:${it.isPlaying}"
+            }
             if (signature == lastSystemSignature) return
             lastSystemSignature = signature
             renderFunctionRow(
@@ -1418,7 +1462,47 @@ class GenericIslandOverlay(
                 5,
                 8f
             )
+            renderMusicControls(functions.firstOrNull { it.id == "music" })
             renderFunctionRow(permanentSystemRow, functions.take(MAX_COLLAPSED_SYSTEM_ICONS), 18, 4, 7f)
+        }
+
+        fun setWidgetPreview(bitmap: android.graphics.Bitmap?) {
+            widgetPreviewView.setImageBitmap(bitmap)
+            widgetPreviewView.visibility = if (bitmap == null) GONE else VISIBLE
+        }
+
+        private fun renderMusicControls(music: SystemStatusReader.Function?) {
+            musicControlRow.removeAllViews()
+            val controller = music?.mediaController
+            if (controller == null) {
+                musicControlRow.visibility = GONE
+                return
+            }
+            musicControlRow.visibility = VISIBLE
+            val controls = controller.transportControls
+            val buttons = listOf(
+                Triple("‹", "Pista anterior") { controls.skipToPrevious() },
+                Triple(if (music.isPlaying) "Ⅱ" else "▶", if (music.isPlaying) "Pausar" else "Reproducir") {
+                    if (music.isPlaying) controls.pause() else controls.play()
+                },
+                Triple("›", "Pista siguiente") { controls.skipToNext() }
+            )
+            buttons.forEach { (glyph, description, action) ->
+                val control = TextView(context).apply {
+                    text = glyph
+                    gravity = Gravity.CENTER
+                    setTextColor(COLOR_TEXT_PRIMARY)
+                    setTextSize(TypedValue.COMPLEX_UNIT_SP, 17f)
+                    contentDescription = description
+                    isClickable = true
+                    isFocusable = true
+                    background = circularTile(HyperIslandSpec.COLOR_ICON_TILE)
+                    setOnClickListener { runCatching { action() } }
+                }
+                musicControlRow.addView(control, LinearLayout.LayoutParams(dp(30), dp(34)).apply {
+                    marginStart = dp(3)
+                })
+            }
         }
 
         private fun renderFunctionRow(
@@ -1619,6 +1703,16 @@ class GenericIslandOverlay(
             expandedContent.addView(copy,
                 LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
 
+            widgetPreviewView.apply {
+                visibility = GONE
+                scaleType = ImageView.ScaleType.CENTER_CROP
+                background = roundedTile(COLOR_ICON_TILE, dp(9), dp(1))
+                clipToOutline = true
+                contentDescription = "Widget guardado"
+            }
+            expandedContent.addView(widgetPreviewView,
+                LinearLayout.LayoutParams(dp(72), dp(56)).apply { marginStart = dp(6) })
+
             // ── system row (hotspot, wifi, bluetooth, recorder, music) ────
             systemRow.apply {
                 orientation = LinearLayout.HORIZONTAL
@@ -1634,6 +1728,14 @@ class GenericIslandOverlay(
                     ViewGroup.LayoutParams.WRAP_CONTENT
                 ).apply { marginStart = dp(8) }
             )
+            musicControlRow.apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER
+                visibility = GONE
+            }
+            expandedContent.addView(musicControlRow,
+                LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+                    .apply { marginStart = dp(5) })
             expandedContent.addView(
                 systemStatusDot,
                 LinearLayout.LayoutParams(dp(12), dp(12)).apply { marginStart = dp(8) }
