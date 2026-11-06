@@ -46,6 +46,9 @@ class SystemStatusReader(
     @Volatile
     private var torchOn = false
 
+    @Volatile
+    private var hotspotOn: Boolean? = null
+
     private var started = false
     private var lastSnapshot: List<Function> = emptyList()
 
@@ -72,6 +75,9 @@ class SystemStatusReader(
 
     private val stateReceiver = object : android.content.BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
+            if (intent?.action == WIFI_AP_STATE_CHANGED) {
+                hotspotOn = intent.getIntExtra(WIFI_AP_STATE_EXTRA, WIFI_AP_STATE_DISABLED) == WIFI_AP_STATE_ENABLED
+            }
             scheduleEmit()
         }
     }
@@ -94,6 +100,9 @@ class SystemStatusReader(
     fun start() {
         if (started) return
         started = true
+
+        val wifiManager = appContext.getSystemService(Context.WIFI_SERVICE) as? WifiManager
+        hotspotOn = isHotspotEnabled(wifiManager)
 
         runCatching { cameraManager?.registerTorchCallback(torchCallback, mainHandler) }
 
@@ -158,12 +167,11 @@ class SystemStatusReader(
         val active = mutableListOf<Function>()
 
         val wifiManager = appContext.getSystemService(Context.WIFI_SERVICE) as? WifiManager
-        if (isHotspotEnabled(wifiManager)) {
+        if (hotspotOn ?: isHotspotEnabled(wifiManager) ?: false) {
             active += Function(
                 "hotspot",
                 R.drawable.ic_system_hotspot,
-                hotspotName(wifiManager) ?: "Zona Wi-Fi",
-                badge = hotspotClientCount()
+                "Zona Wi-Fi"
             )
         }
 
@@ -203,70 +211,18 @@ class SystemStatusReader(
      * Hidden framework APIs still expose the hotspot state on most ROMs. Both
      * entry points are guarded because Android may block either one.
      */
-    private fun isHotspotEnabled(wifiManager: WifiManager?): Boolean {
-        val manager = wifiManager ?: return false
-        runCatching {
+    private fun isHotspotEnabled(wifiManager: WifiManager?): Boolean? {
+        val manager = wifiManager ?: return null
+        val enabled = runCatching {
             val enabled = manager.javaClass.getMethod("isWifiApEnabled").invoke(manager) as? Boolean
-            if (enabled != null) return enabled
-        }
+            enabled
+        }.getOrNull()
+        if (enabled != null) return enabled
         return runCatching {
             val state = manager.javaClass.getMethod("getWifiApState").invoke(manager) as? Int
-            state == WIFI_AP_STATE_ENABLED
-        }.getOrDefault(false)
-    }
-
-    /**
-     * Hotspot name configured in the system settings, read from the hidden AP
-     * configuration so the island shows the same SSID the user chose instead
-     * of a generic label.
-     */
-    private fun hotspotName(wifiManager: WifiManager?): String? {
-        val manager = wifiManager ?: return null
-
-        // Android 11+ exposes the configured SSID through SoftApConfiguration;
-        // both entry points are hidden API, so they stay guarded.
-        val publicName = runCatching {
-            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
-                val config = manager.javaClass
-                    .getMethod("getSoftApConfiguration")
-                    .invoke(manager)
-                config?.javaClass?.getMethod("getSsid")?.invoke(config) as? String
-            } else {
-                null
-            }
+            state?.let { it == WIFI_AP_STATE_ENABLED }
         }.getOrNull()
-
-        val resolved = publicName ?: runCatching {
-            val config = manager.javaClass
-                .getMethod("getWifiApConfiguration")
-                .invoke(manager) ?: return@runCatching null
-            val ssid = config.javaClass.getField("SSID").get(config) as? String
-            ssid
-        }.getOrNull()
-
-        return resolved?.trim()
-            ?.trim('"')
-            ?.takeIf { it.isNotBlank() }
-            ?.let { if (it.length > 24) it.take(23) + "…" else it }
     }
-
-    /**
-     * Connected hotspot clients as reported by the ARP table. This is the only
-     * source available to a normal app; when the ROM hides it, the badge is
-     * simply omitted.
-     */
-    private fun hotspotClientCount(): Int = runCatching {
-        val arp = java.io.File("/proc/net/arp")
-        if (!arp.canRead()) return@runCatching 0
-        arp.useLines { lines ->
-            lines.drop(1).count { line ->
-                val parts = line.trim().split(Regex("\\s+"))
-                parts.size >= 4 &&
-                    parts[0] != "0.0.0.0" &&
-                    parts[3].equals("0x2", ignoreCase = true)
-            }
-        }
-    }.getOrDefault(0)
 
     private fun scheduleEmit() {
         mainHandler.removeCallbacks(emitTask)
@@ -305,6 +261,8 @@ class SystemStatusReader(
 
     private companion object {
         const val WIFI_AP_STATE_CHANGED = "android.net.wifi.WIFI_AP_STATE_CHANGED"
+        const val WIFI_AP_STATE_EXTRA = "wifi_state"
+        const val WIFI_AP_STATE_DISABLED = 11
         const val WIFI_AP_STATE_ENABLED = 13
         const val EMIT_DEBOUNCE_MS = 120L
     }

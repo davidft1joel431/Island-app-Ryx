@@ -33,7 +33,7 @@ object HyperIslandSpec {
     const val PENDING_STACK_WIDTH_EXTRA_DP = 20
     const val NOTIFICATION_WIDTH_EXTRA_DP = 22
 
-    // HyperOS-style palette: black glass, white copy and a dark camera lens.
+    // HyperOS-style palette: black glass and white copy.
     val COLOR_BLACK = 0xFF000000.toInt()
     val COLOR_BLACK_SOFT = 0xFF08080A.toInt()
     val COLOR_SURFACE = 0xFF050506.toInt()
@@ -67,9 +67,6 @@ object HyperIslandSpec {
         "music" -> COLOR_ACCENT_ORANGE
         else -> COLOR_LIVE
     }
-
-    fun systemFunctionColorWithBadge(badge: Int, default: Int): Int =
-        if (badge > 0) default else COLOR_ICON_TILE
 
     /** Width of the expanded island in dp for the current screen width. */
     fun expandedWidthDp(screenWidthDp: Int): Int {
