@@ -138,7 +138,7 @@ object ShizukuUserServiceRecycler {
                     .daemon(true)  // Keep as daemon to avoid repeated reconnections
                     .processNameSuffix("privileged")
                     .debuggable(BuildConfig.DEBUG)
-                    .version(2)
+                    .version(3)
 
                 serviceArgs = args
 

@@ -14,6 +14,8 @@ object HyperIslandSpec {
     const val TOUCH_TARGET_HEIGHT_DP = 48
     const val EXPANDED_HEIGHT_DP = 136
     const val EXPANDED_MAX_WIDTH_DP = 380
+    const val EXPAND_DURATION_MS = 440L
+    const val EXPAND_OVERSHOOT_TENSION = 0.32f
     const val SCREEN_SIDE_MARGIN_DP = 16
     const val ICON_SIZE_DP = 40
     const val ICON_CORNER_DP = 12

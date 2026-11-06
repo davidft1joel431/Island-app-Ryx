@@ -351,14 +351,27 @@ class NotificationReaderService : NotificationListenerService() {
             val notifKey = it.key
             // Merged notifications are shown under the island key that created
             // them; dismiss that item instead of a key nobody knows.
-            val islandKey = islandKeyByNotificationKey.remove(notifKey) ?: notifKey
+            val islandKey = islandKeyByNotificationKey[notifKey] ?: notifKey
 
             recentlyRemovedKeys[notifKey] = System.currentTimeMillis()
-            genericIslandOverlay.dismiss(islandKey)
-            if (genericNotificationKeys.remove(islandKey)) {
-                processingJobs[notifKey]?.cancel()
-                processingJobs.remove(notifKey)
-                cleanupCache(islandKey)
+            if (genericNotificationKeys.contains(islandKey)) {
+                if (!isReadOrDismissReason(reason)) return
+                removalJobs[islandKey]?.cancel()
+                val job = serviceScope.launch(Dispatchers.IO) {
+                    // Apps often cancel and immediately repost the same key when
+                    // updating a conversation. Give that replacement time to arrive.
+                    if (reason == REASON_APP_CANCEL) kotlinx.coroutines.delay(350)
+                    val stillPosted = runCatching {
+                        activeNotifications.orEmpty().any { it.key == notifKey }
+                    }.getOrDefault(false)
+                    if (!stillPosted && genericNotificationKeys.contains(islandKey)) {
+                        processingJobs[notifKey]?.cancel()
+                        processingJobs.remove(notifKey)
+                        cleanupCache(islandKey)
+                    }
+                    removalJobs.remove(islandKey)
+                }
+                removalJobs[islandKey] = job
                 return
             }
 
@@ -411,15 +424,22 @@ class NotificationReaderService : NotificationListenerService() {
                                        islandType == NotificationType.MEDIA || 
                                        islandType == NotificationType.NAVIGATION
 
-                    if (finalConfig.dismissWithOriginal == true || forceDismiss) {
+                    val readOrDismissed = isReadOrDismissReason(reason)
+                    if (finalConfig.dismissWithOriginal == true || forceDismiss || readOrDismissed) {
                         // Debounce updates if the app canceled it programmatically
                         if (reason == REASON_APP_CANCEL) {
-                            kotlinx.coroutines.delay(300)
+                            kotlinx.coroutines.delay(350)
                         }
-                        try {
-                            NotificationManagerCompat.from(this@NotificationReaderService).cancel(hyperId)
-                        } catch (_: Exception) {}
-                        cleanupCache(islandKey)
+                        val stillPosted = runCatching {
+                            activeNotifications.orEmpty().any { it.key == notifKey }
+                        }.getOrDefault(false)
+                        if (!stillPosted) {
+                            try {
+                                NotificationManagerCompat.from(this@NotificationReaderService).cancel(hyperId)
+                            } catch (_: Exception) {}
+                            genericIslandOverlay.dismiss(islandKey)
+                            cleanupCache(islandKey)
+                        }
                     }
                     removalJobs.remove(islandKey)
                 }
@@ -427,6 +447,14 @@ class NotificationReaderService : NotificationListenerService() {
             }
         }
     }
+
+    private fun isReadOrDismissReason(reason: Int): Boolean = reason == REASON_CLICK ||
+        reason == REASON_CANCEL ||
+        reason == REASON_CANCEL_ALL ||
+        reason == REASON_APP_CANCEL ||
+        reason == REASON_APP_CANCEL_ALL ||
+        reason == REASON_SNOOZED ||
+        reason == REASON_TIMEOUT
 
     private fun cancelSourceNotification(targetKey: String) {
         try {
@@ -509,6 +537,10 @@ class NotificationReaderService : NotificationListenerService() {
 
             if (shouldIgnore(it.packageName)) return
             if (!isAppAllowed(it.packageName)) return
+
+            recentlyRemovedKeys.remove(it.key)
+            val existingIslandKey = islandKeyByNotificationKey[it.key] ?: it.key
+            removalJobs.remove(existingIslandKey)?.cancel()
 
             processingJobs[it.key]?.cancel()
 

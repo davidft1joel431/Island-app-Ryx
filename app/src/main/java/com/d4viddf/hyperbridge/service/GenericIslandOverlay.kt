@@ -552,8 +552,8 @@ class GenericIslandOverlay(
                     params = params,
                     targetWidth = expandedWidth,
                     targetHeight = expandedHeight,
-                    durationMs = 440L,
-                    interpolator = OvershootInterpolator(0.32f)
+                    durationMs = HyperIslandSpec.EXPAND_DURATION_MS,
+                    interpolator = OvershootInterpolator(HyperIslandSpec.EXPAND_OVERSHOOT_TENSION)
                 )
             }
         }
@@ -695,8 +695,8 @@ class GenericIslandOverlay(
                     params = params,
                     targetWidth = expandedWidth,
                     targetHeight = expandedHeight,
-                    durationMs = 440L,
-                    interpolator = OvershootInterpolator(0.32f)
+                    durationMs = HyperIslandSpec.EXPAND_DURATION_MS,
+                    interpolator = OvershootInterpolator(HyperIslandSpec.EXPAND_OVERSHOOT_TENSION)
                 )
             }
         }
@@ -1165,14 +1165,14 @@ class GenericIslandOverlay(
     /** The actual pill view: black glass capsule with lens, compact icon and expanded copy. */
     private inner class HyperIslandView(context: Context) : FrameLayout(context) {
         // ── colors (HyperOS palette) ──────────────────────────────────────
-        private val COLOR_BLACK = 0xFF000000.toInt()
-        private val COLOR_BLACK_SOFT = 0xAA000000.toInt()
-        private val COLOR_ICON_TILE = 0xFF1D1D1D.toInt()
-        private val COLOR_TEXT_PRIMARY = 0xFFFFFFFF.toInt()
-        private val COLOR_TEXT_SECONDARY = 0xCCFFFFFF.toInt()
-        private val COLOR_TEXT_TERTIARY = 0x99FFFFFF.toInt()
-        private val COLOR_STROKE = 0x44FFFFFF.toInt()
-        private val COLOR_BRAND_GREEN = 0xFF38BD5E.toInt()
+        private val COLOR_BLACK = HyperIslandSpec.COLOR_BLACK
+        private val COLOR_BLACK_SOFT = HyperIslandSpec.COLOR_BLACK_SOFT
+        private val COLOR_ICON_TILE = HyperIslandSpec.COLOR_ICON_TILE
+        private val COLOR_TEXT_PRIMARY = HyperIslandSpec.COLOR_TEXT_PRIMARY
+        private val COLOR_TEXT_SECONDARY = HyperIslandSpec.COLOR_TEXT_SECONDARY
+        private val COLOR_TEXT_TERTIARY = HyperIslandSpec.COLOR_TEXT_TERTIARY
+        private val COLOR_STROKE = HyperIslandSpec.COLOR_STROKE
+        private val COLOR_BRAND_GREEN = HyperIslandSpec.COLOR_BRAND_GREEN
 
         private val backgroundDrawable: GradientDrawable
         private val pill: FrameLayout
@@ -1236,7 +1236,7 @@ class GenericIslandOverlay(
                 intArrayOf(COLOR_BLACK, COLOR_BLACK_SOFT)
             ).apply {
                 shape = GradientDrawable.RECTANGLE
-                setStroke(dp(1).coerceAtLeast(1), COLOR_BLACK)
+                setStroke(dp(1).coerceAtLeast(1), COLOR_STROKE)
             }
 
             pill = FrameLayout(context).apply {
@@ -1377,7 +1377,7 @@ class GenericIslandOverlay(
             expandedIcon.setColorFilter(Color.WHITE)
 
             collapsedTitle.text = function.label
-            appLabelView.text = function.label
+            appLabelView.text = context.getString(R.string.island_system_label)
             titleView.text = function.label
             bodyView.text = function.detail.ifBlank { "Activo" }
             bodyView.visibility = VISIBLE

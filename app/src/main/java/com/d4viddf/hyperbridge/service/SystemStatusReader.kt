@@ -4,6 +4,7 @@ import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.content.pm.PackageManager
 import android.hardware.camera2.CameraManager
 import android.media.AudioManager
 import android.media.AudioRecordingConfiguration
@@ -15,6 +16,13 @@ import android.os.Handler
 import android.os.Looper
 import androidx.core.content.ContextCompat
 import com.d4viddf.hyperbridge.R
+import com.d4viddf.hyperbridge.integration.shizuku.ShizukuUserServiceRecycler
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
+import rikka.shizuku.Shizuku
 
 /**
  * Reads the live state of the system functions HyperOS shows in its island:
@@ -43,6 +51,8 @@ class SystemStatusReader(
 
     private val appContext = context.applicationContext
     private val mainHandler = Handler(Looper.getMainLooper())
+    private val backgroundScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private var hotspotNameJob: Job? = null
 
     private val cameraManager =
         context.getSystemService(Context.CAMERA_SERVICE) as? CameraManager
@@ -52,6 +62,9 @@ class SystemStatusReader(
 
     @Volatile
     private var hotspotOn: Boolean? = null
+
+    @Volatile
+    private var cachedHotspotName: String? = null
 
     private var started = false
     private var lastSnapshot: List<Function> = emptyList()
@@ -81,6 +94,7 @@ class SystemStatusReader(
         override fun onReceive(context: Context?, intent: Intent?) {
             if (intent?.action == WIFI_AP_STATE_CHANGED) {
                 hotspotOn = intent.getIntExtra(WIFI_AP_STATE_EXTRA, WIFI_AP_STATE_DISABLED) == WIFI_AP_STATE_ENABLED
+                if (hotspotOn == true) refreshHotspotName()
             }
             scheduleEmit()
         }
@@ -107,6 +121,7 @@ class SystemStatusReader(
 
         val wifiManager = appContext.getSystemService(Context.WIFI_SERVICE) as? WifiManager
         hotspotOn = isHotspotEnabled(wifiManager)
+        refreshHotspotName()
 
         runCatching { cameraManager?.registerTorchCallback(torchCallback, mainHandler) }
 
@@ -147,6 +162,7 @@ class SystemStatusReader(
         if (!started) return
         started = false
         mainHandler.removeCallbacks(emitTask)
+        hotspotNameJob?.cancel()
 
         runCatching { cameraManager?.unregisterTorchCallback(torchCallback) }
         runCatching { appContext.unregisterReceiver(stateReceiver) }
@@ -172,7 +188,8 @@ class SystemStatusReader(
 
         val wifiManager = appContext.getSystemService(Context.WIFI_SERVICE) as? WifiManager
         if (hotspotOn ?: isHotspotEnabled(wifiManager) ?: false) {
-            val hotspotName = readHotspotName(wifiManager)?.takeIf { it.isNotBlank() }
+            val hotspotName = cachedHotspotName?.takeIf { it.isNotBlank() }
+                ?: readHotspotName(wifiManager)?.takeIf { it.isNotBlank() }
             active += Function(
                 "hotspot",
                 R.drawable.ic_system_hotspot,
@@ -254,6 +271,33 @@ class SystemStatusReader(
                 val configuration = manager.javaClass.getMethod("getWifiApConfiguration").invoke(manager)
                 configuration?.javaClass?.getField("SSID")?.get(configuration) as? String
             }.getOrNull()?.takeIf { it.isNotBlank() }
+    }
+
+    /** The configured SSID is system protected on modern Android; use an already-authorized
+     * Shizuku shell session opportunistically when the normal app UID is denied. */
+    private fun refreshHotspotName() {
+        val wifiManager = appContext.getSystemService(Context.WIFI_SERVICE) as? WifiManager
+        val direct = readHotspotName(wifiManager)?.takeIf { it.isNotBlank() }
+        if (direct != null) {
+            cachedHotspotName = direct
+            scheduleEmit()
+            return
+        }
+        if (hotspotNameJob?.isActive == true) return
+        val hasShizuku = runCatching {
+            Shizuku.pingBinder() && Shizuku.checkSelfPermission() == PackageManager.PERMISSION_GRANTED
+        }.getOrDefault(false)
+        if (!hasShizuku) return
+
+        hotspotNameJob = backgroundScope.launch {
+            val name = runCatching {
+                ShizukuUserServiceRecycler.executeWithService { it.hotspotSsid }
+            }.getOrNull()?.trim()?.takeIf { it.isNotEmpty() }
+            if (name != null && name != cachedHotspotName) {
+                cachedHotspotName = name
+                scheduleEmit()
+            }
+        }
     }
 
     private fun scheduleEmit() {

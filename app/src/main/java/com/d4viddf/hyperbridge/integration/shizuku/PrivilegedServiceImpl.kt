@@ -6,6 +6,8 @@ import com.d4viddf.hyperbridge.IPrivilegedLogCallback
 import android.util.Log
 import android.os.IBinder
 import android.os.IInterface
+import android.content.Context
+import rikka.shizuku.SystemServiceHelper
 import java.lang.reflect.InvocationTargetException
 import android.os.Handler
 import android.os.HandlerThread
@@ -42,6 +44,28 @@ class PrivilegedServiceImpl : IPrivilegedService.Stub() {
     override fun setLogCallback(callback: IPrivilegedLogCallback?) {
         logCallback = callback
         logD("Log callback set: ${callback != null}")
+    }
+
+    override fun getHotspotSsid(): String {
+        return runCatching {
+            val binder = SystemServiceHelper.getSystemService(Context.WIFI_SERVICE)
+                ?: return ""
+            val stub = Class.forName("android.net.wifi.IWifiManager\$Stub")
+            val wifiService = stub.getMethod("asInterface", IBinder::class.java).invoke(null, binder)
+                ?: return ""
+            val configuration = wifiService.javaClass.methods
+                .firstOrNull { it.name == "getSoftApConfiguration" && it.parameterCount == 0 }
+                ?.invoke(wifiService) ?: return ""
+            val wifiSsid = configuration.javaClass.methods
+                .firstOrNull { it.name == "getWifiSsid" && it.parameterCount == 0 }
+                ?.invoke(configuration)
+            val modernName = wifiSsid?.toString()?.takeUnless {
+                it.isBlank() || it == "<unknown ssid>"
+            }
+            modernName ?: configuration.javaClass.methods
+                .firstOrNull { it.name == "getSsid" && it.parameterCount == 0 }
+                ?.invoke(configuration) as? String ?: ""
+        }.getOrDefault("")
     }
 
     override fun setPackageNetworkingEnabled(uid: Int, enabled: Boolean): Boolean {

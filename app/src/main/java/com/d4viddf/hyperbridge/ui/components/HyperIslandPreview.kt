@@ -2,6 +2,8 @@ package com.d4viddf.hyperbridge.ui.components
 
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.CubicBezierEasing
+import androidx.compose.animation.core.Easing
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
@@ -55,6 +57,7 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalDensity
@@ -77,6 +80,11 @@ private val IslandStroke = Color(HyperIslandSpec.COLOR_STROKE)
 private val IslandTile = Color(HyperIslandSpec.COLOR_ICON_TILE)
 private val BrandYellow = Color(HyperIslandSpec.COLOR_BRAND)
 private val BrandGreen = Color(HyperIslandSpec.COLOR_BRAND_GREEN)
+private val IslandExpandEasing = Easing { fraction ->
+    val t = fraction - 1f
+    val tension = HyperIslandSpec.EXPAND_OVERSHOOT_TENSION
+    t * t * ((tension + 1f) * t + tension) + 1f
+}
 
 /**
  * Real-size HyperOS-style preview. The hero is full-bleed so the expanded
@@ -305,8 +313,10 @@ private fun HyperIslandMock(
 ) {
     val width by animateDpAsState(
         targetValue = if (expanded) expandedWidth else HyperIslandSpec.COLLAPSED_WIDTH_DP.dp,
-        animationSpec = if (animationsEnabled) {
-            spring(dampingRatio = 0.74f, stiffness = Spring.StiffnessMediumLow)
+        animationSpec = if (animationsEnabled && expanded) {
+            tween(HyperIslandSpec.EXPAND_DURATION_MS.toInt(), easing = IslandExpandEasing)
+        } else if (animationsEnabled) {
+            tween(240, easing = CubicBezierEasing(0.4f, 0f, 0.2f, 1f))
         } else {
             snap()
         },
@@ -314,8 +324,10 @@ private fun HyperIslandMock(
     )
     val height by animateDpAsState(
         targetValue = if (expanded) HyperIslandSpec.EXPANDED_HEIGHT_DP.dp else HyperIslandSpec.COLLAPSED_HEIGHT_DP.dp,
-        animationSpec = if (animationsEnabled) {
-            spring(dampingRatio = 0.8f, stiffness = Spring.StiffnessMediumLow)
+        animationSpec = if (animationsEnabled && expanded) {
+            tween(HyperIslandSpec.EXPAND_DURATION_MS.toInt(), easing = IslandExpandEasing)
+        } else if (animationsEnabled) {
+            tween(240, easing = CubicBezierEasing(0.4f, 0f, 0.2f, 1f))
         } else {
             snap()
         },
@@ -493,24 +505,24 @@ private fun ExpandedIslandContent() {
         ) {
             Text(
                 text = stringResource(R.string.design_preview_now),
-                color = Color.White.copy(alpha = 0.56f),
-                fontSize = 8.5.sp,
+                color = Color(HyperIslandSpec.COLOR_TEXT_SECONDARY),
+                fontSize = 10.sp,
                 fontWeight = FontWeight.SemiBold,
                 letterSpacing = 0.6.sp,
                 maxLines = 1
             )
             Text(
                 text = stringResource(R.string.design_preview_island_title),
-                color = Color.White,
-                fontSize = 14.sp,
+                color = Color(HyperIslandSpec.COLOR_TEXT_PRIMARY),
+                fontSize = 15.sp,
                 fontWeight = FontWeight.Bold,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
             Text(
                 text = stringResource(R.string.design_preview_island_text),
-                color = Color.White.copy(alpha = 0.48f),
-                fontSize = 10.5.sp,
+                color = Color(HyperIslandSpec.COLOR_TEXT_TERTIARY),
+                fontSize = 12.sp,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
@@ -534,12 +546,20 @@ private fun ExpandedIslandContent() {
 
 @Composable
 private fun SystemFunctionBadge(iconRes: Int, size: Dp, badge: Int? = null) {
+    val accent = when (iconRes) {
+        R.drawable.ic_system_hotspot -> HyperIslandSpec.systemFunctionColor("hotspot")
+        R.drawable.ic_system_flashlight -> HyperIslandSpec.systemFunctionColor("flashlight")
+        R.drawable.ic_system_bluetooth -> HyperIslandSpec.systemFunctionColor("bluetooth")
+        R.drawable.ic_system_recorder -> HyperIslandSpec.systemFunctionColor("recorder")
+        R.drawable.ic_system_music -> HyperIslandSpec.systemFunctionColor("music")
+        else -> HyperIslandSpec.COLOR_LIVE
+    }
     Box {
         Box(
             modifier = Modifier
                 .size(size)
                 .clip(CircleShape)
-                .background(IslandTile)
+                .background(Color(accent))
                 .border(1.dp, IslandStroke, CircleShape),
             contentAlignment = Alignment.Center
         ) {
@@ -547,7 +567,8 @@ private fun SystemFunctionBadge(iconRes: Int, size: Dp, badge: Int? = null) {
                 painter = painterResource(iconRes),
                 contentDescription = null,
                 modifier = Modifier.size(size * 0.62f),
-                contentScale = ContentScale.Fit
+                contentScale = ContentScale.Fit,
+                colorFilter = ColorFilter.tint(Color(HyperIslandSpec.mutedTileColor(accent)))
             )
         }
         if (badge != null) {
