@@ -704,6 +704,10 @@ class NotificationReaderService : NotificationListenerService() {
                 timeoutSeconds = finalConfig.timeout ?: 5,
                 appLabel = getCachedAppLabel(sbn.packageName),
                 contentIntent = sbn.notification.contentIntent,
+                actions = sbn.notification.actions.orEmpty().mapNotNull { action ->
+                    val intent = action.actionIntent ?: return@mapNotNull null
+                    action.title?.toString().orEmpty().ifBlank { "Acción" } to intent
+                },
                 // Another Android user is a work profile, second space or a
                 // dual-app instance even when the package id is the same.
                 isWorkProfile = sbn.user != Process.myUserHandle()

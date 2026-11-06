@@ -9,10 +9,11 @@ package com.d4viddf.hyperbridge.models
  * status bar, exactly like HyperOS. The expanded card grows from that capsule.
  */
 object HyperIslandSpec {
-    const val COLLAPSED_WIDTH_DP = 132
-    const val COLLAPSED_HEIGHT_DP = 32
+    const val COLLAPSED_WIDTH_DP = 196
+    const val COLLAPSED_HEIGHT_DP = 36
     const val TOUCH_TARGET_HEIGHT_DP = 48
-    const val EXPANDED_HEIGHT_DP = 136
+    const val EXPANDED_HEIGHT_DP = 104
+    const val EXPANDED_CORNER_DP = 26
     const val EXPANDED_MAX_WIDTH_DP = 380
     const val EXPAND_DURATION_MS = 440L
     const val EXPAND_OVERSHOOT_TENSION = 0.32f
@@ -20,7 +21,7 @@ object HyperIslandSpec {
     const val ICON_SIZE_DP = 40
     const val ICON_CORNER_DP = 12
     const val CONTENT_START_DP = 12
-    const val CONTENT_END_DP = 30
+    const val CONTENT_END_DP = 16
     const val ALIGNMENT_MARGIN_DP = 12
 
     /** Vertical travel (dp) needed to dismiss the island with a swipe. */

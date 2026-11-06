@@ -95,6 +95,7 @@ class GenericIslandOverlay(
         val largeIcon: Drawable?,
         val smallIcon: Drawable?,
         val contentIntent: PendingIntent?,
+        val actions: List<Pair<String, PendingIntent>>,
         val postedAt: Long
     )
 
@@ -199,6 +200,7 @@ class GenericIslandOverlay(
             text = item.text,
             largeIcon = item.largeIcon ?: appIcon,
             smallIcon = appIcon,
+            actions = item.actions,
             isClone = item.isClone
         )
         view.setStackCount(items.size)
@@ -262,8 +264,8 @@ class GenericIslandOverlay(
                 if (activeNotificationKey == null && shouldShowPermanent()) showPermanentView()
                 return@post
             }
-            params.gravity = Gravity.TOP or horizontalGravity()
-            params.x = alignmentOffset()
+            params.gravity = Gravity.TOP or if (expanded) Gravity.CENTER_HORIZONTAL else horizontalGravity()
+            params.x = if (expanded) 0 else alignmentOffset()
             params.y = islandTopOffset()
             if (expanded) {
                 params.width = expandedWidthPx()
@@ -275,7 +277,7 @@ class GenericIslandOverlay(
                 view.setExpandedGeometry(false)
             }
             val visualHeight = if (expanded) params.height else dp(HyperIslandSpec.COLLAPSED_HEIGHT_DP)
-            view.updateCornerRadius(HyperIslandSpec.cornerRadiusPx(visualHeight.toFloat()))
+            view.updateCornerRadius(if (expanded) dp(HyperIslandSpec.EXPANDED_CORNER_DP).toFloat() else HyperIslandSpec.cornerRadiusPx(visualHeight.toFloat()))
             runCatching { windowManager.updateViewLayout(view, params) }
         }
     }
@@ -302,7 +304,8 @@ class GenericIslandOverlay(
         timeoutSeconds: Int,
         appLabel: String? = null,
         isWorkProfile: Boolean = false,
-        contentIntent: PendingIntent? = null
+        contentIntent: PendingIntent? = null,
+        actions: List<Pair<String, PendingIntent>> = emptyList()
     ) {
         mainHandler.post {
             if (!Settings.canDrawOverlays(context)) return@post
@@ -322,6 +325,7 @@ class GenericIslandOverlay(
                 largeIcon = notificationImage ?: appIcon,
                 smallIcon = appIcon,
                 contentIntent = contentIntent,
+                actions = actions,
                 postedAt = System.currentTimeMillis()
             )
 
@@ -334,6 +338,7 @@ class GenericIslandOverlay(
             if (view != null && expanded) {
                 if (wasVisible) {
                     view.updateNotification(displayTitle, text, item.largeIcon ?: appIcon, appIcon)
+                    view.renderNotificationActions(item.actions)
                 }
                 view.setStackCount(items.size)
                 return@post
@@ -427,6 +432,7 @@ class GenericIslandOverlay(
             text = item.text,
             largeIcon = item.largeIcon ?: appIcon,
             smallIcon = appIcon,
+            actions = item.actions,
             isClone = item.isClone
         )
         view.setSystemFunctions(currentFunctions)
@@ -521,6 +527,8 @@ class GenericIslandOverlay(
             activeNotificationKey = item.key
             permanentVisible = false
             expanded = true
+            params.gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL
+            params.x = 0
             view.setExpandedGeometry(true)
 
             view.bindNotification(
@@ -529,6 +537,7 @@ class GenericIslandOverlay(
                 text = item.text,
                 largeIcon = item.largeIcon ?: appIcon,
                 smallIcon = appIcon,
+                actions = item.actions,
                 isClone = item.isClone
             )
             view.setStackCount(items.size)
@@ -543,7 +552,7 @@ class GenericIslandOverlay(
                 view.expandInstant()
                 params.width = expandedWidth
                 params.height = expandedHeight
-                view.updateCornerRadius(HyperIslandSpec.cornerRadiusPx(expandedHeight.toFloat()))
+                view.updateCornerRadius(dp(HyperIslandSpec.EXPANDED_CORNER_DP).toFloat())
                 runCatching { windowManager.updateViewLayout(view, params) }
             } else {
                 view.expand()
@@ -686,7 +695,7 @@ class GenericIslandOverlay(
                 view.expandInstant()
                 params.width = expandedWidth
                 params.height = expandedHeight
-                view.updateCornerRadius(HyperIslandSpec.cornerRadiusPx(expandedHeight.toFloat()))
+                view.updateCornerRadius(dp(HyperIslandSpec.EXPANDED_CORNER_DP).toFloat())
                 runCatching { windowManager.updateViewLayout(view, params) }
             } else {
                 view.expand()
@@ -720,15 +729,20 @@ class GenericIslandOverlay(
                 durationMs = 240L,
                 interpolator = PathInterpolator(0.4f, 0f, 0.2f, 1f),
                 onEnd = {
+                    params.gravity = Gravity.TOP or horizontalGravity()
+                    params.x = alignmentOffset()
                     view.setExpandedGeometry(false)
                     view.updateCornerRadius(
                         HyperIslandSpec.cornerRadiusPx(dp(HyperIslandSpec.COLLAPSED_HEIGHT_DP).toFloat())
                     )
+                    runCatching { windowManager.updateViewLayout(view, params) }
                 }
             )
         } else {
             params.width = targetWidth
             params.height = targetHeight
+            params.gravity = Gravity.TOP or horizontalGravity()
+            params.x = alignmentOffset()
             view.setExpandedGeometry(false)
             view.updateCornerRadius(HyperIslandSpec.cornerRadiusPx(dp(HyperIslandSpec.COLLAPSED_HEIGHT_DP).toFloat()))
             runCatching { windowManager.updateViewLayout(view, params) }
@@ -897,6 +911,7 @@ class GenericIslandOverlay(
             text = nextItem.text,
             largeIcon = nextItem.largeIcon ?: appIcon,
             smallIcon = appIcon,
+            actions = nextItem.actions,
             showCollapsed = !expanded,
             isClone = nextItem.isClone
         )
@@ -1002,7 +1017,11 @@ class GenericIslandOverlay(
                     .coerceAtLeast(dp(1))
                 params.width = width
                 params.height = height
-                view.updateCornerRadius(HyperIslandSpec.cornerRadiusPx(height.toFloat()))
+                val compactRadius = HyperIslandSpec.cornerRadiusPx(dp(HyperIslandSpec.COLLAPSED_HEIGHT_DP).toFloat())
+                val expandedRadius = dp(HyperIslandSpec.EXPANDED_CORNER_DP).toFloat()
+                val targetRadius = if (targetHeight > dp(HyperIslandSpec.COLLAPSED_HEIGHT_DP)) expandedRadius else compactRadius
+                val startRadius = if (startHeight > dp(HyperIslandSpec.COLLAPSED_HEIGHT_DP)) expandedRadius else compactRadius
+                view.updateCornerRadius(startRadius + (targetRadius - startRadius) * fraction)
                 if (root === view) {
                     runCatching { windowManager.updateViewLayout(view, params) }
                 }
@@ -1185,6 +1204,8 @@ class GenericIslandOverlay(
         private val collapsedIcon: ImageView
         private val stackBadge: TextView
         private val collapsedTitle: TextView
+        private val collapsedAction: TextView
+        private val centerAnchor: View
         private val pendingCircle: FrameLayout
         private val pendingIcon: ImageView
         private val permanentContent: LinearLayout
@@ -1196,12 +1217,14 @@ class GenericIslandOverlay(
         private val bodyView: TextView
         private val systemRow: LinearLayout
         private val musicControlRow: LinearLayout
+        private val actionsRow: LinearLayout
         private val widgetPreviewView: ImageView
         private val systemStatusDot: View
         private var primarySystemFunctionId: String? = null
         private val highlightSweep: View
         private var currentAppLabel: String = ""
         private var currentIsClone: Boolean = false
+        private var currentActions: List<Pair<String, PendingIntent>> = emptyList()
         private var lastSystemSignature: String = ""
         var onPendingCircleClick: (() -> Unit)? = null
         private val glassEdge = PathInterpolator(0.2f, 0f, 0f, 1f)
@@ -1216,6 +1239,8 @@ class GenericIslandOverlay(
             collapsedIcon = ImageView(context)
             stackBadge = TextView(context)
             collapsedTitle = TextView(context)
+            collapsedAction = TextView(context)
+            centerAnchor = View(context)
             pendingCircle = FrameLayout(context)
             pendingIcon = ImageView(context)
             permanentContent = LinearLayout(context)
@@ -1227,6 +1252,7 @@ class GenericIslandOverlay(
             bodyView = TextView(context)
             systemRow = LinearLayout(context)
             musicControlRow = LinearLayout(context)
+            actionsRow = LinearLayout(context)
             widgetPreviewView = ImageView(context)
             systemStatusDot = View(context)
 
@@ -1310,11 +1336,13 @@ class GenericIslandOverlay(
             text: String,
             largeIcon: Drawable,
             smallIcon: Drawable,
+            actions: List<Pair<String, PendingIntent>> = emptyList(),
             showCollapsed: Boolean = true,
             isClone: Boolean = false
         ) {
             currentAppLabel = appLabel
             currentIsClone = isClone
+            currentActions = actions
             primarySystemFunctionId = null
             systemStatusDot.visibility = GONE
             val displayLabel = decoratedAppLabel()
@@ -1328,10 +1356,12 @@ class GenericIslandOverlay(
 
             // collapsed capsule shows the (possibly “cloned”) app label
             collapsedTitle.text = displayLabel
+            collapsedAction.text = "Notificación"
             appLabelView.text = displayLabel
             titleView.text = title
             bodyView.text = text
             bodyView.visibility = if (text.isBlank() || text == title) GONE else VISIBLE
+            renderNotificationActions(actions)
 
             if (showCollapsed) showCollapsedNotification()
         }
@@ -1377,6 +1407,7 @@ class GenericIslandOverlay(
             expandedIcon.setColorFilter(Color.WHITE)
 
             collapsedTitle.text = function.label
+            collapsedAction.text = function.detail.ifBlank { "Activo" }
             appLabelView.text = context.getString(R.string.island_system_label)
             titleView.text = function.label
             bodyView.text = function.detail.ifBlank { "Activo" }
@@ -1457,18 +1488,48 @@ class GenericIslandOverlay(
             lastSystemSignature = signature
             renderFunctionRow(
                 systemRow,
-                functions.filterNot { it.id == primarySystemFunctionId }.take(MAX_SYSTEM_ICONS),
+                if (currentActions.isEmpty()) functions.filterNot { it.id == primarySystemFunctionId }.take(MAX_SYSTEM_ICONS) else emptyList(),
                 24,
                 5,
                 8f
             )
-            renderMusicControls(functions.firstOrNull { it.id == "music" })
+            renderMusicControls(if (currentActions.isEmpty()) functions.firstOrNull { it.id == "music" } else null)
             renderFunctionRow(permanentSystemRow, functions.take(MAX_COLLAPSED_SYSTEM_ICONS), 18, 4, 7f)
         }
 
         fun setWidgetPreview(bitmap: android.graphics.Bitmap?) {
             widgetPreviewView.setImageBitmap(bitmap)
             widgetPreviewView.visibility = if (bitmap == null) GONE else VISIBLE
+        }
+
+        fun renderNotificationActions(actions: List<Pair<String, PendingIntent>>) {
+            actionsRow.removeAllViews()
+            actions.take(2).forEachIndexed { index, (label, intent) ->
+                val lower = label.lowercase()
+                val accent = when {
+                    lower.contains("rechaz") || lower.contains("declin") || lower.contains("reject") -> HyperIslandSpec.COLOR_ACCENT_RED
+                    lower.contains("acept") || lower.contains("answer") || lower.contains("respond") -> HyperIslandSpec.COLOR_BRAND_GREEN
+                    index == 0 && actions.size > 1 -> HyperIslandSpec.COLOR_ACCENT_RED
+                    index == 1 -> HyperIslandSpec.COLOR_BRAND_GREEN
+                    else -> HyperIslandSpec.COLOR_ICON_TILE
+                }
+                val button = TextView(context).apply {
+                    text = label.take(1).uppercase()
+                    gravity = Gravity.CENTER
+                    setTextColor(Color.WHITE)
+                    setTextSize(TypedValue.COMPLEX_UNIT_SP, 15f)
+                    typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
+                    contentDescription = label
+                    isClickable = true
+                    isFocusable = true
+                    background = circularTile(accent)
+                    setOnClickListener { runCatching { intent.send() } }
+                }
+                actionsRow.addView(button, LinearLayout.LayoutParams(dp(38), dp(38)).apply {
+                    if (index > 0) marginStart = dp(8)
+                })
+            }
+            actionsRow.visibility = if (actions.isEmpty()) GONE else VISIBLE
         }
 
         private fun renderMusicControls(music: SystemStatusReader.Function?) {
@@ -1736,6 +1797,14 @@ class GenericIslandOverlay(
             expandedContent.addView(musicControlRow,
                 LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT)
                     .apply { marginStart = dp(5) })
+            actionsRow.apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                visibility = GONE
+            }
+            expandedContent.addView(actionsRow,
+                LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+                    .apply { marginStart = dp(8) })
             expandedContent.addView(
                 systemStatusDot,
                 LinearLayout.LayoutParams(dp(12), dp(12)).apply { marginStart = dp(8) }
@@ -1833,7 +1902,7 @@ class GenericIslandOverlay(
         private fun buildCollapsedContent() {
             collapsedContent.orientation = LinearLayout.HORIZONTAL
             collapsedContent.gravity = Gravity.CENTER_VERTICAL
-            collapsedContent.setPadding(0, 0, 0, 0)
+            collapsedContent.setPadding(dp(10), 0, dp(10), 0)
 
             // app icon on the left, inside the capsule
             collapsedIcon.apply {
@@ -1863,8 +1932,7 @@ class GenericIslandOverlay(
                 FrameLayout.LayoutParams(dp(13), dp(13), Gravity.TOP or Gravity.END))
 
             // fixed‑size icon holder (22dp) – keeps capsule from expanding
-            collapsedContent.addView(iconHolder,
-                LinearLayout.LayoutParams(dp(22), dp(22)).apply { marginStart = dp(10) })
+            collapsedContent.addView(iconHolder, LinearLayout.LayoutParams(dp(22), dp(22)))
 
             // app name – truncated, left of the circle
             collapsedTitle.apply {
@@ -1873,7 +1941,7 @@ class GenericIslandOverlay(
                 typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
                 maxLines = 1
                 ellipsize = TextUtils.TruncateAt.END
-                maxWidth = dp(120)
+                maxWidth = dp(54)
                 includeFontPadding = false
                 letterSpacing = 0.01f
             }
@@ -1883,6 +1951,25 @@ class GenericIslandOverlay(
                     ViewGroup.LayoutParams.WRAP_CONTENT
                 ).apply { marginStart = dp(7) }
             )
+
+            // Overlay the marker on the pill's true geometric midpoint.
+            centerAnchor.apply {
+                background = circularTile(0xFF66666B.toInt())
+                contentDescription = "Centro de expansión"
+            }
+
+            collapsedAction.apply {
+                setTextColor(COLOR_TEXT_SECONDARY)
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f)
+                typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
+                maxLines = 1
+                ellipsize = TextUtils.TruncateAt.END
+                maxWidth = dp(64)
+                includeFontPadding = false
+                gravity = Gravity.END
+            }
+            collapsedContent.addView(collapsedAction,
+                LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT))
 
             // ── detached counter circle, right of the capsule ──────────────
             // same height as capsule, pure black, no ring – exactly like HyperOS
@@ -1905,15 +1992,13 @@ class GenericIslandOverlay(
             pendingCircle.addView(pendingIcon,
                 FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT))
 
-            collapsedContent.addView(pendingCircle,
-                LinearLayout.LayoutParams(dp(22), dp(22)).apply {
-                    marginStart = dp(7)
-                    marginEnd = dp(10)
-                })
+            // The tiny center marker replaces the old detached app icon; the
+            // pending count remains available through the separate badge.
 
             // pill itself
             pill.addView(collapsedContent,
                 FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
+            pill.addView(centerAnchor, FrameLayout.LayoutParams(dp(7), dp(7), Gravity.CENTER))
         }
 
         private fun buildPermanentContent() {

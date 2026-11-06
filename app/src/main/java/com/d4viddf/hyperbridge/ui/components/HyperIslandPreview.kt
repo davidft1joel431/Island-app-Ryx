@@ -333,7 +333,12 @@ private fun HyperIslandMock(
         },
         label = "islandPreviewHeight"
     )
-    val shape = RoundedCornerShape(height / 2)
+    val cornerRadius by animateDpAsState(
+        targetValue = if (expanded) HyperIslandSpec.EXPANDED_CORNER_DP.dp else height / 2,
+        animationSpec = if (animationsEnabled) tween(HyperIslandSpec.EXPAND_DURATION_MS.toInt()) else snap(),
+        label = "islandPreviewCornerRadius"
+    )
+    val shape = RoundedCornerShape(cornerRadius)
 
     Box(
         modifier = modifier
@@ -383,12 +388,11 @@ private fun HyperIslandMock(
 
 @Composable
 private fun CollapsedIslandContent() {
-    Row(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(start = 11.dp, end = 3.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
+    Box(Modifier.fillMaxSize()) {
+      Row(
+          modifier = Modifier.fillMaxSize().padding(horizontal = 10.dp),
+          verticalAlignment = Alignment.CenterVertically
+      ) {
         Box(
             modifier = Modifier
                 .size(21.dp)
@@ -406,50 +410,28 @@ private fun CollapsedIslandContent() {
                 contentScale = ContentScale.Fit
             )
         }
-        Spacer(Modifier.width(8.dp))
+        Spacer(Modifier.width(7.dp))
         Text(
-            text = stringResource(R.string.design_preview_island_title),
+            text = "Alice",
             color = Color.White,
-            fontSize = 12.5.sp,
+            fontSize = 13.sp,
             fontWeight = FontWeight.Medium,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.weight(1f, fill = false)
+            modifier = Modifier.width(52.dp)
         )
-        Spacer(Modifier.width(6.dp))
-        // HyperOS-style app circle on the right; tap expands the island.
-        Box(contentAlignment = Alignment.TopEnd) {
-            Box(
-                modifier = Modifier
-                    .size(22.dp)
-                    .clip(CircleShape)
-                    .background(IslandTile)
-                    .border(1.dp, IslandStroke, CircleShape),
-                contentAlignment = Alignment.Center
-            ) {
-                Image(
-                    painter = painterResource(R.drawable.ryx_logo),
-                    contentDescription = null,
-                    modifier = Modifier.size(16.dp),
-                    contentScale = ContentScale.Fit
-                )
-            }
-            Box(
-                modifier = Modifier
-                    .size(12.dp)
-                    .clip(CircleShape)
-                    .background(BrandGreen)
-                    .border(1.dp, IslandBlack, CircleShape),
-                contentAlignment = Alignment.Center
-            ) {
-                Text(
-                    text = "3",
-                    color = IslandBlack,
-                    fontSize = 7.sp,
-                    fontWeight = FontWeight.Black
-                )
-            }
-        }
+        Spacer(Modifier.weight(1f))
+        Text(
+            text = "Incoming",
+            color = Color(HyperIslandSpec.COLOR_TEXT_SECONDARY),
+            fontSize = 11.sp,
+            fontWeight = FontWeight.Medium,
+            maxLines = 1
+        )
+      }
+      Box(
+          Modifier.align(Alignment.Center).size(7.dp).clip(CircleShape).background(Color(0xFF66666B))
+      )
     }
 }
 
@@ -504,7 +486,7 @@ private fun ExpandedIslandContent() {
             verticalArrangement = Arrangement.Center
         ) {
             Text(
-                text = stringResource(R.string.design_preview_now),
+                text = "Alice",
                 color = Color(HyperIslandSpec.COLOR_TEXT_SECONDARY),
                 fontSize = 10.sp,
                 fontWeight = FontWeight.SemiBold,
@@ -512,7 +494,7 @@ private fun ExpandedIslandContent() {
                 maxLines = 1
             )
             Text(
-                text = stringResource(R.string.design_preview_island_title),
+                text = "Incoming Call",
                 color = Color(HyperIslandSpec.COLOR_TEXT_PRIMARY),
                 fontSize = 15.sp,
                 fontWeight = FontWeight.Bold,
@@ -527,20 +509,21 @@ private fun ExpandedIslandContent() {
                 overflow = TextOverflow.Ellipsis
             )
         }
-        Spacer(Modifier.width(8.dp))
-        Row(horizontalArrangement = Arrangement.spacedBy(5.dp)) {
-            SystemFunctionBadge(R.drawable.ic_system_flashlight, 24.dp)
-            SystemFunctionBadge(R.drawable.ic_system_hotspot, 24.dp)
-            SystemFunctionBadge(R.drawable.ic_system_bluetooth, 24.dp)
-            SystemFunctionBadge(R.drawable.ic_system_recorder, 24.dp)
-            SystemFunctionBadge(R.drawable.ic_system_music, 24.dp)
+        Spacer(Modifier.width(12.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(9.dp)) {
+            CallActionButton("×", Color(0xFFFF4D55))
+            CallActionButton("✓", Color(0xFF32C96A))
         }
-        Spacer(Modifier.width(8.dp))
-        Box(
-            Modifier
-                .size(12.dp)
-                .background(BrandGreen, CircleShape)
-        )
+    }
+}
+
+@Composable
+private fun CallActionButton(label: String, color: Color) {
+    Box(
+        modifier = Modifier.size(38.dp).clip(CircleShape).background(color),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(label, color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.SemiBold)
     }
 }
 
