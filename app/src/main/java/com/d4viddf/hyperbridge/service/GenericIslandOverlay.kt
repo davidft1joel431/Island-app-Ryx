@@ -572,6 +572,9 @@ class GenericIslandOverlay(
         function: SystemStatusReader.Function,
         inFreeform: Boolean
     ) {
+        if (function.id == "music" && function.packageName != null &&
+            launchApp(function.packageName, inFreeform)
+        ) return
         collapseCurrent()
         val intents = when (function.id) {
             "hotspot" -> listOf(
@@ -806,7 +809,11 @@ class GenericIslandOverlay(
                                     dismiss(currentKey)
                                 }
                             }
-                            expanded -> collapseCurrent()
+                            expanded -> {
+                                if (dy > 0f) {
+                                    dominantFunction()?.let { openSystemFunctionSettings(it, inFreeform = true) }
+                                } else collapseCurrent()
+                            }
                             permanentVisible -> hidePermanent()
                             else -> Unit
                         }
@@ -823,7 +830,10 @@ class GenericIslandOverlay(
                     val dx = lastX - downX
                     if (dragging && abs(dy) >= abs(dx) && abs(dy) > dp(GESTURE_DISMISS_MIN_DP)) {
                         val currentKey = activeNotificationKey ?: item?.key
-                        if (currentKey != null) dismiss(currentKey) else collapseCurrent()
+                        if (currentKey != null) dismiss(currentKey)
+                        else if (expanded && dy > 0f) {
+                            dominantFunction()?.let { openSystemFunctionSettings(it, inFreeform = true) }
+                        } else collapseCurrent()
                     } else if (dragging && abs(dx) > abs(dy) &&
                         abs(dx) > dp(GESTURE_CYCLE_MIN_DP)) {
                         cycleSelection(forward = dx < 0)
@@ -1327,7 +1337,7 @@ class GenericIslandOverlay(
             collapsedTitle.text = function.label
             appLabelView.text = function.label
             titleView.text = function.label
-            bodyView.text = "Activo"
+            bodyView.text = function.detail.ifBlank { "Activo" }
             bodyView.visibility = VISIBLE
 
             setEndIcon(pendingIcon)
@@ -1398,7 +1408,7 @@ class GenericIslandOverlay(
 
         /** live system-function rows, refreshed only when the signature changes. */
         fun setSystemFunctions(functions: List<SystemStatusReader.Function>) {
-            val signature = functions.joinToString("|") { "${it.id}:${it.badge}" }
+            val signature = functions.joinToString("|") { "${it.id}:${it.label}:${it.detail}:${it.badge}" }
             if (signature == lastSystemSignature) return
             lastSystemSignature = signature
             renderFunctionRow(

@@ -34,7 +34,9 @@ class SystemStatusReader(
         val id: String,
         val iconRes: Int,
         val label: String,
-        val badge: Int = 0
+        val badge: Int = 0,
+        val detail: String = "",
+        val packageName: String? = null
     )
 
     private val appContext = context.applicationContext
@@ -168,10 +170,11 @@ class SystemStatusReader(
 
         val wifiManager = appContext.getSystemService(Context.WIFI_SERVICE) as? WifiManager
         if (hotspotOn ?: isHotspotEnabled(wifiManager) ?: false) {
+            val hotspotName = readHotspotName(wifiManager)?.takeIf { it.isNotBlank() }
             active += Function(
                 "hotspot",
                 R.drawable.ic_system_hotspot,
-                "Zona Wi-Fi"
+                hotspotName ?: "Zona Wi-Fi"
             )
         }
 
@@ -193,7 +196,19 @@ class SystemStatusReader(
             }.getOrDefault(false)
         }
         if (musicPlaying) {
-            active += Function("music", R.drawable.ic_system_music, "Música")
+            val playing = mediaCallbacks.values.firstNotNullOfOrNull { (controller, _) ->
+                runCatching {
+                    if (controller.playbackState?.state == PlaybackState.STATE_PLAYING) controller else null
+                }.getOrNull()
+            }
+            val metadata = playing?.metadata
+            val track = metadata?.getString(android.media.MediaMetadata.METADATA_KEY_TITLE).orEmpty()
+            val artist = metadata?.getString(android.media.MediaMetadata.METADATA_KEY_ARTIST).orEmpty()
+            active += Function(
+                "music", R.drawable.ic_system_music, "Música",
+                detail = listOf(track, artist).filter { it.isNotBlank() }.joinToString(" · "),
+                packageName = playing?.packageName
+            )
         }
 
         val recording = runCatching {
@@ -224,6 +239,19 @@ class SystemStatusReader(
         }.getOrNull()
     }
 
+    /** Read the configured Soft AP name (SSID) across Android and MIUI APIs. */
+    private fun readHotspotName(wifiManager: WifiManager?): String? {
+        val manager = wifiManager ?: return null
+        return runCatching {
+            val configuration = manager.javaClass.getMethod("getSoftApConfiguration").invoke(manager)
+            configuration?.javaClass?.getMethod("getSsid")?.invoke(configuration) as? String
+        }.getOrNull()?.takeIf { it.isNotBlank() }
+            ?: runCatching {
+                val configuration = manager.javaClass.getMethod("getWifiApConfiguration").invoke(manager)
+                configuration?.javaClass?.getField("SSID")?.get(configuration) as? String
+            }.getOrNull()?.takeIf { it.isNotBlank() }
+    }
+
     private fun scheduleEmit() {
         mainHandler.removeCallbacks(emitTask)
         mainHandler.postDelayed(emitTask, EMIT_DEBOUNCE_MS)
@@ -252,6 +280,7 @@ class SystemStatusReader(
             if (mediaCallbacks.containsKey(key)) continue
             val callback = object : MediaController.Callback() {
                 override fun onPlaybackStateChanged(state: PlaybackState?) = scheduleEmit()
+                override fun onMetadataChanged(metadata: android.media.MediaMetadata?) = scheduleEmit()
                 override fun onSessionDestroyed() = scheduleEmit()
             }
             mediaCallbacks[key] = controller to callback
