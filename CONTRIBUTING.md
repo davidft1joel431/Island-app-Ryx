@@ -1,70 +1,91 @@
-# Contributing To Smart Island
+# Contribuir a Ryx Isla
 
-Thanks for helping make Smart Island better. This project is public, so please keep issues, pull requests, screenshots, and logs free of private notification content, secrets, keystores, tokens, and local machine paths.
+¡Gracias por tu interés en contribuir a **Ryx Isla**! Las sugerencias, reportes de errores, mejoras de código y aportes a la documentación ayudan a que el proyecto siga creciendo.
 
-## Ways To Contribute
+Antes de abrir un issue o enviar un pull request, revisa estas pautas.
 
-- Report bugs with clear reproduction steps.
-- Suggest focused feature ideas.
-- Improve Compose UI, animations, accessibility, or Android compatibility.
-- Add tests, documentation, and device-specific notes.
-- Translate Smart Island into your language or polish existing strings (see `app/src/main/res/values-*/` and `scripts/translate_strings.py`).
-- Refactor carefully when it reduces real complexity.
+## Formas de contribuir
 
-## Development Setup
+- Reportar errores con pasos claros para reproducirlos.
+- Proponer funciones y mejoras concretas.
+- Mejorar la interfaz Jetpack Compose, las animaciones y la accesibilidad.
+- Probar compatibilidad con distintas versiones de Android y fabricantes.
+- Añadir o mejorar pruebas automatizadas.
+- Corregir y traducir documentación.
+- Refactorizar código cuando reduzca complejidad sin alterar el comportamiento esperado.
 
-Requirements:
+## Preparar el entorno
 
-- JDK 17
-- Android Studio with Android SDK 36
-- Android 8.0+ device or emulator
+### Requisitos
 
-Build locally on Windows:
+- JDK 17.
+- Android Studio.
+- Android SDK 36.
+- Dispositivo o emulador con Android 8.0 o posterior.
+
+### Compilar en Windows
 
 ```powershell
 .\gradlew.bat assembleDebug
 ```
 
-Build locally on macOS or Linux:
+### Compilar en Linux o macOS
 
 ```bash
+chmod +x gradlew
 ./gradlew assembleDebug
 ```
 
-Install on a connected device:
+### Instalar en un dispositivo conectado
 
 ```bash
 ./gradlew installDebug
 ```
 
-## Pull Request Checklist
+### Ejecutar pruebas unitarias
 
-- The app builds with the Gradle Wrapper.
-- Overlay and notification-listener flows were tested when relevant.
-- User-facing changes are documented in `README.md` or `CHANGELOG.md` when needed.
-- No generated APKs, AABs, build folders, keystores, secrets, or personal notification screenshots are committed.
-- New code follows the existing Kotlin and Compose style.
-- The pull request explains the reason for the change, not only the implementation.
+```bash
+./gradlew test
+```
 
-## Code Style
+## Antes de enviar un pull request
 
-- Prefer small, focused changes over broad rewrites.
-- Keep UI state explicit and lifecycle-aware.
-- Use existing models and repositories before adding new abstractions.
-- Add comments only for behavior that is not obvious from the code.
-- Keep public documentation clear, friendly, and accurate.
+- [ ] El proyecto compila utilizando el Gradle Wrapper.
+- [ ] Se probaron los cambios en un dispositivo o emulador cuando corresponde.
+- [ ] Los flujos de superposición y notificaciones se verificaron si fueron modificados.
+- [ ] Se añadieron o actualizaron pruebas cuando el cambio lo requiere.
+- [ ] La documentación de las funciones visibles se actualizó en `README.md` o en el documento correspondiente.
+- [ ] No se incluyeron APKs generados, carpetas de compilación, claves, tokens ni secretos.
+- [ ] Las capturas y los registros no contienen información privada.
+- [ ] El pull request explica el motivo del cambio y cómo se verificó.
 
-## Reporting Bugs
+## Estilo de código
 
-Use the bug report issue template and include:
+- Prefiere cambios pequeños y enfocados.
+- Mantén el estado de la interfaz explícito y consciente del ciclo de vida.
+- Reutiliza modelos, repositorios y componentes existentes cuando sea apropiado.
+- Evita añadir abstracciones sin una necesidad clara.
+- Escribe comentarios para explicar decisiones o comportamientos que no sean evidentes.
+- Mantén nombres, documentación y textos visibles coherentes con la identidad de **Ryx Isla**.
+- No cambies identificadores técnicos, rutas o nombres de clases sin actualizar también todas sus referencias en el código.
 
-- Android version and device model
-- App version or commit hash
-- Steps to reproduce
-- Expected behavior
-- Actual behavior
-- Relevant logs with private notification content removed
+## Reportar un error
 
-## License Of Contributions
+Incluye la siguiente información, siempre que sea posible:
 
-This project is licensed under the GNU General Public License v3.0. By submitting a contribution, you agree that it may be distributed under the same license.
+1. Modelo del dispositivo y versión de Android.
+2. Versión de Ryx Isla o hash del commit.
+3. Pasos para reproducir el problema.
+4. Comportamiento esperado.
+5. Comportamiento observado.
+6. Registros relevantes, previamente revisados para eliminar datos privados.
+
+No adjuntes notificaciones personales, conversaciones, números de teléfono, tokens, contraseñas ni datos de cuentas.
+
+## Proponer una función
+
+Explica qué problema resuelve la propuesta, cómo imaginas su funcionamiento y si afecta a permisos, privacidad, rendimiento o compatibilidad. Las propuestas pequeñas y bien delimitadas son más fáciles de evaluar.
+
+## Licencia de las contribuciones
+
+Ryx Isla se distribuye bajo **GNU General Public License v3.0 (GPL-3.0)**. Al enviar una contribución, aceptas que el aporte pueda distribuirse bajo esa misma licencia. Asegúrate de tener derecho a compartir el código, los recursos y cualquier otro material que aportes.
