@@ -68,7 +68,7 @@ fun SupportSection() {
                     subtitle = stringResource(R.string.star_on_github_desc),
                     icon = Icons.Rounded.Star,
                     onClick = {
-                        val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/agupta07505/SmartIsland"))
+                        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(com.agupta07505.smartisland.util.RyxLinks.REPOSITORY))
                         runCatchingLogged("SupportSection", "Failed to open Star on GitHub link") {
                             context.startActivity(intent)
                         } ?: Toast.makeText(context, "Cannot open link", Toast.LENGTH_SHORT).show()
@@ -77,12 +77,12 @@ fun SupportSection() {
                 HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f))
 
                 ClickableRowItem(
-                    label = stringResource(R.string.join_telegram),
-                    subtitle = stringResource(R.string.join_telegram_desc),
+                    label = stringResource(R.string.join_discord),
+                    subtitle = stringResource(R.string.join_discord_desc),
                     icon = Icons.Rounded.People,
                     onClick = {
-                        val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://telegram.me/SmartIslandApp"))
-                        runCatchingLogged("SupportSection", "Failed to open Telegram Community link") {
+                        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(com.agupta07505.smartisland.util.RyxLinks.DISCORD))
+                        runCatchingLogged("SupportSection", "Failed to open Ryx Isla Discord") {
                             context.startActivity(intent)
                         } ?: Toast.makeText(context, "Cannot open link", Toast.LENGTH_SHORT).show()
                     }
@@ -94,7 +94,7 @@ fun SupportSection() {
                     subtitle = stringResource(R.string.request_feature_desc),
                     icon = Icons.Rounded.Feedback,
                     onClick = {
-                        val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/agupta07505/SmartIsland/issues/new?template=feature_request.md"))
+                        val intent = Intent(Intent.ACTION_VIEW, Uri.parse("${com.agupta07505.smartisland.util.RyxLinks.ISSUES}/new"))
                         runCatchingLogged("SupportSection", "Failed to open Feature Request link") {
                             context.startActivity(intent)
                         } ?: Toast.makeText(context, "Cannot open link", Toast.LENGTH_SHORT).show()
@@ -107,7 +107,7 @@ fun SupportSection() {
                     subtitle = stringResource(R.string.report_bug_desc),
                     icon = Icons.Rounded.BugReport,
                     onClick = {
-                        val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/agupta07505/SmartIsland/issues/new?template=bug_report.md"))
+                        val intent = Intent(Intent.ACTION_VIEW, Uri.parse("${com.agupta07505.smartisland.util.RyxLinks.ISSUES}/new"))
                         runCatchingLogged("SupportSection", "Failed to open Bug Report link") {
                             context.startActivity(intent)
                         } ?: Toast.makeText(context, "Cannot open link", Toast.LENGTH_SHORT).show()
@@ -120,7 +120,7 @@ fun SupportSection() {
                     subtitle = stringResource(R.string.license_desc),
                     icon = Icons.Rounded.Gavel,
                     onClick = {
-                        val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/agupta07505/SmartIsland/blob/main/LICENSE"))
+                        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(com.agupta07505.smartisland.util.RyxLinks.LICENSE))
                         runCatchingLogged("SupportSection", "Failed to open License link") {
                             context.startActivity(intent)
                         } ?: Toast.makeText(context, "Cannot open link", Toast.LENGTH_SHORT).show()

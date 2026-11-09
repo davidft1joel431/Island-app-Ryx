@@ -4,6 +4,15 @@ All notable changes to Smart Island should be documented in this file.
 
 The format is inspired by Keep a Changelog, and this project uses the GNU General Public License v3.0.
 
+## [3.1.0] - 2026-11-09
+
+### Ryx Isla branding and community
+- Replaced the launcher icon with the official Ryx Isla logo.
+- Applied the yellow and green brand palette to the app theme, including existing installations still using the previous default accent.
+- Redirected repository, release, support, privacy, terms and contribution links to the Ryx Isla repository.
+- Removed Telegram links and added the official Ryx Isla Discord invitation.
+- Updated visible attribution to describe Smart Island as inspiration while preserving copyright and GPLv3 notices.
+
 ## [7.6.0] - 2026-10-19
 
 ### Highlights (v7.6.0)

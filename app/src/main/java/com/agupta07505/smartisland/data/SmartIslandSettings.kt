@@ -739,7 +739,7 @@ data class SmartIslandSettings(
     )
 
     companion object {
-        const val DEFAULT_ACCENT_COLOR = 0xFF4A8CFFL
+        const val DEFAULT_ACCENT_COLOR = 0xFFFFC928L
 
         const val EXPANDED_THEME_DARK = "dark"
         const val EXPANDED_THEME_LIGHT = "light"

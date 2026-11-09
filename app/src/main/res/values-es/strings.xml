@@ -6,7 +6,7 @@
     <string name="accessibility_service_label">Servicio de Ryx Isla</string>
     <string name="accessibility_service_description">Permite mostrar Ryx Isla sobre la barra de estado para tocar la isla alrededor de la cámara sin interferencias táctiles.</string>
     <string name="grant_accessibility">Concede el permiso de accesibilidad para mostrar la isla sobre la barra de estado</string>
-    <string name="made_by">Basado en Smart Island, creado por Animesh Gupta</string>
+    <string name="made_by">Inspirado en Smart Island, creado por Animesh Gupta</string>
     <string name="tab_studio">Inicio</string>
     <string name="tab_position">Diseño</string>
     <string name="tab_settings">Ajustes</string>
@@ -92,7 +92,7 @@
     <string name="card_about_app_desc">v%1$s • Fuente abierta</string>
     <string name="card_about_app_status">Fuente abierta</string>
     <string name="card_support_requests_title">Apoyo a la comunidad</string>
-    <string name="card_support_requests_desc">GitHub, problemas " Telegram community</string>
+    <string name="card_support_requests_desc">GitHub, reportes y novedades de Ryx Isla</string>
     <string name="detail_title_notifications_privacy">Notificaciones " Privacidad</string>
     <string name="detail_title_app_shortcuts">Lanzador de accesos directos</string>
     <string name="detail_title_notification_history">Historial de notificación</string>
@@ -413,8 +413,8 @@
     <string name="support_title">Apoyo a la comunidad</string>
     <string name="star_on_github">Estrella en GitHub</string>
     <string name="star_on_github_desc">Apoyo al desarrollo de código abierto</string>
-    <string name="join_telegram">Únase a Telegram Community</string>
-    <string name="join_telegram_desc">Chat con los probadores beta del desarrollador</string>
+    <string name="join_discord">Únete al Discord de Ryx Isla</string>
+    <string name="join_discord_desc">Habla con la comunidad y recibe novedades</string>
     <string name="request_feature">Solicitar una alimentación</string>
     <string name="request_feature_desc">Proponer nuevos widgets de isla o ideas de animación</string>
     <string name="report_bug">Reportar un error</string>
@@ -467,7 +467,8 @@
     <string name="privacy_policy_desc">Todo se procesa en el dispositivo; sin seguimiento</string>
     <string name="terms_of_use_title">Términos de uso</string>
     <string name="version_title">Versión</string>
-    <string name="developer_contact_title">Desarrollador &amp; Contacto</string>
+    <string name="developer_contact_title">Proyecto Ryx Isla</string>
+    <string name="ryx_github_link">Ryx Isla en GitHub</string>
     <string name="detail_title_backup_restore">Restauración</string>
     <string name="card_backup_restore_title">Configuración de recuperación</string>
     <string name="card_backup_restore_desc">Exportar e importar sus ajustes de diseño, temas de color personalizado y reglas a JSON</string>
@@ -682,9 +683,9 @@
     <string name="card_about_subtitle">Versión, proyecto original y licencias</string>
     <string name="detail_title_about">Acerca de</string>
     <string name="about_version">Versión %1$s</string>
-    <string name="about_based_on_title">Basado en Smart Island 7.6.0</string>
-    <string name="about_based_on_body">Ryx Isla se basa en Smart Island 7.6.0, creado por Animesh Gupta y publicado bajo la licencia GNU GPL v3. Esta bifurcación conserva la atribución y adapta el nombre, la versión y algunos textos al proyecto Ryx.</string>
-    <string name="about_open_original">Abrir el proyecto original</string>
+    <string name="about_based_on_title">Inspirado en Smart Island 7.6.0</string>
+    <string name="about_based_on_body">Ryx Isla toma inspiración de Smart Island 7.6.0, creado por Animesh Gupta y publicado bajo la licencia GNU GPL v3. Se conserva la atribución y la licencia del proyecto original.</string>
+    <string name="about_open_original">Abrir el proyecto Ryx Isla</string>
     <string name="about_no_browser">No se encontró ninguna aplicación para abrir el enlace.</string>
     <string name="about_license_title">Licencia</string>
     <string name="about_license_body">Publicado bajo la Licencia Pública General de GNU v3.0. El aviso original de copyright, Copyright © 2026 Animesh Gupta, se mantiene como la licencia requiere.</string>

@@ -1532,7 +1532,7 @@ private fun WelcomeDialog(
                 Button(
                     onClick = {
                         runCatchingLogged("WelcomeDialog", "Failed to open GitHub link") {
-                            context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/agupta07505/SmartIsland")))
+                            context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(com.agupta07505.smartisland.util.RyxLinks.REPOSITORY)))
                         }
                     },
                     modifier = Modifier.fillMaxWidth(),
@@ -1561,8 +1561,8 @@ private fun WelcomeDialog(
 
                 OutlinedButton(
                     onClick = {
-                        runCatchingLogged("WelcomeDialog", "Failed to open Telegram link") {
-                            context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://telegram.me/SmartIslandApp")))
+                        runCatchingLogged("WelcomeDialog", "Failed to open Ryx Isla Discord") {
+                            context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(com.agupta07505.smartisland.util.RyxLinks.DISCORD)))
                         }
                     },
                     modifier = Modifier.fillMaxWidth(),
@@ -1577,12 +1577,10 @@ private fun WelcomeDialog(
                             contentDescription = null,
                             modifier = Modifier.size(18.dp)
                         )
-                        Text(
-                            stringResource(R.string.join_telegram),
-                            fontWeight = FontWeight.Bold
-                        )
+                        Text(stringResource(R.string.join_discord), fontWeight = FontWeight.Bold)
                     }
                 }
+
 
                 ElevatedButton(
                     onClick = onDismiss,

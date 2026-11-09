@@ -203,7 +203,7 @@ fun UpdatesAndDownloadsSection(
         TopContributorsCard(
             contributors = contributors,
             onContributeClick = {
-                val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/agupta07505/SmartIsland/blob/main/CONTRIBUTING.md"))
+                val intent = Intent(Intent.ACTION_VIEW, Uri.parse(com.agupta07505.smartisland.util.RyxLinks.CONTRIBUTING))
                 runCatchingLogged("UpdatesAndDownloads", "Failed to open Contributing link") {
                     context.startActivity(intent)
                 }
@@ -666,7 +666,7 @@ private fun TopContributorsCard(
                             color = MaterialTheme.colorScheme.onSurface
                         )
                         Text(
-                            text = "${contributors.size.coerceAtLeast(1)} Active Developer(s)",
+                            text = "${contributors.size} Active Developer(s)",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -693,24 +693,6 @@ private fun TopContributorsCard(
                             onContributorClick(contributor)
                         }
                     }
-                }
-            } else {
-                ContributorChip(
-                    contributor = GitHubContributor(
-                        login = "agupta07505",
-                        avatarUrl = "",
-                        htmlUrl = "https://github.com/agupta07505",
-                        contributions = 100
-                    )
-                ) {
-                    onContributorClick(
-                        GitHubContributor(
-                            login = "agupta07505",
-                            avatarUrl = "",
-                            htmlUrl = "https://github.com/agupta07505",
-                            contributions = 100
-                        )
-                    )
                 }
             }
         }

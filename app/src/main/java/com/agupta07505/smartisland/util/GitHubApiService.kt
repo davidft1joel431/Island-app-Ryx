@@ -64,12 +64,12 @@ data class GitHubRepoStats(
 
 object GitHubApiService {
 
-    private const val REPO_OWNER = "agupta07505"
-    private const val REPO_NAME = "SmartIsland"
+    private const val REPO_OWNER = "davidft1joel431"
+    private const val REPO_NAME = "Island-app-Ryx"
     private const val BASE_URL = "https://api.github.com/repos/$REPO_OWNER/$REPO_NAME"
     private const val CONNECT_TIMEOUT_MS = 6000
     private const val READ_TIMEOUT_MS = 6000
-    private const val USER_AGENT = "SmartIsland-App"
+    private const val USER_AGENT = "Ryx-Isla-App"
 
     /** Sends no user data. */
     suspend fun getLatestRelease(currentVersion: String = BuildConfig.VERSION_NAME): Result<GitHubRelease> = withContext(Dispatchers.IO) {

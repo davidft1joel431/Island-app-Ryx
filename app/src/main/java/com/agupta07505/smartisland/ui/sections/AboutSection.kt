@@ -121,13 +121,18 @@ fun AboutSection(
             Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Column {
                     Text(
-                        text = "Smart Island",
+                        text = stringResource(R.string.about_based_on_title),
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.onSurface
                     )
                     Text(
                         text = "Version $currentVersion",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Text(
+                        text = stringResource(R.string.about_based_on_body),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -144,7 +149,7 @@ fun AboutSection(
                         value = repoStats?.stars?.toString() ?: "—",
                         tint = MaterialTheme.colorScheme.primary,
                         onClick = {
-                            val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/agupta07505/SmartIsland"))
+                            val intent = Intent(Intent.ACTION_VIEW, Uri.parse(com.agupta07505.smartisland.util.RyxLinks.REPOSITORY))
                             context.startActivity(intent)
                         }
                     )
@@ -154,7 +159,7 @@ fun AboutSection(
                         value = repoStats?.forks?.toString() ?: "—",
                         tint = MaterialTheme.colorScheme.primary,
                         onClick = {
-                            val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/agupta07505/SmartIsland/fork"))
+                            val intent = Intent(Intent.ACTION_VIEW, Uri.parse("${com.agupta07505.smartisland.util.RyxLinks.REPOSITORY}/fork"))
                             context.startActivity(intent)
                         }
                     )
@@ -164,7 +169,7 @@ fun AboutSection(
                         value = repoStats?.openIssues?.toString() ?: "—",
                         tint = MaterialTheme.colorScheme.primary,
                         onClick = {
-                            val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/agupta07505/SmartIsland/issues"))
+                            val intent = Intent(Intent.ACTION_VIEW, Uri.parse(com.agupta07505.smartisland.util.RyxLinks.ISSUES))
                             context.startActivity(intent)
                         }
                     )
@@ -174,7 +179,7 @@ fun AboutSection(
                         value = repoStats?.licenseName ?: "GPL-3.0",
                         tint = MaterialTheme.colorScheme.primary,
                         onClick = {
-                            val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/agupta07505/SmartIsland/blob/main/LICENSE"))
+                            val intent = Intent(Intent.ACTION_VIEW, Uri.parse(com.agupta07505.smartisland.util.RyxLinks.LICENSE))
                             context.startActivity(intent)
                         }
                     )
@@ -216,7 +221,7 @@ fun AboutSection(
                         color = MaterialTheme.colorScheme.primary
                     )
                     Text(
-                        text = "Smart Island does not collect, store, or transmit any user data, identifiers, or notification details. All operations and settings remain strictly on your device. Network queries are unauthenticated, read-only requests for GitHub repository updates.",
+                        text = "Ryx Isla does not collect, store, or transmit any user data, identifiers, or notification details. All operations and settings remain strictly on your device. Network queries are unauthenticated, read-only requests for Ryx Isla repository updates.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         lineHeight = 18.sp
@@ -254,7 +259,7 @@ fun AboutSection(
                     subtitle = stringResource(R.string.privacy_policy_desc),
                     icon = Icons.Rounded.Lock,
                     onClick = {
-                        val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/agupta07505/SmartIsland/blob/main/PRIVACY.md"))
+                        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(com.agupta07505.smartisland.util.RyxLinks.PRIVACY))
                         runCatchingLogged("AboutSection", "Failed to open Privacy Policy") {
                             context.startActivity(intent)
                         } ?: Toast.makeText(context, "Cannot open link", Toast.LENGTH_SHORT).show()
@@ -267,7 +272,7 @@ fun AboutSection(
                     subtitle = stringResource(R.string.license_title),
                     icon = Icons.Rounded.Description,
                     onClick = {
-                        val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/agupta07505/SmartIsland/blob/main/TERMS.md"))
+                        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(com.agupta07505.smartisland.util.RyxLinks.TERMS))
                         runCatchingLogged("AboutSection", "Failed to open Terms of Use") {
                             context.startActivity(intent)
                         } ?: Toast.makeText(context, "Cannot open link", Toast.LENGTH_SHORT).show()
@@ -280,7 +285,7 @@ fun AboutSection(
                     subtitle = stringResource(R.string.star_on_github),
                     icon = Icons.Rounded.Code,
                     onClick = {
-                        val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/agupta07505/SmartIsland"))
+                        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(com.agupta07505.smartisland.util.RyxLinks.REPOSITORY))
                         runCatchingLogged("AboutSection", "Failed to open Open Source link") {
                             context.startActivity(intent)
                         } ?: Toast.makeText(context, "Cannot open link", Toast.LENGTH_SHORT).show()
@@ -334,56 +339,14 @@ fun AboutSection(
                 ) {
                     ContactButton(
                         icon = { GithubIcon(tint = MaterialTheme.colorScheme.onSurface) },
-                        label = "GitHub",
+                        label = "Ryx Isla en GitHub",
                         onClick = {
-                            val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/agupta07505"))
-                            runCatchingLogged("AboutSection", "Failed to open GitHub profile") {
+                            val intent = Intent(Intent.ACTION_VIEW, Uri.parse(com.agupta07505.smartisland.util.RyxLinks.REPOSITORY))
+                            runCatchingLogged("AboutSection", "Failed to open Ryx Isla repository") {
                                 context.startActivity(intent)
                             } ?: Toast.makeText(context, "Cannot open link", Toast.LENGTH_SHORT).show()
                         },
-                        modifier = Modifier.weight(1f)
-                    )
-                    ContactButton(
-                        icon = { LinkedinIcon() },
-                        label = "LinkedIn",
-                        onClick = {
-                            val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://linkedin.com/in/agupta07505"))
-                            runCatchingLogged("AboutSection", "Failed to open LinkedIn profile") {
-                                context.startActivity(intent)
-                            } ?: Toast.makeText(context, "Cannot open link", Toast.LENGTH_SHORT).show()
-                        },
-                        modifier = Modifier.weight(1f)
-                    )
-                }
-                Spacer(modifier = Modifier.height(10.dp))
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    ContactButton(
-                        icon = { InstagramIcon() },
-                        label = "Instagram",
-                        onClick = {
-                            val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://instagram.com/agupta07505"))
-                            runCatchingLogged("AboutSection", "Failed to open Instagram profile") {
-                                context.startActivity(intent)
-                            } ?: Toast.makeText(context, "Cannot open link", Toast.LENGTH_SHORT).show()
-                        },
-                        modifier = Modifier.weight(1f)
-                    )
-                    ContactButton(
-                        icon = { EmailIcon(tint = Color(0xFFEA4335)) },
-                        label = "Email",
-                        onClick = {
-                            val intent = Intent(Intent.ACTION_SENDTO).apply {
-                                data = Uri.parse("mailto:agupta07505@gmail.com")
-                                putExtra(Intent.EXTRA_SUBJECT, "Smart Island App Feedback")
-                            }
-                            runCatchingLogged("AboutSection", "Failed to send email") {
-                                context.startActivity(intent)
-                            } ?: Toast.makeText(context, "Cannot open email app", Toast.LENGTH_SHORT).show()
-                        },
-                        modifier = Modifier.weight(1f)
+                        modifier = Modifier.fillMaxWidth()
                     )
                 }
             }

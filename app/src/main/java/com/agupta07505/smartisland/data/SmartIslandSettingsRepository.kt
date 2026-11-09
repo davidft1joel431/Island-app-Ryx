@@ -428,7 +428,8 @@ class SmartIslandSettingsRepository(private val context: Context) {
                 themeMode = prefs[Keys.ThemeMode] ?: defaults.themeMode,
                 liquidGlassTheme = prefs[Keys.LiquidGlassTheme] ?: defaults.liquidGlassTheme,
                 materialYou = prefs[Keys.MaterialYou] ?: defaults.materialYou,
-                accentColor = validColor(prefs[Keys.AccentColor], defaults.accentColor),
+                accentColor = validColor(prefs[Keys.AccentColor], defaults.accentColor)
+                    .let { if (it == 0xFF4A8CFFL) defaults.accentColor else it },
                 expandedTheme = prefs[Keys.ExpandedTheme]?.takeIf { it in SmartIslandSettings.VALID_EXPANDED_THEMES } ?: defaults.expandedTheme,
                 islandFont = prefs[Keys.IslandFont]?.takeIf { SmartIslandSettings.isValidFont(it) } ?: defaults.islandFont,
                 enableNotchMode = prefs[Keys.EnableNotchMode] ?: defaults.enableNotchMode,

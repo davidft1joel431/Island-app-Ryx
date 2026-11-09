@@ -64,9 +64,9 @@ jobs:
           body: |
             Ryx Isla v${{ steps.version.outputs.version }}.
 
-            - Renovación completa basada en Smart Island 7.6.0.
-            - Incluye notificaciones, multimedia, llamadas, widgets, utilidades y gestos.
-            - Mantiene el identificador de instalación `com.dav.isla`.
+            - Official Ryx Isla icon and yellow-green brand palette.
+            - App links, release checks and support now use the Ryx Isla repository; Discord community link added.
+            - Preserves the `com.dav.isla` application ID and GPLv3 attribution for the source project.
 
             **Nota de instalación:** la APK de esta versión usa una firma distinta a la de v2.2.0. Android puede pedir desinstalar la versión anterior antes de instalar esta; la desinstalación puede borrar los datos locales.
 
