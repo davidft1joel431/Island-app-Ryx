@@ -44,6 +44,9 @@ jobs:
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
 
+      - name: Make Gradle executable
+        run: chmod +x ./gradlew
+
       - name: Build and lint APK
         run: ./gradlew --no-daemon :app:lintDebug :app:assembleDebug
 
