@@ -13,8 +13,6 @@
 
 **Ryx Isla** es una aplicación para Android que incorpora una experiencia de isla dinámica mediante una superposición configurable. Reúne información y controles importantes para que puedas acceder a ellos sin perder de vista lo que estás haciendo.
 
-Los accesos rápidos detectan y abren aplicaciones clonadas mediante los perfiles de Android. En PalapaOS, PixelOS y LineageOS aparecerán cuando la ROM exponga esos perfiles a `LauncherApps`; no depende de una función exclusiva de HyperOS.
-
 </div>
 
 ---
@@ -96,12 +94,12 @@ Si la compilación falla, comprueba que JDK 17 esté configurado correctamente y
 
 ## 📄 Licencia y atribuciones
 
-Ryx Isla es un proyecto independiente inspirado en [Smart Island](https://github.com/agupta07505/SmartIsland), de **Animesh Gupta**. El proyecto conserva componentes de **Smart Island 7.6.0** y sus correspondientes avisos de autoría y licencia.
+Ryx Isla es un proyecto independiente cuyo concepto e identidad toman como inspiración [Smart Island](https://github.com/agupta07505/SmartIsland), de **Animesh Gupta**. Smart Island es únicamente una referencia de inspiración; Ryx Isla no contiene componentes de Smart Island 7.6.0 ni se presenta como una versión o continuación de ese proyecto.
 
-El código derivado se distribuye bajo los términos de **GNU General Public License v3.0 (GPL-3.0)**. Antes de modificar o redistribuir el proyecto, revisa estos documentos:
+Ryx Isla se distribuye bajo los términos de **GNU General Public License v3.0 (GPL-3.0)**. Antes de modificar o redistribuir el proyecto, revisa estos documentos:
 
 - [LICENSE](LICENSE) — términos de la licencia.
-- [UPSTREAM.md](UPSTREAM.md) — información del proyecto de origen.
+- [UPSTREAM.md](UPSTREAM.md) — referencia sobre el proyecto que sirvió de inspiración.
 - Avisos de terceros incluidos en el repositorio.
 
 Ryx Isla **no es un producto oficial de Xiaomi** ni de Animesh Gupta. Los nombres y marcas de terceros pertenecen a sus respectivos propietarios.
