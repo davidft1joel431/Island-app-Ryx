@@ -1,0 +1,24 @@
+name: Build pull request
+on:
+  pull_request:
+    branches: [main, dev]
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: gradle
+      - run: chmod +x ./gradlew
+      - run: ./gradlew --no-daemon lintDebug assembleDebug
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Ryx-Isla-Debug-PR
+          path: app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+          retention-days: 14

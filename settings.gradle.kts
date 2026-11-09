@@ -1,19 +1,18 @@
+/*
+ * Smart Island (2026)
+ * © Animesh Gupta — github.com/agupta07505
+ * Licensed under the GNU GPL v3 License
+ * Do not remove or alter this notice. - Per GPL-3.0 Section 4 & Section 5
+ */
+
 pluginManagement {
     repositories {
-        google {
-            content {
-                includeGroupByRegex("com\\.android.*")
-                includeGroupByRegex("com\\.google.*")
-                includeGroupByRegex("androidx.*")
-            }
-        }
+        google()
         mavenCentral()
         gradlePluginPortal()
     }
 }
-plugins {
-    id("org.gradle.toolchains.foojay-resolver-convention") version "1.0.0"
-}
+
 dependencyResolutionManagement {
     repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
     repositories {
@@ -22,6 +21,6 @@ dependencyResolutionManagement {
     }
 }
 
-// Ryx Isla build identity; based on Hyper Bridge (Apache-2.0).
-rootProject.name = "Ryx Isla"
+rootProject.name = "Smart Island"
 include(":app")
+include(":baselineprofile")

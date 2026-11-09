@@ -1,179 +1,170 @@
+/*
+ * Smart Island (2026)
+ * © Animesh Gupta — github.com/agupta07505
+ * Licensed under the GNU GPL v3 License
+ * Do not remove or alter this notice. - Per GPL-3.0 Section 4 & Section 5
+ */
+
 plugins {
-    alias(libs.plugins.android.application)
-    alias(libs.plugins.kotlin.compose)
-    alias(libs.plugins.ksp)
-    id("org.jetbrains.kotlin.plugin.serialization") version "2.3.21"
+    id("com.android.application")
+    id("org.jetbrains.kotlin.android")
+    id("org.jetbrains.kotlin.plugin.compose")
+    id("org.jetbrains.kotlin.kapt")
+    id("com.google.dagger.hilt.android")
+    id("androidx.baselineprofile")
 }
 
+val signingStoreFile = providers.environmentVariable("SIGNING_STORE_FILE")
+val signingStorePassword = providers.environmentVariable("SIGNING_STORE_PASSWORD")
+val signingKeyAlias = providers.environmentVariable("SIGNING_KEY_ALIAS")
+val signingKeyPassword = providers.environmentVariable("SIGNING_KEY_PASSWORD")
+val hasReleaseSigning = signingStoreFile.isPresent &&
+    signingStorePassword.isPresent &&
+    signingKeyAlias.isPresent &&
+    signingKeyPassword.isPresent
+
 android {
-    // Ryx Isla derivative metadata; upstream Hyper Bridge source is Apache-2.0.
-    namespace = "com.d4viddf.hyperbridge"
-    compileSdk {
-        version = release(36)
-    }
+    namespace = "com.agupta07505.smartisland"
+    compileSdk = 36
 
     defaultConfig {
         applicationId = "com.dav.isla"
-        minSdk = 35
-        targetSdk = 37
-        versionCode = 220
-        versionName = "2.2.0"
-        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        minSdk = 26
+        targetSdk = 36
+        versionCode = 221
+        versionName = "2.3.0"
+    }
+
+    buildFeatures {
+        compose = true
+        buildConfig = true
+    }
+
+    signingConfigs {
+        create("release") {
+            if (hasReleaseSigning) {
+                storeFile = file(signingStoreFile.get())
+                storePassword = signingStorePassword.get()
+                keyAlias = signingKeyAlias.get()
+                keyPassword = signingKeyPassword.get()
+            }
+        }
     }
 
     buildTypes {
         release {
-            // The project distributes its own builds, so the release APK uses the
-            // standard Android debug key instead of requiring a private keystore.
-            signingConfig = signingConfigs.getByName("debug")
+            if (hasReleaseSigning) {
+                signingConfig = signingConfigs.getByName("release")
+            }
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
-            optimization {
-                enable = true // Enables code and resource optimizations.
-            }
         }
     }
+
+    lint {
+        checkReleaseBuilds = false
+        abortOnError = true
+        warningsAsErrors = true
+        checkDependencies = true
+        disable += setOf(
+            "AndroidGradlePluginVersion",
+            "GradleDependency",
+            "ObsoleteSdkInt",
+            "InternalInsetResource",
+            "DiscouragedApi",
+            "OldTargetApi",
+            "UnusedAttribute",
+            "LocalContextResourcesRead",
+            "LocalContextGetResourceValueCall",
+            "PluralsCandidate",
+            "TypographyEllipsis",
+            "FrequentlyChangingValue",
+            "UnusedResources",
+            "IconLauncherShape",
+            "MonochromeLauncherIcon",
+            "UseKtx",
+            "IconXmlAndPng",
+            "BatteryLife",
+            "ConfigurationScreenWidthHeight",
+            "ModifierParameter",
+            "MissingTranslation",
+            "Typos"
+        )
+    }
+
     compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_11
-        targetCompatibility = JavaVersion.VERSION_11
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
     }
-    buildFeatures {
-        compose = true
-        buildConfig = true
-        aidl = true
+
+    testOptions {
+        unitTests {
+            isReturnDefaultValues = true
+        }
     }
+
+    kotlin {
+        compilerOptions {
+            jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
+        }
+    }
+}
+
+baselineProfile {
+    // Generate from a phone or emulator that is already connected (the island needs the overlay and
+    // accessibility permissions, which a managed device cannot hold). Run: ./gradlew :app:generateBaselineProfile
+    // The result is written to app/src/main/generated/baselineProfiles/baseline-prof.txt and committed;
+    // the release build packages it from there by itself (mergeIntoMain puts it under main, not under
+    // the release variant, so any build type picks it up).
+    saveInSrc = true
+    mergeIntoMain = true
+    automaticGenerationDuringBuild = false
 }
 
 dependencies {
-    implementation(libs.androidx.core.ktx)
-    implementation(libs.androidx.lifecycle.runtime.ktx)
-    implementation(libs.androidx.activity.compose)
-    implementation(platform(libs.androidx.compose.bom))
-    implementation(libs.androidx.compose.ui)
-    implementation(libs.androidx.compose.ui.graphics)
-    implementation(libs.androidx.compose.ui.tooling.preview)
-    implementation(libs.androidx.compose.material3)
-    implementation(libs.androidx.compose.material.icons.extended)
-    implementation(libs.androidx.ui)
-    implementation(libs.androidx.appcompat)
-    implementation(libs.androidx.palette.ktx)
-    ksp(libs.androidx.room.compiler)
-    implementation(libs.androidx.room.runtime)
-    implementation(libs.androidx.room.ktx)
-    testImplementation(libs.junit)
-    androidTestImplementation(libs.androidx.junit)
-    androidTestImplementation(libs.androidx.espresso.core)
-    androidTestImplementation(platform(libs.androidx.compose.bom))
-    androidTestImplementation(libs.androidx.compose.ui.test.junit4)
-    debugImplementation(libs.androidx.compose.ui.tooling)
-    debugImplementation(libs.androidx.compose.ui.test.manifest)
+    val composeBom = platform("androidx.compose:compose-bom:2026.02.01")
 
-    implementation(libs.hyperisland.kit)
-    implementation(libs.haze)
-    implementation(libs.androidx.datastore.preferences)
-    implementation(libs.androidx.lifecycle.viewmodel.compose)
+    implementation(composeBom)
+    implementation("androidx.activity:activity-compose:1.13.0")
+    implementation("androidx.compose.animation:animation")
+    implementation("androidx.compose.foundation:foundation")
+    implementation("androidx.compose.material3:material3")
+    implementation("androidx.compose.material:material-icons-extended")
+    implementation("androidx.compose.ui:ui")
+    implementation("androidx.compose.ui:ui-tooling-preview")
+    implementation("androidx.core:core-ktx:1.18.0")
+    implementation("androidx.datastore:datastore-preferences:1.2.1")
+    implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.10.0")
+    implementation("androidx.lifecycle:lifecycle-service:2.10.0")
+    implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.10.0")
+    implementation("androidx.profileinstaller:profileinstaller:1.4.1")
+    "baselineProfile"(project(":baselineprofile"))
+    implementation("com.google.dagger:hilt-android:2.60.1")
+    kapt("com.google.dagger:hilt-compiler:2.60.1")
 
-    implementation(libs.gson)
-    implementation(libs.kotlinx.serialization.json)
+    // Rikka Shizuku API
+    implementation("dev.rikka.shizuku:api:13.1.5")
+    implementation("dev.rikka.shizuku:provider:13.1.5")
 
-    // Navigation 3
-    implementation(libs.androidx.navigation3.runtime)
-    implementation(libs.androidx.navigation3.ui)
-    implementation(libs.androidx.lifecycle.viewmodel.navigation3)
+    // Hidden-API exemptions (used for the overlay's touch-through region); no root or LSPosed app needed.
+    implementation("org.lsposed.hiddenapibypass:hiddenapibypass:6.1")
 
-    // Shizuku
-    implementation(libs.api)
-    implementation(libs.provider)
-}
+    debugImplementation(composeBom)
+    debugImplementation("androidx.compose.ui:ui-tooling")
 
-configurations.all {
-    exclude(group = "com.intellij", module = "annotations")
-}
+    testImplementation("junit:junit:4.13.2")
+    testImplementation("io.mockk:mockk:1.13.10")
+    testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.8.0")
+    testImplementation("app.cash.turbine:turbine:1.1.0")
+    testImplementation("org.json:json:20240303")
 
-// ---------------------------------------------------------------------------
-// Missing string translations
-//
-// Compares the keys of every values-*/strings.xml with values/strings.xml.
-// Existing locales are partially translated, so by default the task only
-// reports the gaps; pass -PfailOnMissingStrings=true to make them fail a build.
-// ---------------------------------------------------------------------------
-
-val missingStringsReport = layout.buildDirectory.file("reports/missing-strings.txt")
-val failOnMissingStrings = providers.gradleProperty("failOnMissingStrings")
-    .map { it.toBoolean() }
-    .orElse(false)
-
-tasks.register("checkMissingStrings") {
-    group = "verification"
-    description = "Lists string keys from values/strings.xml that are missing in each locale. " +
-        "Use -PfailOnMissingStrings=true to fail when any key is missing."
-
-    val resDir = file("src/main/res")
-    val reportFile = missingStringsReport.get().asFile
-    val shouldFail = failOnMissingStrings.get()
-
-    doLast {
-        val baseFile = File(resDir, "values/strings.xml")
-        check(baseFile.isFile) { "Base strings file not found: $baseFile" }
-
-        fun readKeys(file: File): Set<String> {
-            val factory = javax.xml.parsers.DocumentBuilderFactory.newInstance().apply {
-                setFeature("http://apache.org/xml/features/disallow-doctype-decl", true)
-            }
-            val nodes = factory.newDocumentBuilder().parse(file).getElementsByTagName("string")
-            return (0 until nodes.length).mapNotNull { index ->
-                val element = nodes.item(index) as org.w3c.dom.Element
-                element.getAttribute("name")
-                    .takeIf { element.getAttribute("translatable") != "false" }
-            }.toSet()
-        }
-
-        val baseKeys = readKeys(baseFile)
-        val localeDirPattern = Regex("values-[a-z]{2,3}(-r[A-Z]{2})?")
-        val localeDirs = resDir.listFiles()
-            ?.filter { it.isDirectory && localeDirPattern.matches(it.name) && File(it, "strings.xml").isFile }
-            ?.sortedBy { it.name }
-            .orEmpty()
-
-        val missing = localeDirs.map { dir ->
-            dir.name to (baseKeys - readKeys(File(dir, "strings.xml"))).sorted()
-        }
-        val affected = missing.filter { it.second.isNotEmpty() }
-        val total = affected.sumOf { it.second.size }
-
-        reportFile.parentFile?.mkdirs()
-        reportFile.writeText(buildString {
-            appendLine("Missing string translations")
-            appendLine("Base: values/strings.xml (${baseKeys.size} keys)")
-            appendLine("Locales checked: ${localeDirs.size}")
-            appendLine()
-            affected.forEach { (locale, keys) ->
-                appendLine("$locale (${keys.size} missing)")
-                keys.forEach { appendLine("  $it") }
-                appendLine()
-            }
-            appendLine(
-                "Summary: $total missing keys across ${affected.size} of ${localeDirs.size} locales"
-            )
-        })
-
-        if (affected.isEmpty()) {
-            logger.lifecycle("Missing strings: none (${baseKeys.size} keys present in all ${localeDirs.size} locales).")
-        } else {
-            logger.lifecycle("Missing strings: $total keys across ${affected.size} of ${localeDirs.size} locales.")
-            affected.forEach { (locale, keys) -> logger.lifecycle("  $locale: ${keys.size} missing") }
-            logger.lifecycle("Full report: ${reportFile.absolutePath}")
-        }
-
-        if (shouldFail && total > 0) {
-            throw GradleException(
-                "$total string keys are missing in ${affected.size} locales. " +
-                    "See ${reportFile.absolutePath}"
-            )
-        }
-    }
+    androidTestImplementation(composeBom)
+    androidTestImplementation("androidx.compose.ui:ui-test-junit4")
+    debugImplementation("androidx.compose.ui:ui-test-manifest")
+    androidTestImplementation("androidx.test.ext:junit:1.2.1")
+    androidTestImplementation("androidx.test.espresso:espresso-core:3.6.1")
 }

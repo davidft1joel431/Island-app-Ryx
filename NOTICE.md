@@ -1,5 +1,8 @@
-Ryx Isla deriva de Hyper Bridge (https://github.com/D4vidDf/HyperBridge), cuyos derechos de autor pertenecen a D4vidDf. El proyecto de origen se distribuye bajo la licencia Apache 2.0.
+# Notice
 
-La revisión de origen utilizada como base es `e19ede13b87150028d89d31106ed898660e4c145`. Ryx Isla modifica el nombre del paquete y de la aplicación, la imagen de marca, la paleta de colores, los metadatos de publicación, los enlaces y la documentación.
+Smart Island includes open-source fonts bundled under the SIL Open Font License 1.1:
+- **Lora**: Copyright 2011-2023 The Lora Project Authors
+- **Inter Display**: Copyright 2016-2024 The Inter Project Authors
+- **Poppins**: Copyright 2014-2020 Indian Type Foundry
 
-Creador de Ryx Isla: David Joel, Perú. El texto completo de la licencia de origen está en `LICENSE`.
+See [THIRD_PARTY_FONTS.md](THIRD_PARTY_FONTS.md) for full licensing details.

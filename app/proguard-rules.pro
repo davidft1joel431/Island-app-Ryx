@@ -1,44 +1,53 @@
-# Add project specific ProGuard rules here.
-# You can control the set of applied configuration files using the
-# proguardFiles setting in build.gradle.
-#
-# For more details, see
-#   http://developer.android.com/guide/developing/tools/proguard.html
+# Smart Island Proguard Rules
 
-# If your project uses WebView with JS, uncomment the following
-# and specify the fully qualified class name to the JavaScript interface
-# class:
-#-keepclassmembers class fqcn.of.javascript.interface.for.webview {
-#   public *;
-#}
+# Keep Compose Runtime and library classes
+-keep class androidx.compose.** { *; }
 
-# Uncomment this to preserve the line number information for
-# debugging stack traces.
-#-keepattributes SourceFile,LineNumberTable
+# Keep DataStore Preferences serializer/keys
+-keep class androidx.datastore.preferences.core.** { *; }
 
-# If you keep the line number information, uncomment this to
-# hide the original source file name.
-#-renamesourcefileattribute SourceFile
-
-# Strip Debug and Info logs in Release (AGP 9.1+ named level syntax)
--assumenosideeffects class android.util.Log {
-    public static boolean isLoggable(java.lang.String, int);
-    public static int v(...);
-    public static int d(...);
-    public static int i(...);
+# Keep reflection targets used in SmartIslandOverlayService
+-keep class android.view.ViewTreeObserver$OnComputeInternalInsetsListener { *; }
+-keep class android.view.ViewTreeObserver {
+    public void addOnComputeInternalInsetsListener(android.view.ViewTreeObserver$OnComputeInternalInsetsListener);
+}
+-keep class android.view.View$InternalInsetsInfo {
+    public void setTouchableInsets(int);
+    *** mTouchableRegion;
+    *** touchableRegion;
 }
 
-# --- Gson ---
-# Keep fields annotated with @SerializedName
--keepclassmembers class * {
-    @com.google.gson.annotations.SerializedName <fields>;
+# Keep ActivityOptions and setLaunchWindowingMode
+-keep class android.app.ActivityOptions {
+    public void setLaunchWindowingMode(int);
+    public void setPendingIntentBackgroundActivityStartMode(int);
 }
 
-# --- Shizuku & AIDL IPC ---
-# Keep all generated classes from AIDL files
--keep interface com.d4viddf.hyperbridge.** { *; }
--keep class com.d4viddf.hyperbridge.**$Stub { *; }
--keep class com.d4viddf.hyperbridge.**$Proxy { *; }
+# ── MediaController reflection used in MusicExpanded ──
+# Keep repeat mode methods accessed via reflection
+-keep class android.media.session.MediaController {
+    public int getRepeatMode();
+}
+-keep class android.media.session.MediaController$TransportControls {
+    public void setRepeatMode(int);
+}
+# Keep Rating.isHearted() accessed via reflection
+-keep class android.media.Rating {
+    public boolean isHearted();
+}
+# Keep MediaMetadata.getRating() used to obtain Rating object
+-keep class android.media.MediaMetadata {
+    public android.media.Rating getRating(java.lang.String);
+}
+# Keep PlaybackState custom actions and extras
+-keep class android.media.session.PlaybackState {
+    public java.util.List getCustomActions();
+}
+-keep class android.media.session.PlaybackState$CustomAction {
+    public java.lang.String getAction();
+    public java.lang.CharSequence getName();
+}
 
-# Ensure our privileged service implementation is not stripped or renamed
--keep class com.d4viddf.hyperbridge.integration.shizuku.PrivilegedServiceImpl { *; }
+# R8's optimizer miscompiles the very large IslandOverlayView composable (dex VerifyError:
+# "type Float unexpected as arg to if-eqz/if-nez"). Keep shrinking/obfuscation, skip optimization.
+-dontoptimize
