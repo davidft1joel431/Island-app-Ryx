@@ -20,7 +20,29 @@ jobs:
           java-version: "17"
           cache: gradle
       - run: chmod +x ./gradlew
-      - run: ./gradlew --no-daemon lintDebug assembleDebug
+      - name: Build and lint APK (retry transient dependency errors)
+        shell: bash
+        run: |
+          set -o pipefail
+          attempt=1
+          while [ "$attempt" -le 3 ]; do
+            log_file="$(mktemp)"
+            ./gradlew --no-daemon lintDebug assembleDebug 2>&1 | tee "$log_file"
+            result=${PIPESTATUS[0]}
+            if [ "$result" -eq 0 ]; then
+              rm -f "$log_file"
+              exit 0
+            fi
+            if [ "$attempt" -lt 3 ] && grep -Eq 'Received status code 5[0-9]{2}|502 Bad Gateway|503 Service Unavailable|504 Gateway Time-out' "$log_file"; then
+              echo "Transient dependency server error; retrying Gradle (attempt $((attempt + 1)) of 3)."
+              rm -f "$log_file"
+              sleep $((attempt * 15))
+              attempt=$((attempt + 1))
+              continue
+            fi
+            rm -f "$log_file"
+            exit "$result"
+          done
       - uses: actions/upload-artifact@v4
         with:
           name: Ryx-Isla-Debug

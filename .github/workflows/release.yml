@@ -48,7 +48,28 @@ jobs:
         run: chmod +x ./gradlew
 
       - name: Build and lint APK
-        run: ./gradlew --no-daemon :app:lintDebug :app:assembleDebug
+        shell: bash
+        run: |
+          set -o pipefail
+          attempt=1
+          while [ "$attempt" -le 3 ]; do
+            log_file="$(mktemp)"
+            ./gradlew --no-daemon :app:lintDebug :app:assembleDebug 2>&1 | tee "$log_file"
+            result=${PIPESTATUS[0]}
+            if [ "$result" -eq 0 ]; then
+              rm -f "$log_file"
+              exit 0
+            fi
+            if [ "$attempt" -lt 3 ] && grep -Eq 'Received status code 5[0-9]{2}|502 Bad Gateway|503 Service Unavailable|504 Gateway Time-out' "$log_file"; then
+              echo "Transient dependency server error; retrying Gradle (attempt $((attempt + 1)) of 3)."
+              rm -f "$log_file"
+              sleep $((attempt * 15))
+              attempt=$((attempt + 1))
+              continue
+            fi
+            rm -f "$log_file"
+            exit "$result"
+          done
 
       - name: Prepare release asset
         run: cp app/build/outputs/apk/debug/app-debug.apk RyxIsla.apk
