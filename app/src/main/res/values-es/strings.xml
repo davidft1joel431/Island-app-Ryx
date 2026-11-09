@@ -392,7 +392,7 @@
     <string name="empty_history_desc">Las notificaciones pasadas serán catalogadas y conservadas aquí una vez habilitada la logging de historia</string>
     <string name="confirm_clear_history_title">¿Borrar el historial de notificaciones?</string>
     <string name="confirm_clear_history_msg">Esto eliminará permanentemente todos los registros de notificación almacenados de la base de datos del dispositivo.</string>
-    <string name="confirm_delete_app_history_title">Borrar el historial de ${1$s}?</string>
+    <string name="confirm_delete_app_history_title">Borrar el historial de %1$s?</string>
     <string name="confirm_delete_app_history_msg">Esto eliminará permanentemente todas las notificaciones registradas %1$d de %2$s.</string>
     <string name="retention_24h">24 horas (1 día)</string>
     <string name="retention_72h">3 días (recomendados)</string>
