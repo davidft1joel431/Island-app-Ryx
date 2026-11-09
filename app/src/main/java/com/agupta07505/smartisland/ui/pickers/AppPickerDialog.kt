@@ -83,7 +83,7 @@ internal fun rememberAppIcon(packageName: String): ImageBitmap? {
         if (iconBitmap == null) {
             val loaded = withContext(Dispatchers.IO) {
                 runCatching {
-                    val drawable = context.packageManager.getApplicationIcon(packageName)
+                    val drawable = AppShortcutProvider.icon(context, packageName) ?: return@runCatching null
                     val bmp = drawable.toBitmap(width = 72, height = 72)
                     bmp.asImageBitmap()
                 }.getOrNull()
@@ -108,7 +108,7 @@ fun AppPickerDialog(
     val scope = rememberCoroutineScope()
     var query by rememberSaveable { mutableStateOf("") }
     val installedApps by produceState(initialValue = emptyList<LaunchableApp>(), context) {
-        value = withContext(Dispatchers.IO) { AppShortcutProvider.installedApps(context) }
+        value = withContext(Dispatchers.IO) { AppShortcutProvider.installedApps(context, includeClones = true) }
     }
     val filteredApps = remember(installedApps, query) {
         if (query.isBlank()) installedApps

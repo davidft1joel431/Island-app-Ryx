@@ -13,6 +13,8 @@
 
 **Ryx Isla** es una aplicación para Android que incorpora una experiencia de isla dinámica mediante una superposición configurable. Reúne información y controles importantes para que puedas acceder a ellos sin perder de vista lo que estás haciendo.
 
+Los accesos rápidos detectan y abren aplicaciones clonadas mediante los perfiles de Android. En PalapaOS, PixelOS y LineageOS aparecerán cuando la ROM exponga esos perfiles a `LauncherApps`; no depende de una función exclusiva de HyperOS.
+
 </div>
 
 ---

@@ -1,6 +1,8 @@
 <?xml version='1.0' encoding='utf-8'?>
 <resources>
     <string name="app_name">Ryx Isla</string>
+    <string name="app_clone_suffix">(clon)</string>
+    <string name="shortcut_app_unavailable">Esta aplicación ya no está disponible</string>
     <string name="app_subtitle">Indicador dinámico flotante</string>
     <string name="app_description">Ryx Isla muestra notificaciones, música, llamadas y más en una interfaz flotante, con controles interactivos y animaciones fluidas.</string>
     <string name="accessibility_service_label">Servicio de Ryx Isla</string>
@@ -942,7 +944,7 @@
     <string name="weather_cfg_source_title">Fuente de ubicación</string>
     <string name="weather_cfg_source_auto">Auto</string>
     <string name="weather_cfg_source_manual">Ciudad manual</string>
-    <string name="weather_cfg_source_last">Último conocido</string>
+    <string name="weather_cfg_source_last">Última ubicación</string>
     <string name="weather_cfg_source_auto_desc">Usa la ubicación aproximada del dispositivo (aproximadamente 10 km). Sin acceso a la ubicación se remonta al lugar de su conexión a Internet, que es incorrecto mientras que un VPN está encendido.</string>
     <string name="weather_cfg_source_last_desc">Usa sólo el lugar donde la aplicación almacenaba la última vez que podía leer su ubicación. Nunca lee su ubicación o mira su lugar de Internet por sí mismo, que ahorra batería y datos.</string>
     <string name="weather_cfg_last_needs_permission">Permitir una ubicación aproximada una vez por lo que hay un lugar para recordar.</string>
@@ -962,13 +964,13 @@
     <string name="weather_cfg_refresh_manual">Manual</string>
     <string name="weather_cfg_refresh_desc">Un intervalo más largo utiliza menos batería y datos. Nada se captura mientras que los cheques de red están apagados o la pantalla está apagada.</string>
     <string name="weather_cfg_refresh_manual_desc">El tiempo es atrapado una vez, entonces sólo cuando toca Refresh ahora.</string>
-    <string name="weather_cfg_refresh_now">Refresh now</string>
+    <string name="weather_cfg_refresh_now">Actualizar ahora</string>
     <string name="weather_cfg_refresh_working">Actualizando..</string>
     <string name="weather_cfg_refresh_done">Actualizado</string>
     <string name="weather_cfg_refresh_failed">No pude actualizar. Compruebe el lugar, el proveedor y su conexión.</string>
     <string name="weather_cfg_provider_title">Proveedor de datos</string>
     <string name="weather_cfg_provider_open_meteo">Open-Meteo</string>
-    <string name="weather_cfg_provider_custom">Aduanas</string>
+    <string name="weather_cfg_provider_custom">Personalizado</string>
     <string name="weather_cfg_provider_open_meteo_desc">Open-Meteo es gratuito y no necesita ninguna cuenta o clave de API. Sólo el lugar redondeado es enviado.</string>
     <string name="weather_cfg_custom_url">Dirección de servicios (https)</string>
     <string name="weather_cfg_custom_url_invalid">Introduzca una dirección https, por ejemplo https://example.com/v1/forecast.</string>
@@ -986,7 +988,7 @@
     <string name="weather_cfg_readout_rain">Una oportunidad de lluvia</string>
     <string name="weather_cfg_readout_humidity">Humedad</string>
     <string name="weather_cfg_readout_uv">Índice UV</string>
-    <string name="weather_cfg_readout_sun">Sunrise / Sunset</string>
+    <string name="weather_cfg_readout_sun">Amanecer y atardecer</string>
     <string name="weather_cfg_readout_aqi">Calidad del aire</string>
     <string name="weather_cfg_readout_hourly">Siguiente 4 horas</string>
     <string name="weather_cfg_readouts_desc">Hileras adicionales cuando la isla del tiempo está abierta. Se deja una fila sin valor. Sólo se piden las filas que elijas; la calidad del aire es una segunda petición al servicio de calidad del aire de Open-Meteo.</string>
@@ -1005,7 +1007,7 @@
     <string name="net_cfg_200k">200 KB/s</string>
     <string name="net_cfg_1m">1 MB/s</string>
     <string name="net_cfg_note_on">El widget se sienta fuera de la rotación hasta que la dirección del busier alcance esta velocidad, y vuelve a salir una vez que cae claramente por debajo.</string>
-    <string name="net_cfg_conn_title">Show on</string>
+    <string name="net_cfg_conn_title">Mostrar con</string>
     <string name="net_cfg_conn_any">Cualquier conexión</string>
     <string name="net_cfg_conn_wifi">Wi-Fi sólo</string>
     <string name="net_cfg_conn_mobile">Móvil sólo</string>
@@ -1014,7 +1016,7 @@
     <string name="net_conn_mobile">Datos móviles</string>
     <string name="net_conn_other">Red</string>
     <string name="net_conn_none">Sin conexión</string>
-    <string name="net_island_data_saver">Data Saver on</string>
+    <string name="net_island_data_saver">Ahorro de datos activado</string>
     <string name="net_island_today">%1$s hoy</string>
     <string name="net_cfg_note_off">Fuera: el widget siempre está en la rotación, incluso cuando la conexión es ociosa.</string>
     <string name="weather_cfg_rule_title">Mostrar el tiempo</string>
@@ -1023,10 +1025,10 @@
     <string name="weather_cfg_trigger_title">Notable cuando</string>
     <string name="weather_cfg_trigger_rain">Lluvia o nieve</string>
     <string name="weather_cfg_trigger_hot">Caliente</string>
-    <string name="weather_cfg_trigger_cold">Cold</string>
+    <string name="weather_cfg_trigger_cold">Frío</string>
     <string name="weather_cfg_trigger_severe">Alerta severa</string>
     <string name="weather_cfg_hot_at">Caliente de %1$s</string>
-    <string name="weather_cfg_cold_at">Cold up to %1$s</string>
+    <string name="weather_cfg_cold_at">Frío por debajo de %1$s</string>
     <string name="weather_cfg_trigger_desc">Juzgado en la última lectura, por lo que es tan fresco como el intervalo de actualización. Open-Meteo no tiene alimentación de alerta: una alerta severa significa una tormenta, lluvia pesada o nieve, o lluvia helada en la lectura.</string>
     <string name="weather_cfg_night_title">Escóndete por la noche</string>
     <string name="weather_cfg_night_from">La noche comienza en %1$s</string>
@@ -1042,14 +1044,14 @@
     <string name="led_tick_switch_desc">Los glifos cambian en mangueras cortas en una rejilla LED en lugar de una diapositiva suave.</string>
     <string name="led_tick_pattern_title">Ticos por cambio</string>
     <string name="led_tick_pattern_desc">Números de 1 a 9, utilizados a su vez y luego repetidos. 1, 2, 3 significa una garrapata, luego dos, luego tres, luego una vez más.</string>
-    <string name="led_tick_pace_title">Pace</string>
+    <string name="led_tick_pace_title">Velocidad de los pulsos</string>
     <string name="led_tick_pace_desc">Tiempo entre garrapatas. Más bajo es más rápido.</string>
     <string name="led_tick_ms">%1$d ms</string>
     <string name="led_tick_stagger_title">Glyph primero, valor después</string>
     <string name="led_tick_stagger_desc">El valor avanza medio paso después del glifo, como el pie izquierdo, el pie derecho. Un nuevo minuto o temperatura escalinata sólo el valor; un nuevo widget da pasos ambos.</string>
     <string name="led_tick_color_title">Color LED</string>
     <string name="led_tick_color_red">Rojo</string>
-    <string name="led_tick_color_amber">Amber</string>
+    <string name="led_tick_color_amber">Ámbar</string>
     <string name="led_tick_color_green">Verde</string>
     <string name="led_tick_color_white">Blanco</string>
     <string name="led_tick_font_title">Fuente LED</string>

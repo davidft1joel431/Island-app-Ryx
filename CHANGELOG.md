@@ -627,3 +627,9 @@ Smart Island **v7.0.0** is a landmark major release delivering comprehensive imp
 ### Fixed
 
 - Fixed support/feedback links in the app to correctly load GitHub issue templates (`bug_report.md` and `feature_request.md`).
+
+## v3.1.1
+
+- Los accesos rápidos pueden mostrar y abrir apps clonadas expuestas por perfiles Android. En PalapaOS, PixelOS y LineageOS depende de que la ROM permita consultarlos mediante LauncherApps.
+- Los iconos de apps clonadas conservan la insignia del perfil y los accesos fijados mantienen una identidad separada de la app original.
+- Se corrigieron traducciones al español de los ajustes recientes de widgets, clima, red y estilo LED.

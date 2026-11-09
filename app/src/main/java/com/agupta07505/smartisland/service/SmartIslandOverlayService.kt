@@ -1821,17 +1821,13 @@ class SmartIslandOverlayService : AccessibilityService() {
         viewModel.collapse()
     }
 
-    private fun launchApp(packageName: String) {
-        val launchIntent = packageManager.getLaunchIntentForPackage(packageName)
-        if (launchIntent == null) {
-            Toast.makeText(this, "App is no longer available", Toast.LENGTH_SHORT).show()
+    private fun launchApp(packageName: String, options: android.os.Bundle? = null) {
+        if (!com.agupta07505.smartisland.data.AppShortcutProvider.launch(this, packageName, options)) {
+            Toast.makeText(this, getString(R.string.shortcut_app_unavailable), Toast.LENGTH_SHORT).show()
             return
         }
-        launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        runCatchingLogged(TAG, "Failed to launch shortcut app") {
-            startActivity(launchIntent)
-        }
-        notificationRepository.removeNotificationsForPackage(packageName)
+        val realPackage = com.agupta07505.smartisland.data.AppIdentity.parse(packageName).packageName
+        notificationRepository.removeNotificationsForPackage(realPackage)
         viewModel.collapse()
     }
 
@@ -1884,6 +1880,33 @@ class SmartIslandOverlayService : AccessibilityService() {
     }
 
     private fun launchAppAction(packageName: String, action: com.agupta07505.smartisland.model.AppShortcutAction) {
+        val parsed = com.agupta07505.smartisland.data.AppIdentity.parse(packageName)
+        if (parsed.userSerial != null) {
+            when (action) {
+                com.agupta07505.smartisland.model.AppShortcutAction.AppInfo -> {
+                    if (!com.agupta07505.smartisland.data.AppShortcutProvider.openDetails(this, packageName)) {
+                        openAppInfo(parsed.packageName)
+                    } else viewModel.collapse()
+                }
+                com.agupta07505.smartisland.model.AppShortcutAction.FloatingWindow -> {
+                    if (!viewModel.settings.value.floatingWindowEnabled) {
+                        Toast.makeText(this, getString(R.string.shortcut_floating_window_off), Toast.LENGTH_SHORT).show()
+                    } else {
+                        // LauncherApps preserves the clone's Android profile while applying native freeform bounds.
+                        launchApp(packageName, systemFreeformBundle())
+                    }
+                }
+                com.agupta07505.smartisland.model.AppShortcutAction.SplitScreen -> {
+                    // Keep profile identity by opening the clone via LauncherApps after Android enters split screen.
+                    if (performGlobalAction(GLOBAL_ACTION_TOGGLE_SPLIT_SCREEN)) {
+                        windowHandler.postDelayed({ launchApp(packageName) }, SPLIT_LAUNCH_DELAY_MS)
+                    } else {
+                        Toast.makeText(this, getString(R.string.shortcut_split_unavailable), Toast.LENGTH_SHORT).show()
+                    }
+                }
+            }
+            return
+        }
         when (action) {
             com.agupta07505.smartisland.model.AppShortcutAction.AppInfo -> openAppInfo(packageName)
             com.agupta07505.smartisland.model.AppShortcutAction.FloatingWindow -> openAppInFloatingWindow(packageName)

@@ -109,7 +109,7 @@ fun AppShortcutsSection(
     var showAppSelectionDialog by rememberSaveable { mutableStateOf(false) }
 
     val installedApps by produceState(initialValue = emptyList<LaunchableApp>(), context) {
-        value = withContext(Dispatchers.IO) { AppShortcutProvider.installedApps(context) }
+        value = withContext(Dispatchers.IO) { AppShortcutProvider.installedApps(context, includeClones = true) }
     }
     val pinnedApps = remember(installedApps, settings.shortcutPackages) {
         AppShortcutProvider.selectedApps(context, settings.shortcutPackages)

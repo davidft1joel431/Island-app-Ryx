@@ -7,6 +7,8 @@
 -->
 <resources>
     <string name="app_name">Ryx Island</string>
+    <string name="app_clone_suffix">(clone)</string>
+    <string name="shortcut_app_unavailable">This app is no longer available</string>
     <string name="app_subtitle">Floating Dynamic Overlay</string>
     <string name="app_description">Ryx Island shows notifications, music, calls, and more in a floating interface with interactive controls and fluid animations.</string>
     <string name="accessibility_service_label">Ryx Island Service</string>

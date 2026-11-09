@@ -1598,12 +1598,10 @@ private fun LauncherGrid(
                 openFolder?.takeIf { it in pinnedOrder }?.let { folder ->
                     val palette = LocalIslandPalette.current
                     val folderApps = remember(folder) {
-                        PinnedApps.members(folder).mapNotNull { memberPkg ->
-                            runCatching {
-                                val pm = context.packageManager
-                                LaunchableApp(memberPkg, pm.getApplicationLabel(pm.getApplicationInfo(memberPkg, 0)).toString())
-                            }.getOrNull()
-                        }
+                        com.agupta07505.smartisland.data.AppShortcutProvider.selectedApps(
+                            context,
+                            PinnedApps.members(folder)
+                        )
                     }
                     Box(
                         modifier = Modifier
@@ -1776,9 +1774,9 @@ private fun ShortcutApp(
     val isFolder = PinnedApps.isFolder(app.packageName)
     val icon = remember(app.packageName) {
         if (isFolder) null else runCatching {
-            context.packageManager.getApplicationIcon(app.packageName)
-                .toBitmap(width = 96, height = 96)
-                .asImageBitmap()
+            com.agupta07505.smartisland.data.AppShortcutProvider.icon(context, app.packageName)
+                ?.toBitmap(width = 96, height = 96)
+                ?.asImageBitmap()
         }.getOrNull()
     }
     Column(
@@ -1835,9 +1833,9 @@ private fun FolderTile(members: List<String>) {
                     rowMembers.forEach { memberPkg ->
                         val mini = remember(memberPkg) {
                             runCatching {
-                                context.packageManager.getApplicationIcon(memberPkg)
-                                    .toBitmap(width = 48, height = 48)
-                                    .asImageBitmap()
+                                com.agupta07505.smartisland.data.AppShortcutProvider.icon(context, memberPkg)
+                                    ?.toBitmap(width = 48, height = 48)
+                                    ?.asImageBitmap()
                             }.getOrNull()
                         }
                         if (mini != null) {
