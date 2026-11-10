@@ -45,6 +45,7 @@ import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
@@ -752,40 +753,49 @@ private fun MasterPowerCard(
         modifier = Modifier
             .fillMaxWidth()
             .animateContentSize(),
-        shape = RoundedCornerShape(16.dp),
+        shape = RoundedCornerShape(26.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f)),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.28f)),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 14.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
+                .background(
+                    brush = Brush.linearGradient(
+                        colors = listOf(Color(0xFF15583D), Color(0xFF267B4F), Color(0xFF719A3E))
+                    )
+                )
+                .padding(horizontal = 18.dp, vertical = 20.dp),
+            horizontalArrangement = Arrangement.spacedBy(14.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Column(modifier = Modifier.weight(1f)) {
+            Box(
+                modifier = Modifier
+                    .size(48.dp)
+                    .clip(RoundedCornerShape(16.dp))
+                    .background(Color(0xFFFFD65A)),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(Icons.Rounded.FlashOn, contentDescription = null, tint = Color(0xFF214E32), modifier = Modifier.size(26.dp))
+            }
+            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
                 Text(
                     text = stringResource(R.string.master_switch_title),
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onSurface
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = Color.White
                 )
-                Spacer(Modifier.height(2.dp))
                 Text(
                     text = if (canEnable) {
                         if (enabled) stringResource(R.string.master_switch_active_desc)
                         else stringResource(R.string.master_switch_ready_desc)
                     } else stringResource(R.string.master_switch_missing_desc),
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                    color = Color.White.copy(alpha = 0.86f)
                 )
             }
-            Switch(
-                checked = enabled,
-                enabled = canEnable || enabled,
-                onCheckedChange = onCheckedChange
-            )
+            Switch(checked = enabled, enabled = canEnable || enabled, onCheckedChange = onCheckedChange)
         }
 
         if (!canEnable) {
@@ -797,8 +807,8 @@ private fun MasterPowerCard(
                     .padding(bottom = 12.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                SetupChip("Accessibility", overlayGranted, onSetupPermissionsClick)
-                SetupChip("Notifications", notificationGranted, onSetupPermissionsClick)
+                SetupChip(stringResource(R.string.permission_accessibility_short), overlayGranted, onSetupPermissionsClick)
+                SetupChip(stringResource(R.string.permission_notifications_short), notificationGranted, onSetupPermissionsClick)
             }
             Box(
                 modifier = Modifier
@@ -832,7 +842,11 @@ private fun MasterPowerCard(
 
 @Composable
 private fun ThemeModeSelector(selected: String, onSelected: (String) -> Unit) {
-    val options = listOf("system" to "System", "light" to "Light", "dark" to "Dark")
+    val options = listOf(
+        "system" to stringResource(R.string.theme_mode_system),
+        "light" to stringResource(R.string.theme_mode_light),
+        "dark" to stringResource(R.string.theme_mode_dark)
+    )
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -1009,72 +1023,66 @@ private fun SettingsOverviewSection(
                 }
             }
 
-            // Features: what shows on the island and which apps may use it.
+            // Compact, two-column Ryx feature grid: quick routes into the existing settings screens.
             SettingsCategoryGroup(title = stringResource(R.string.category_behaviors_launcher)) {
-                FeatureStudioNavigationCard(
-                    title = stringResource(R.string.card_notifications_privacy_title),
-                    subtitle = stringResource(R.string.settings_notifications_summary),
-                    icon = Icons.Rounded.Notifications,
-                    statusText = if (settings.showOnLockScreen) stringResource(R.string.card_notifications_privacy_status_lock) else null,
-                    onClick = { onNavigateTo(FeatureDetailSection.NotificationRules) }
-                )
-
-                FeatureStudioNavigationCard(
-                    title = stringResource(R.string.card_notification_history_title),
-                    subtitle = stringResource(R.string.settings_history_summary),
-                    icon = Icons.Rounded.History,
-                    iconColor = BadgeIndigo,
-                    statusText = if (settings.enableNotificationHistory) stringResource(R.string.card_notification_history_status_active) else null,
-                    statusColor = if (settings.enableNotificationHistory) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-                    onClick = { onNavigateTo(FeatureDetailSection.NotificationHistory) }
-                )
-
-                FeatureStudioNavigationCard(
-                    title = stringResource(R.string.card_app_shortcuts_title),
-                    subtitle = stringResource(R.string.settings_shortcuts_summary),
-                    icon = Icons.Rounded.Apps,
-                    iconColor = BadgeTeal,
-                    statusText = if (settings.enableAppShortcuts) {
-                        stringResource(R.string.card_app_shortcuts_status, settings.shortcutPackages.size)
-                    } else null,
-                    statusColor = if (settings.enableAppShortcuts) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-                    onClick = { onNavigateTo(FeatureDetailSection.AppShortcuts) }
-                )
-            }
-
-            // Interaction: how the island answers your hands, and how long things stay.
-            SettingsCategoryGroup(title = stringResource(R.string.category_interaction)) {
-                FeatureStudioNavigationCard(
-                    title = stringResource(R.string.card_gestures_guide_title),
-                    subtitle = stringResource(R.string.settings_gestures_summary),
-                    icon = Icons.Rounded.Gesture,
-                    iconColor = BadgePink,
-                    onClick = { onNavigateTo(FeatureDetailSection.GesturesGuide) }
-                )
-
-                FeatureStudioNavigationCard(
-                    title = stringResource(R.string.idle_widgets_title),
-                    subtitle = stringResource(R.string.card_idle_widgets_subtitle),
-                    icon = Icons.Rounded.Widgets,
-                    iconColor = BadgeAmber,
-                    statusText = if (settings.idleWidgetsEnabled || settings.idleWidgetsEnabledLandscape) {
-                        stringResource(R.string.status_active)
-                    } else null,
-                    statusColor = MaterialTheme.colorScheme.primary,
-                    onClick = { onNavigateTo(FeatureDetailSection.IdleWidgets) }
-                )
-
-                FeatureStudioNavigationCard(
-                    title = stringResource(R.string.card_timing_title),
-                    subtitle = stringResource(R.string.card_timing_subtitle),
-                    icon = Icons.Rounded.Timer,
-                    iconColor = BadgeSky,
-                    onClick = { onNavigateTo(FeatureDetailSection.Timing) }
+                SettingsBentoGrid(
+                    entries = listOf(
+                        SettingsBentoEntry(stringResource(R.string.card_notifications_privacy_title), stringResource(R.string.settings_notifications_summary), Icons.Rounded.Notifications, BadgeGreen, stringResource(R.string.card_notifications_privacy_status_lock).takeIf { settings.showOnLockScreen }) { onNavigateTo(FeatureDetailSection.NotificationRules) },
+                        SettingsBentoEntry(stringResource(R.string.card_notification_history_title), stringResource(R.string.settings_history_summary), Icons.Rounded.History, BadgeIndigo, stringResource(R.string.card_notification_history_status_active).takeIf { settings.enableNotificationHistory }) { onNavigateTo(FeatureDetailSection.NotificationHistory) },
+                        SettingsBentoEntry(stringResource(R.string.card_app_shortcuts_title), stringResource(R.string.settings_shortcuts_summary), Icons.Rounded.Apps, BadgeTeal, stringResource(R.string.card_app_shortcuts_status, settings.shortcutPackages.size).takeIf { settings.enableAppShortcuts }) { onNavigateTo(FeatureDetailSection.AppShortcuts) },
+                        SettingsBentoEntry(stringResource(R.string.card_gestures_guide_title), stringResource(R.string.settings_gestures_summary), Icons.Rounded.Gesture, BadgePink) { onNavigateTo(FeatureDetailSection.GesturesGuide) },
+                        SettingsBentoEntry(stringResource(R.string.idle_widgets_title), stringResource(R.string.card_idle_widgets_subtitle), Icons.Rounded.Widgets, BadgeAmber, stringResource(R.string.status_active).takeIf { settings.idleWidgetsEnabled || settings.idleWidgetsEnabledLandscape }) { onNavigateTo(FeatureDetailSection.IdleWidgets) },
+                        SettingsBentoEntry(stringResource(R.string.card_timing_title), stringResource(R.string.card_timing_subtitle), Icons.Rounded.Timer, BadgeSky) { onNavigateTo(FeatureDetailSection.Timing) }
+                    )
                 )
             }
 
             // System: permissions, backup, developer options, about.
             SystemGroup()
+        }
+    }
+}
+
+private data class SettingsBentoEntry(
+    val title: String,
+    val description: String,
+    val icon: ImageVector,
+    val tint: Color,
+    val status: String? = null,
+    val onClick: () -> Unit
+)
+
+@Composable
+private fun SettingsBentoGrid(entries: List<SettingsBentoEntry>) {
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        entries.chunked(2).forEach { rowEntries ->
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                rowEntries.forEach { entry ->
+                    Column(
+                        modifier = Modifier
+                            .weight(1f)
+                            .heightIn(min = 142.dp)
+                            .clip(RoundedCornerShape(20.dp))
+                            .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.94f))
+                            .border(1.dp, entry.tint.copy(alpha = 0.18f), RoundedCornerShape(20.dp))
+                            .bounceClick(entry.onClick)
+                            .padding(13.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                            Box(Modifier.size(38.dp).clip(RoundedCornerShape(13.dp)).background(entry.tint.copy(alpha = 0.14f)), contentAlignment = Alignment.Center) {
+                                Icon(entry.icon, contentDescription = null, tint = entry.tint, modifier = Modifier.size(20.dp))
+                            }
+                            entry.status?.let {
+                                Text(it, color = entry.tint, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            }
+                        }
+                        Text(entry.title, style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.Bold, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                        Text(entry.description, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                    }
+                }
+                if (rowEntries.size == 1) Spacer(Modifier.weight(1f))
+            }
         }
     }
 }

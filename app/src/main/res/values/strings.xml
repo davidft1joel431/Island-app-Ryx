@@ -32,6 +32,11 @@
     <string name="settings_shortcuts_summary">Launch favourite apps from the island</string>
     <string name="settings_gestures_summary">Swipes, taps, long press, sensitivity and vibration</string>
     <string name="status_recording">Recording</string>
+    <string name="permission_accessibility_short">Accessibility</string>
+    <string name="permission_notifications_short">Notifications</string>
+    <string name="theme_mode_system">System</string>
+    <string name="theme_mode_light">Light</string>
+    <string name="theme_mode_dark">Dark</string>
     <string name="tab_studio">Home</string>
     <string name="tab_position">Layout</string>
     <string name="tab_settings">Settings</string>

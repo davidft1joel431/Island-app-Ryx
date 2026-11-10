@@ -26,6 +26,11 @@
     <string name="settings_shortcuts_summary">Abre tus aplicaciones favoritas desde la isla</string>
     <string name="settings_gestures_summary">Deslizamientos, toques, pulsación larga, sensibilidad y vibración</string>
     <string name="status_recording">Grabando</string>
+    <string name="permission_accessibility_short">Accesibilidad</string>
+    <string name="permission_notifications_short">Notificaciones</string>
+    <string name="theme_mode_system">Sistema</string>
+    <string name="theme_mode_light">Claro</string>
+    <string name="theme_mode_dark">Oscuro</string>
     <string name="tab_studio">Inicio</string>
     <string name="tab_position">Diseño</string>
     <string name="tab_settings">Ajustes</string>
