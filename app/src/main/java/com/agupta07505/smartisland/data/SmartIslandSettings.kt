@@ -176,6 +176,8 @@ data class SmartIslandSettings(
     val islandExemptAppsLandscape: Set<String> = emptySet(),
     /** Portrait only: apps that keep the collapsed pill on screen but dead (no content, no popups, no touches) while in the foreground. */
     val islandExemptAppsStatic: Set<String> = emptySet(),
+    /** Hide the island whenever Android identifies the foreground app as a game. */
+    val hideIslandInGames: Boolean = false,
     val contentPillWidthPercentLandscape: Float = DEFAULT_CONTENT_PILL_PERCENT,
     // Legacy: kept so old backups still load.
     val landscapeShape: String = LANDSCAPE_SHAPE_PILL,
@@ -583,6 +585,7 @@ data class SmartIslandSettings(
         settingsObj.put("islandExemptApps", JSONArray().also { a -> islandExemptApps.forEach { a.put(it) } })
         settingsObj.put("islandExemptAppsLandscape", JSONArray().also { a -> islandExemptAppsLandscape.forEach { a.put(it) } })
         settingsObj.put("islandExemptAppsStatic", JSONArray().also { a -> islandExemptAppsStatic.forEach { a.put(it) } })
+        settingsObj.put("hideIslandInGames", hideIslandInGames)
         settingsObj.put("contentPillSameAsIdleLandscape", contentPillSameAsIdleLandscape)
         settingsObj.put("contentPillWidthPercentLandscape", contentPillWidthPercentLandscape.toDouble())
         settingsObj.put("contentPillWidthPercent", contentPillWidthPercent.toDouble())
@@ -1035,6 +1038,7 @@ data class SmartIslandSettings(
                 islandExemptApps = safeStringSet("islandExemptApps", defaults.islandExemptApps),
                 islandExemptAppsLandscape = safeStringSet("islandExemptAppsLandscape", defaults.islandExemptAppsLandscape),
                 islandExemptAppsStatic = safeStringSet("islandExemptAppsStatic", defaults.islandExemptAppsStatic),
+                hideIslandInGames = obj.optBoolean("hideIslandInGames", defaults.hideIslandInGames),
                 contentPillSameAsIdleLandscape = obj.optBoolean("contentPillSameAsIdleLandscape", defaults.contentPillSameAsIdleLandscape),
                 contentPillWidthPercentLandscape = safeFloat(
                     "contentPillWidthPercentLandscape", defaults.contentPillWidthPercentLandscape,

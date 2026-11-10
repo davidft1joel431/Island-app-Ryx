@@ -417,6 +417,11 @@ class SmartIslandOverlayService : AccessibilityService() {
                 }
             )
             viewModel.foregroundPackage.value = next
+            viewModel.foregroundIsGame.value = next?.let { pkg ->
+                if (pkg == packageName) false else runCatching {
+                    packageManager.getApplicationInfo(pkg, 0).category == android.content.pm.ApplicationInfo.CATEGORY_GAME
+                }.getOrDefault(false)
+            } ?: false
             updateWindowLayoutParams(isWindowExpanded, viewModel.displaySettings.value)
         }
         return true

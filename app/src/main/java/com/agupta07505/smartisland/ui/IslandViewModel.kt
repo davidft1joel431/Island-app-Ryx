@@ -97,6 +97,7 @@ class IslandViewModel(
 
     val notifications = notificationRepo.notifications
     val foregroundPackage = MutableStateFlow<String?>(null)
+    val foregroundIsGame = MutableStateFlow(false)
 
     /**
      * True while the phone is locked (set by the overlay service). Declared before the flows below that read it: they
@@ -385,9 +386,10 @@ class IslandViewModel(
     val islandExemption: StateFlow<ExemptMode> = combine(
         foregroundPackage,
         settingsRepo.settings,
-        orientation
-    ) { fg, raw, state ->
-        IslandExemption.modeFor(
+        orientation,
+        foregroundIsGame
+    ) { fg, raw, state, isGame ->
+        if (raw.hideIslandInGames && isGame) ExemptMode.Off else IslandExemption.modeFor(
             fg, raw.islandExemptApps, raw.islandExemptAppsStatic, raw.islandExemptAppsLandscape, state.isLandscape
         )
     }.distinctUntilChanged().stateIn(
@@ -411,6 +413,7 @@ class IslandViewModel(
     /** The exemption right now, computed from the current values instead of the flow above. */
     fun exemptionNow(): ExemptMode {
         val raw = rawSettings.value
+        if (raw.hideIslandInGames && foregroundIsGame.value) return ExemptMode.Off
         return IslandExemption.modeFor(
             foregroundPackage.value, raw.islandExemptApps, raw.islandExemptAppsStatic, raw.islandExemptAppsLandscape,
             orientation.value.isLandscape

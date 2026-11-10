@@ -72,6 +72,7 @@ import androidx.compose.material.icons.rounded.Palette
 import androidx.compose.material.icons.rounded.BugReport
 import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material.icons.rounded.Science
+import androidx.compose.material.icons.rounded.SportsEsports
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material.icons.rounded.SettingsBackupRestore
 import androidx.compose.material.icons.rounded.Shield
@@ -559,6 +560,9 @@ fun SmartIslandHomeScreen(
                                 onFontMixChange = { enabled, light, regular, medium ->
                                     scope.launch { resolvedRepository.setFontMix(enabled, light, regular, medium) }
                                 },
+                                onHideIslandInGamesChange = { enabled ->
+                                    scope.launch { resolvedRepository.setHideIslandInGames(enabled) }
+                                },
                                 onNavigateTo = { section ->
                                     transitionDirection = 1
                                     activeDetailSection = section
@@ -898,6 +902,7 @@ private fun SettingsOverviewSection(
     onAccentChange: (Long) -> Unit,
     onIslandFontChange: (String) -> Unit,
     onFontMixChange: (Boolean, String, String, String) -> Unit,
+    onHideIslandInGamesChange: (Boolean) -> Unit,
     onNavigateTo: (FeatureDetailSection) -> Unit
 ) {
     val canEnable = overlayGranted && notificationGranted
@@ -906,7 +911,7 @@ private fun SettingsOverviewSection(
         SettingsCategoryGroup(title = stringResource(R.string.category_system_core)) {
             FeatureStudioNavigationCard(
                 title = stringResource(R.string.card_permissions_setup_title),
-                subtitle = "Accessibility, notification access, battery",
+                subtitle = stringResource(R.string.settings_permissions_summary),
                 icon = Icons.Rounded.Shield,
                 iconColor = BadgeGreen,
                 statusText = if (!canEnable) stringResource(R.string.status_action_required) else null,
@@ -916,7 +921,7 @@ private fun SettingsOverviewSection(
 
             FeatureStudioNavigationCard(
                 title = stringResource(R.string.card_backup_restore_title),
-                subtitle = "Export or import all settings",
+                subtitle = stringResource(R.string.settings_backup_summary),
                 icon = Icons.Rounded.SettingsBackupRestore,
                 iconColor = BadgeBlue,
                 onClick = { onNavigateTo(FeatureDetailSection.BackupRestore) }
@@ -924,7 +929,7 @@ private fun SettingsOverviewSection(
 
             FeatureStudioNavigationCard(
                 title = stringResource(R.string.card_updates_downloads_title),
-                subtitle = "Check GitHub releases and download updates",
+                subtitle = stringResource(R.string.settings_updates_summary),
                 icon = Icons.Rounded.Download,
                 iconColor = BadgeTeal,
                 onClick = { onNavigateTo(FeatureDetailSection.UpdatesAndDownloads) }
@@ -932,7 +937,7 @@ private fun SettingsOverviewSection(
 
             FeatureStudioNavigationCard(
                 title = stringResource(R.string.card_support_requests_title),
-                subtitle = "Report issues, feature requests & community",
+                subtitle = stringResource(R.string.settings_support_summary),
                 icon = Icons.Rounded.People,
                 iconColor = BadgePink,
                 onClick = { onNavigateTo(FeatureDetailSection.SupportCommunity) }
@@ -940,10 +945,10 @@ private fun SettingsOverviewSection(
 
             FeatureStudioNavigationCard(
                 title = stringResource(R.string.card_developer_options_title),
-                subtitle = "Diagnostics, log recording & developer options",
+                subtitle = stringResource(R.string.settings_developer_summary),
                 icon = Icons.Rounded.Code,
                 iconColor = BadgeSlate,
-                statusText = if (settings.recordLogs) "Recording" else null,
+                statusText = if (settings.recordLogs) stringResource(R.string.status_recording) else null,
                 statusColor = MaterialTheme.colorScheme.primary,
                 onClick = { onNavigateTo(FeatureDetailSection.DeveloperOptions) }
             )
@@ -964,6 +969,11 @@ private fun SettingsOverviewSection(
         if (searchQuery.isNotBlank()) {
             SettingsSearchResults(query = searchQuery, results = searchResults, onPick = onSearchPick)
         } else {
+            Column(verticalArrangement = Arrangement.spacedBy(3.dp), modifier = Modifier.padding(horizontal = 4.dp)) {
+                Text(stringResource(R.string.settings_hub_title), style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+                Text(stringResource(R.string.settings_hub_subtitle), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            GameModeCard(enabled = settings.hideIslandInGames, onEnabledChange = onHideIslandInGamesChange)
             // Appearance: the app's own theme, then the island's colours. (Position, size, shadow and the
             // animation choices are on the Layout tab.)
             SettingsCategoryGroup(title = stringResource(R.string.category_appearance_controls)) {
@@ -978,7 +988,7 @@ private fun SettingsOverviewSection(
 
                 FeatureStudioNavigationCard(
                     title = stringResource(R.string.card_color_studio_title),
-                    subtitle = "Colours, opacity, gradients and card styles",
+                    subtitle = stringResource(R.string.settings_colours_summary),
                     icon = Icons.Rounded.Palette,
                     iconColor = BadgeViolet,
                     statusText = stringResource(R.string.card_color_studio_status, (settings.opacity * 100).toInt()),
@@ -988,7 +998,7 @@ private fun SettingsOverviewSection(
                 CollapsibleCard(
                     title = stringResource(R.string.island_font_title),
                     stateKey = "settings_appearance_fonts",
-                    summary = "Typography and font mixing",
+                    summary = stringResource(R.string.settings_fonts_summary),
                     icon = Icons.Rounded.FontDownload,
                     initiallyExpanded = false
                 ) {
@@ -1003,7 +1013,7 @@ private fun SettingsOverviewSection(
             SettingsCategoryGroup(title = stringResource(R.string.category_behaviors_launcher)) {
                 FeatureStudioNavigationCard(
                     title = stringResource(R.string.card_notifications_privacy_title),
-                    subtitle = "Which apps and events show, lock screen privacy",
+                    subtitle = stringResource(R.string.settings_notifications_summary),
                     icon = Icons.Rounded.Notifications,
                     statusText = if (settings.showOnLockScreen) stringResource(R.string.card_notifications_privacy_status_lock) else null,
                     onClick = { onNavigateTo(FeatureDetailSection.NotificationRules) }
@@ -1011,7 +1021,7 @@ private fun SettingsOverviewSection(
 
                 FeatureStudioNavigationCard(
                     title = stringResource(R.string.card_notification_history_title),
-                    subtitle = "Browse notifications the island has shown",
+                    subtitle = stringResource(R.string.settings_history_summary),
                     icon = Icons.Rounded.History,
                     iconColor = BadgeIndigo,
                     statusText = if (settings.enableNotificationHistory) stringResource(R.string.card_notification_history_status_active) else null,
@@ -1021,7 +1031,7 @@ private fun SettingsOverviewSection(
 
                 FeatureStudioNavigationCard(
                     title = stringResource(R.string.card_app_shortcuts_title),
-                    subtitle = "Launch favourite apps from the island",
+                    subtitle = stringResource(R.string.settings_shortcuts_summary),
                     icon = Icons.Rounded.Apps,
                     iconColor = BadgeTeal,
                     statusText = if (settings.enableAppShortcuts) {
@@ -1036,7 +1046,7 @@ private fun SettingsOverviewSection(
             SettingsCategoryGroup(title = stringResource(R.string.category_interaction)) {
                 FeatureStudioNavigationCard(
                     title = stringResource(R.string.card_gestures_guide_title),
-                    subtitle = "Swipes, taps, long press, sensitivity and vibration",
+                    subtitle = stringResource(R.string.settings_gestures_summary),
                     icon = Icons.Rounded.Gesture,
                     iconColor = BadgePink,
                     onClick = { onNavigateTo(FeatureDetailSection.GesturesGuide) }
@@ -1070,18 +1080,47 @@ private fun SettingsOverviewSection(
 }
 
 @Composable
+private fun GameModeCard(enabled: Boolean, onEnabledChange: (Boolean) -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(22.dp))
+            .background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.48f))
+            .glassEdge(RoundedCornerShape(22.dp), glass = LocalLiquidGlass.current, dark = LocalGlassDark.current)
+            .padding(start = 16.dp, end = 12.dp, top = 14.dp, bottom = 14.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Box(Modifier.size(44.dp).clip(RoundedCornerShape(14.dp)).background(MaterialTheme.colorScheme.primary), contentAlignment = Alignment.Center) {
+            Icon(Icons.Rounded.SportsEsports, contentDescription = null, tint = MaterialTheme.colorScheme.onPrimary)
+        }
+        Column(Modifier.weight(1f).padding(horizontal = 12.dp)) {
+            Text(stringResource(R.string.game_mode_title), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+            Text(stringResource(R.string.game_mode_summary), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        Switch(checked = enabled, onCheckedChange = onEnabledChange)
+    }
+}
+
+@Composable
 private fun SettingsCategoryGroup(
     title: String,
     content: @Composable () -> Unit
 ) {
-    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(22.dp))
+            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.32f))
+            .padding(12.dp),
+        verticalArrangement = Arrangement.spacedBy(9.dp)
+    ) {
         Text(
             text = title.uppercase(),
             style = MaterialTheme.typography.labelSmall,
             fontWeight = FontWeight.Bold,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             letterSpacing = 0.8.sp,
-            modifier = Modifier.padding(start = 4.dp, top = 4.dp)
+            modifier = Modifier.padding(start = 3.dp, top = 2.dp, bottom = 2.dp)
         )
         content()
     }
@@ -1110,17 +1149,17 @@ private fun FeatureStudioNavigationCard(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(14.dp))
-            .background(MaterialTheme.colorScheme.surface)
-            .glassEdge(RoundedCornerShape(14.dp), glass = LocalLiquidGlass.current, dark = LocalGlassDark.current)
+            .clip(RoundedCornerShape(18.dp))
+            .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.88f))
+            .glassEdge(RoundedCornerShape(18.dp), glass = LocalLiquidGlass.current, dark = LocalGlassDark.current)
             .bounceClick(onClick)
             .padding(horizontal = 14.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Box(
             modifier = Modifier
-                .size(36.dp)
-                .clip(RoundedCornerShape(10.dp))
+                .size(40.dp)
+                .clip(RoundedCornerShape(13.dp))
                 .background(iconColor),
             contentAlignment = Alignment.Center
         ) {

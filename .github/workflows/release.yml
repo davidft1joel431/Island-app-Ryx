@@ -86,9 +86,10 @@ jobs:
           body: |
             Ryx Isla v${{ steps.version.outputs.version }}.
 
-            - App shortcuts can detect and launch cloned apps exposed through Android profiles, including custom ROM profiles when available.
-            - Improved Spanish translations for the latest weather, network, widget and LED settings.
-            - Preserves the `com.dav.isla` application ID and GPLv3 attribution for the source project.
+            - Nueva interfaz de ajustes con paneles agrupados e inspirados en el diseño Bento de HyperBridge.
+            - Modo de juego para ocultar la isla en aplicaciones que Android identifica como juegos.
+            - Traducciones al castellano y atribución de David Joel, creador del proyecto en Perú.
+            - Conserva los sistemas existentes, la aplicación `com.dav.isla` y la atribución GPLv3 del proyecto de origen.
 
             **Nota de instalación:** la APK de esta versión usa una firma distinta a la de v2.2.0. Android puede pedir desinstalar la versión anterior antes de instalar esta; la desinstalación puede borrar los datos locales.
 

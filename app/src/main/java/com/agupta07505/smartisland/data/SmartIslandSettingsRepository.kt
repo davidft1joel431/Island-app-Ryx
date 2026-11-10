@@ -175,6 +175,7 @@ class SmartIslandSettingsRepository(private val context: Context) {
         val IslandExemptApps = stringSetPreferencesKey("island_exempt_apps")
         val IslandExemptAppsLandscape = stringSetPreferencesKey("island_exempt_apps_landscape")
         val IslandExemptAppsStatic = stringSetPreferencesKey("island_exempt_apps_static")
+        val HideIslandInGames = booleanPreferencesKey("hide_island_in_games")
         val ContentPillSameAsIdleLandscape = booleanPreferencesKey("content_pill_same_as_idle_landscape")
         val ContentPillWidthPercentLandscape = floatPreferencesKey("content_pill_width_percent_landscape")
         val IdleOffWhenStored = booleanPreferencesKey("idle_off_when_stored")
@@ -496,6 +497,7 @@ class SmartIslandSettingsRepository(private val context: Context) {
                     ?.filter { it.isNotBlank() && it.length <= MAX_PACKAGE_NAME_LENGTH }?.toSet() ?: defaults.islandExemptAppsLandscape,
                 islandExemptAppsStatic = prefs[Keys.IslandExemptAppsStatic]
                     ?.filter { it.isNotBlank() && it.length <= MAX_PACKAGE_NAME_LENGTH }?.toSet() ?: defaults.islandExemptAppsStatic,
+                hideIslandInGames = prefs[Keys.HideIslandInGames] ?: defaults.hideIslandInGames,
                 contentPillSameAsIdleLandscape = prefs[Keys.ContentPillSameAsIdleLandscape] ?: defaults.contentPillSameAsIdleLandscape,
                 contentPillWidthPercentLandscape = (prefs[Keys.ContentPillWidthPercentLandscape] ?: defaults.contentPillWidthPercentLandscape).let {
                     if (it.isNaN()) defaults.contentPillWidthPercentLandscape
@@ -664,6 +666,7 @@ class SmartIslandSettingsRepository(private val context: Context) {
 
     suspend fun setDeviceType(value: String) = editSafely { it[Keys.DeviceType] = value }
     suspend fun setEnabled(value: Boolean) = editSafely { it[Keys.Enabled] = value }
+    suspend fun setHideIslandInGames(value: Boolean) = editSafely { it[Keys.HideIslandInGames] = value }
     suspend fun setEnableShadow(value: Boolean) = editSafely { it[Keys.EnableShadow] = value }
     suspend fun setExpandedBlurEnabled(value: Boolean) = editSafely { it[Keys.ExpandedBlurEnabled] = value }
     /** Picks Off or Card blur. */
@@ -1584,6 +1587,7 @@ class SmartIslandSettingsRepository(private val context: Context) {
             .filter { it.isNotBlank() && it.length <= MAX_PACKAGE_NAME_LENGTH }.toSet()
         prefs[Keys.IslandExemptAppsStatic] = settings.islandExemptAppsStatic
             .filter { it.isNotBlank() && it.length <= MAX_PACKAGE_NAME_LENGTH }.toSet()
+        prefs[Keys.HideIslandInGames] = settings.hideIslandInGames
         prefs[Keys.ContentPillSameAsIdleLandscape] = settings.contentPillSameAsIdleLandscape
         prefs[Keys.ContentPillWidthPercentLandscape] = settings.contentPillWidthPercentLandscape
         prefs[Keys.IdleOffWhenStoredLandscape] = settings.idleOffWhenStoredLandscape
