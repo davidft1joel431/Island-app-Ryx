@@ -73,23 +73,41 @@ class NotificationHistoryDbHelper(context: Context) : SQLiteOpenHelper(
 
     fun insertEntry(entry: NotificationHistoryEntry): Long {
         return runCatchingLogged(TAG, "Failed to insert notification history entry") {
-            val values = ContentValues().apply {
-                put(COL_NOTIF_KEY, entry.notificationKey)
-                put(COL_PACKAGE, entry.packageName)
-                put(COL_APP_NAME, entry.appName)
-                put(COL_TITLE, entry.title)
-                put(COL_TEXT, entry.text)
-                put(COL_SUB_TEXT, entry.subText)
-                put(COL_POST_TIME, entry.postTimeMillis)
-                put(COL_CATEGORY, entry.category)
-                put(COL_CHANNEL_ID, entry.channelId)
-                put(COL_MODE, entry.mode)
-                put(COL_ACTIONS_JSON, JSONArray(entry.actionTitles).toString())
-                put(COL_WAS_OPENED, if (entry.wasOpened) 1 else 0)
-                put(COL_WAS_DISMISSED, if (entry.wasDismissed) 1 else 0)
-            }
-            writableDatabase.insert(TABLE_HISTORY, null, values)
+            writableDatabase.insert(TABLE_HISTORY, null, contentValues(entry))
         } ?: -1L
+    }
+
+    fun replaceAll(entries: List<NotificationHistoryEntry>): Boolean = runCatchingLogged(
+        TAG, "Failed to replace notification history from backup"
+    ) {
+        val db = writableDatabase
+        db.beginTransaction()
+        try {
+            db.delete(TABLE_HISTORY, null, null)
+            entries.take(1000).forEach { entry ->
+                db.insertOrThrow(TABLE_HISTORY, null, contentValues(entry))
+            }
+            db.setTransactionSuccessful()
+        } finally {
+            db.endTransaction()
+        }
+        true
+    } ?: false
+
+    private fun contentValues(entry: NotificationHistoryEntry): ContentValues = ContentValues().apply {
+        put(COL_NOTIF_KEY, entry.notificationKey)
+        put(COL_PACKAGE, entry.packageName)
+        put(COL_APP_NAME, entry.appName)
+        put(COL_TITLE, entry.title)
+        put(COL_TEXT, entry.text)
+        put(COL_SUB_TEXT, entry.subText)
+        put(COL_POST_TIME, entry.postTimeMillis)
+        put(COL_CATEGORY, entry.category)
+        put(COL_CHANNEL_ID, entry.channelId)
+        put(COL_MODE, entry.mode)
+        put(COL_ACTIONS_JSON, JSONArray(entry.actionTitles).toString())
+        put(COL_WAS_OPENED, if (entry.wasOpened) 1 else 0)
+        put(COL_WAS_DISMISSED, if (entry.wasDismissed) 1 else 0)
     }
 
     fun getAllEntries(limit: Int = 1000): List<NotificationHistoryEntry> {

@@ -53,6 +53,12 @@ class NotificationHistoryRepository @Inject constructor(
         _history.value = (listOf(savedEntry) + current).take(1000)
     }
 
+    override suspend fun replaceAll(entries: List<NotificationHistoryEntry>): Boolean = withContext(Dispatchers.IO) {
+        val replaced = dbHelper.replaceAll(entries.take(1000))
+        if (replaced) reload()
+        replaced
+    }
+
     override suspend fun markAsOpened(notificationKey: String) = withContext(Dispatchers.IO) {
         dbHelper.markAsOpened(notificationKey)
         _history.value = _history.value.map {

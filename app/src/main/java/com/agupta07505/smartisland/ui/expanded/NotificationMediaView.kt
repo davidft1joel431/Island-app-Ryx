@@ -12,24 +12,53 @@ import android.graphics.drawable.AnimatedImageDrawable
 import android.graphics.drawable.Drawable
 import android.os.Build
 import android.widget.ImageView
+import android.widget.VideoView
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.compositionLocalOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Pause
+import androidx.compose.material.icons.rounded.PlayArrow
+import androidx.compose.material.icons.rounded.MusicNote
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.Slider
+import androidx.compose.material3.Text
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import com.agupta07505.smartisland.model.NotificationMedia
+import com.agupta07505.smartisland.model.NotificationMediaKind
+import com.agupta07505.smartisland.R
 import java.nio.ByteBuffer
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlin.math.max
-import androidx.compose.runtime.getValue
 
 /**
  * Which notification's picture is open at full size in the expanded island: the card key and the picture's position.
@@ -116,6 +145,17 @@ fun NotificationMediaView(
     contentScale: ContentScale = ContentScale.Fit,
     maxSidePx: Int = 512
 ) {
+    when (media.kind) {
+        NotificationMediaKind.AUDIO -> {
+            AudioAttachmentPlayer(media, modifier)
+            return
+        }
+        NotificationMediaKind.VIDEO -> {
+            VideoAttachmentPlayer(media, modifier)
+            return
+        }
+        NotificationMediaKind.IMAGE -> Unit
+    }
     val still = androidx.compose.runtime.remember(media.still) { media.still.asImageBitmap() }
     val bytes = media.animatedBytes
     if (bytes == null || Build.VERSION.SDK_INT < Build.VERSION_CODES.P) {
@@ -123,6 +163,138 @@ fun NotificationMediaView(
         return
     }
     AnimatedMediaView(bytes, still, modifier, contentScale, maxSidePx)
+}
+
+@Composable
+private fun AudioAttachmentPlayer(media: NotificationMedia, modifier: Modifier) {
+    val file = media.file
+    if (file == null) {
+        Image(bitmap = media.still.asImageBitmap(), contentDescription = null, modifier = modifier)
+        return
+    }
+    val player = remember(file) { android.media.MediaPlayer() }
+    var prepared by remember(file) { mutableStateOf(false) }
+    var playing by remember(file) { mutableStateOf(false) }
+    var duration by remember(file) { mutableStateOf(0) }
+    var position by remember(file) { mutableStateOf(0) }
+
+    DisposableEffect(player, file) {
+        player.setAudioAttributes(
+            android.media.AudioAttributes.Builder()
+                .setContentType(android.media.AudioAttributes.CONTENT_TYPE_MUSIC)
+                .setUsage(android.media.AudioAttributes.USAGE_MEDIA)
+                .build()
+        )
+        player.setOnPreparedListener {
+            duration = it.duration.coerceAtLeast(0)
+            prepared = true
+        }
+        player.setOnCompletionListener {
+            position = duration
+            playing = false
+        }
+        runCatching {
+            player.setDataSource(file.absolutePath)
+            player.prepareAsync()
+        }
+        onDispose { runCatching { player.release() } }
+    }
+    LaunchedEffect(player, prepared, playing) {
+        if (!prepared) return@LaunchedEffect
+        if (playing && !player.isPlaying) player.start()
+        else if (!playing && player.isPlaying) player.pause()
+        while (playing && prepared) {
+            position = player.currentPosition.coerceAtLeast(0)
+            delay(250)
+        }
+    }
+
+    Row(
+        modifier = modifier
+            .background(Color(0xFF171717))
+            .padding(horizontal = 18.dp, vertical = 14.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        IconButton(
+            onClick = {
+                if (prepared) {
+                    if (playing) playing = false
+                    else {
+                        if (duration > 0 && position >= duration) player.seekTo(0)
+                        playing = true
+                    }
+                }
+            },
+            enabled = prepared
+        ) {
+            Icon(if (playing) Icons.Rounded.Pause else Icons.Rounded.PlayArrow, contentDescription = null, tint = Color.White, modifier = Modifier.size(30.dp))
+        }
+        Column(Modifier.weight(1f)) {
+            Text(stringResource(R.string.notification_media_audio), color = Color.White, maxLines = 1)
+            Slider(
+                value = if (duration > 0) (position.toFloat() / duration).coerceIn(0f, 1f) else 0f,
+                onValueChange = { value ->
+                    position = (value * duration).toInt()
+                    if (prepared && duration > 0) player.seekTo(position)
+                },
+                enabled = prepared && duration > 0
+            )
+        }
+        Icon(Icons.Rounded.MusicNote, contentDescription = null, tint = Color.White.copy(alpha = 0.72f))
+    }
+}
+
+@Composable
+private fun VideoAttachmentPlayer(media: NotificationMedia, modifier: Modifier) {
+    val file = media.file
+    if (file == null) {
+        Image(bitmap = media.still.asImageBitmap(), contentDescription = null, modifier = modifier)
+        return
+    }
+    var prepared by remember(file) { mutableStateOf(false) }
+    var playing by remember(file) { mutableStateOf(false) }
+    val context = LocalContext.current
+    val videoView = remember(file) {
+        VideoView(context).apply {
+            setVideoPath(file.absolutePath)
+            setOnPreparedListener { it.isLooping = false; prepared = true }
+            setOnCompletionListener { playing = false; seekTo(0) }
+            setOnErrorListener { _, _, _ -> prepared = false; playing = false; true }
+        }
+    }
+    LaunchedEffect(videoView, prepared, playing) {
+        if (prepared) {
+            if (playing && !videoView.isPlaying) videoView.start()
+            else if (!playing && videoView.isPlaying) videoView.pause()
+        }
+    }
+    DisposableEffect(videoView) { onDispose { runCatching { videoView.stopPlayback() } } }
+
+    Box(modifier.background(Color.Black), contentAlignment = Alignment.Center) {
+        AndroidView(factory = { videoView }, modifier = Modifier.fillMaxSize())
+        if (!playing) {
+            IconButton(
+                onClick = { if (prepared) playing = true },
+                enabled = prepared,
+                modifier = Modifier
+                    .background(Color.Black.copy(alpha = 0.62f), androidx.compose.foundation.shape.CircleShape)
+                    .padding(8.dp)
+            ) {
+                Icon(Icons.Rounded.PlayArrow, contentDescription = null, tint = Color.White, modifier = Modifier.size(38.dp))
+            }
+        } else {
+            IconButton(
+                onClick = { playing = false },
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .padding(10.dp)
+                    .background(Color.Black.copy(alpha = 0.62f), androidx.compose.foundation.shape.CircleShape)
+            ) {
+                Icon(Icons.Rounded.Pause, contentDescription = null, tint = Color.White)
+            }
+        }
+    }
 }
 
 @androidx.annotation.RequiresApi(Build.VERSION_CODES.P)

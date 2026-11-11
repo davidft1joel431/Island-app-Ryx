@@ -7,6 +7,13 @@
 
 package com.agupta07505.smartisland.ui.sections
 
+import android.content.Intent
+import android.graphics.BitmapFactory
+import android.net.Uri
+import android.util.Base64
+import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.saveable.listSaver
 import androidx.compose.runtime.saveable.Saver
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -25,12 +32,16 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.VolumeOff
 import androidx.compose.material.icons.automirrored.rounded.VolumeUp
@@ -112,6 +123,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.core.graphics.drawable.toBitmap
 import kotlinx.coroutines.Dispatchers
@@ -656,6 +668,12 @@ fun NotificationsAndPrivacySection(
                     it.packageName.contains(cooldownAppQuery, ignoreCase = true)
             }
         }
+
+        NotificationModesMenu(
+            settings = settings,
+            repository = repository,
+            installedApps = installedApps
+        )
 
         Card(
             modifier = Modifier.fillMaxWidth(),
@@ -1839,6 +1857,335 @@ fun NotificationsAndPrivacySection(
             )
         }
     }
+}
+
+@Composable
+private fun NotificationModesMenu(
+    settings: SmartIslandSettings,
+    repository: SmartIslandSettingsRepository,
+    installedApps: List<LaunchableApp>
+) {
+    val scope = rememberCoroutineScope()
+    val context = LocalContext.current
+    var selectedMode by rememberSaveable { mutableIntStateOf(0) }
+    var appQuery by rememberSaveable { mutableStateOf("") }
+    var pendingSoundConversationKey by rememberSaveable { mutableStateOf<String?>(null) }
+    var pendingNormalSound by rememberSaveable { mutableStateOf(false) }
+    val mp3Picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
+        val conversationKey = pendingSoundConversationKey
+        val isNormalSound = pendingNormalSound
+        pendingSoundConversationKey = null
+        pendingNormalSound = false
+        if (uri != null && (conversationKey != null || isNormalSound)) {
+            val persisted = runCatching {
+                context.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }.isSuccess
+            if (persisted) {
+                scope.launch {
+                    if (isNormalSound) repository.setNormalNotificationSound(uri.toString())
+                    else conversationKey?.let { repository.setNotificationConversationSound(it, uri.toString()) }
+                }
+            } else {
+                Toast.makeText(context, R.string.notification_mp3_permission_error, Toast.LENGTH_LONG).show()
+            }
+        }
+    }
+    val appLabels = remember(installedApps) { installedApps.associate { it.packageName to it.label } }
+    val visibleApps = remember(installedApps, appQuery) {
+        installedApps.filter {
+            appQuery.isBlank() || it.label.contains(appQuery, ignoreCase = true) ||
+                it.packageName.contains(appQuery, ignoreCase = true)
+        }
+    }
+    val conversations = remember(settings.knownNotificationConversations) {
+        settings.knownNotificationConversations.entries.sortedBy { it.value.lowercase() }
+    }
+
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
+    ) {
+        Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Text(stringResource(R.string.notification_modes_title), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            Text(stringResource(R.string.notification_modes_desc), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+
+            Row(
+                modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                listOf(
+                    R.string.notification_mode_priority,
+                    R.string.notification_mode_normal,
+                    R.string.notification_mode_none
+                ).forEachIndexed { index, label ->
+                    FilterChip(
+                        selected = selectedMode == index,
+                        onClick = { selectedMode = index },
+                        label = { Text(stringResource(label), maxLines = 1) }
+                    )
+                }
+            }
+
+            when (selectedMode) {
+                0 -> {
+                    Text(stringResource(R.string.notification_priority_desc), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(stringResource(R.string.notification_chats_title), style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold)
+                    if (conversations.isEmpty()) {
+                        Text(stringResource(R.string.notification_chats_empty), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    } else {
+                        conversations.forEach { (key, title) ->
+                            val packageName = com.agupta07505.smartisland.util.NotificationConversationRules.packageFromKey(key).orEmpty()
+                            ConversationRuleRow(
+                                title = title,
+                                subtitle = appLabels[packageName] ?: packageName,
+                                checked = key in settings.priorityNotificationConversations,
+                                leadingContent = {
+                                    NotificationRuleIcon(
+                                        packageName = packageName,
+                                        avatarBase64 = settings.notificationConversationAvatars[key]
+                                    )
+                                },
+                                onCheckedChange = { checked ->
+                                    scope.launch {
+                                        val priorities = if (checked) settings.priorityNotificationConversations + key else settings.priorityNotificationConversations - key
+                                        repository.setPriorityNotificationConversations(priorities)
+                                        if (checked) repository.setIgnoredNotificationConversations(settings.ignoredNotificationConversations - key)
+                                    }
+                                },
+                                secondaryContent = if (key in settings.priorityNotificationConversations) {
+                                    {
+                                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                                            Text(
+                                                text = stringResource(
+                                                    if (key in settings.notificationConversationSounds) R.string.notification_mp3_active
+                                                    else R.string.notification_mp3_hint
+                                                ),
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                modifier = Modifier.weight(1f)
+                                            )
+                                            FilledTonalButton(
+                                                onClick = {
+                                                    pendingSoundConversationKey = key
+                                                    mp3Picker.launch(arrayOf("audio/mpeg"))
+                                                },
+                                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+                                            ) {
+                                                Text(stringResource(if (key in settings.notificationConversationSounds) R.string.notification_mp3_change else R.string.notification_mp3_choose))
+                                            }
+                                            if (key in settings.notificationConversationSounds) {
+                                                IconButton(onClick = {
+                                                    settings.notificationConversationSounds[key]?.let { selectedUri ->
+                                                        runCatching {
+                                                            context.contentResolver.releasePersistableUriPermission(
+                                                                Uri.parse(selectedUri),
+                                                                Intent.FLAG_GRANT_READ_URI_PERMISSION
+                                                            )
+                                                        }
+                                                    }
+                                                    scope.launch { repository.setNotificationConversationSound(key, null) }
+                                                }) {
+                                                    Icon(Icons.Rounded.Close, contentDescription = stringResource(R.string.notification_mp3_remove))
+                                                }
+                                            }
+                                        }
+                                    }
+                                } else null
+                            )
+                        }
+                    }
+                }
+                1 -> {
+                    Text(stringResource(R.string.notification_normal_desc), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(stringResource(R.string.notification_normal_sound_desc), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text(
+                            stringResource(if (settings.normalNotificationSoundUri != null) R.string.notification_mp3_active else R.string.notification_normal_sound_none),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.weight(1f)
+                        )
+                        FilledTonalButton(onClick = {
+                            pendingNormalSound = true
+                            mp3Picker.launch(arrayOf("audio/mpeg"))
+                        }, contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)) {
+                            Text(stringResource(if (settings.normalNotificationSoundUri != null) R.string.notification_mp3_change else R.string.notification_mp3_choose))
+                        }
+                        if (settings.normalNotificationSoundUri != null) {
+                            IconButton(onClick = {
+                                runCatching {
+                                    context.contentResolver.releasePersistableUriPermission(
+                                        Uri.parse(settings.normalNotificationSoundUri), Intent.FLAG_GRANT_READ_URI_PERMISSION
+                                    )
+                                }
+                                scope.launch { repository.setNormalNotificationSound(null) }
+                            }) {
+                                Icon(Icons.Rounded.Close, contentDescription = stringResource(R.string.notification_mp3_remove))
+                            }
+                        }
+                    }
+                    val normalCount = installedApps.count { it.packageName !in settings.disabledNotificationPackages }
+                    Text(
+                        text = stringResource(R.string.notification_normal_count, normalCount),
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.primary,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    Column(
+                        modifier = Modifier.fillMaxWidth().heightIn(max = 320.dp).verticalScroll(rememberScrollState()),
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        installedApps.filter { it.packageName !in settings.disabledNotificationPackages }
+                            .sortedBy { it.label.lowercase() }
+                            .forEach { app ->
+                                Row(
+                                    modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                ) {
+                                    NotificationRuleIcon(packageName = app.packageName)
+                                    Column(Modifier.weight(1f)) {
+                                        Text(app.label, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                        Text(app.packageName, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                    }
+                                }
+                            }
+                    }
+                }
+                else -> {
+                    Text(stringResource(R.string.notification_none_desc), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(stringResource(R.string.notification_chats_title), style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold)
+                    conversations.forEach { (key, title) ->
+                        val packageName = com.agupta07505.smartisland.util.NotificationConversationRules.packageFromKey(key).orEmpty()
+                        ConversationRuleRow(
+                            title = title,
+                            subtitle = appLabels[packageName] ?: packageName,
+                            checked = key in settings.ignoredNotificationConversations,
+                            leadingContent = {
+                                NotificationRuleIcon(
+                                    packageName = packageName,
+                                    avatarBase64 = settings.notificationConversationAvatars[key]
+                                )
+                            },
+                            onCheckedChange = { checked ->
+                                scope.launch {
+                                    val ignored = if (checked) settings.ignoredNotificationConversations + key else settings.ignoredNotificationConversations - key
+                                    repository.setIgnoredNotificationConversations(ignored)
+                                    if (checked) repository.setPriorityNotificationConversations(settings.priorityNotificationConversations - key)
+                                }
+                            }
+                        )
+                    }
+                    Text(stringResource(R.string.notification_apps_title), style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold)
+                    OutlinedTextField(
+                        value = appQuery,
+                        onValueChange = { appQuery = it },
+                        singleLine = true,
+                        leadingIcon = { Icon(Icons.Rounded.Search, contentDescription = null) },
+                        label = { Text(stringResource(R.string.notification_apps_search)) },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    if (visibleApps.isEmpty()) {
+                        Text(stringResource(R.string.notification_apps_empty), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    } else {
+                        Column(
+                            modifier = Modifier.fillMaxWidth().heightIn(max = 320.dp).verticalScroll(rememberScrollState()),
+                            verticalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            visibleApps.forEach { app ->
+                                ConversationRuleRow(
+                                    title = app.label,
+                                    subtitle = app.packageName,
+                                    checked = app.packageName in settings.disabledNotificationPackages,
+                                    leadingContent = { NotificationRuleIcon(packageName = app.packageName) },
+                                    onCheckedChange = { checked ->
+                                        scope.launch {
+                                            val disabled = if (checked) settings.disabledNotificationPackages + app.packageName else settings.disabledNotificationPackages - app.packageName
+                                            repository.setDisabledNotificationPackages(disabled)
+                                        }
+                                    }
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ConversationRuleRow(
+    title: String,
+    subtitle: String,
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit,
+    leadingContent: (@Composable () -> Unit)? = null,
+    secondaryContent: (@Composable () -> Unit)? = null
+) {
+    Column(modifier = Modifier.fillMaxWidth().padding(vertical = 3.dp)) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            leadingContent?.invoke()
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text(title, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(subtitle, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+            Switch(checked = checked, onCheckedChange = onCheckedChange)
+        }
+        if (checked && secondaryContent != null) {
+            Box(modifier = Modifier.fillMaxWidth().padding(top = 4.dp), contentAlignment = Alignment.CenterEnd) {
+                secondaryContent()
+            }
+        }
+    }
+}
+
+@Composable
+private fun NotificationRuleIcon(packageName: String, avatarBase64: String? = null) {
+    val avatar = rememberConversationAvatar(avatarBase64)
+    val appIcon = rememberAppIcon(packageName)
+    Box(
+        modifier = Modifier.size(42.dp).clip(CircleShape).background(MaterialTheme.colorScheme.surfaceVariant),
+        contentAlignment = Alignment.Center
+    ) {
+        val icon = avatar ?: appIcon
+        if (icon != null) {
+            Image(bitmap = icon, contentDescription = null, modifier = Modifier.matchParentSize(), contentScale = ContentScale.Crop)
+        } else {
+            Icon(Icons.Rounded.Notifications, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(20.dp))
+        }
+    }
+}
+
+private val ConversationAvatarCache = LruCache<String, ImageBitmap>(100)
+
+@Composable
+private fun rememberConversationAvatar(encoded: String?): ImageBitmap? {
+    if (encoded.isNullOrBlank()) return null
+    val key = remember(encoded) { encoded.hashCode().toString() }
+    var bitmap by remember(key) { mutableStateOf(ConversationAvatarCache.get(key)) }
+    LaunchedEffect(key, encoded) {
+        if (bitmap == null) {
+            val decoded = withContext(Dispatchers.IO) {
+                runCatching {
+                    val bytes = Base64.decode(encoded, Base64.DEFAULT)
+                    BitmapFactory.decodeByteArray(bytes, 0, bytes.size)?.asImageBitmap()
+                }.getOrNull()
+            }
+            if (decoded != null) {
+                ConversationAvatarCache.put(key, decoded)
+                bitmap = decoded
+            }
+        }
+    }
+    return bitmap
 }
 
 @Composable

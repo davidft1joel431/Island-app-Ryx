@@ -36,6 +36,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -54,6 +55,8 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
@@ -122,12 +125,14 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import kotlin.math.abs
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
@@ -339,6 +344,7 @@ fun SmartIslandHomeScreen(
 
     var selectedTab by rememberSaveable { mutableStateOf(StudioTab.Studio) }
     var orientationTab by rememberSaveable { mutableStateOf(OrientationTab.Portrait) }
+    var activeDesignMenu by rememberSaveable { mutableStateOf<String?>(null) }
     var activeDetailSection by rememberSaveable { mutableStateOf<FeatureDetailSection?>(null) }
     var transitionDirection by rememberSaveable { mutableIntStateOf(1) }
 
@@ -382,6 +388,14 @@ fun SmartIslandHomeScreen(
     }
 
     val canEnable = overlayGranted && notificationGranted
+    val swipeThresholdPx = with(LocalDensity.current) { 72.dp.toPx() }
+
+    fun selectStudioTab(tab: StudioTab) {
+        if (tab == selectedTab) return
+        transitionDirection = if (tab.ordinal > selectedTab.ordinal) 1 else -1
+        selectedTab = tab
+        if (tab != StudioTab.Position) activeDesignMenu = null
+    }
 
     // The island's settings button: open the App Shortcuts configuration, then forget the request.
     LaunchedEffect(openSection) {
@@ -406,8 +420,7 @@ fun SmartIslandHomeScreen(
                 StudioBottomNavigationBar(
                     selectedTab = selectedTab,
                     onTabSelected = { tab ->
-                        transitionDirection = if (tab.ordinal > selectedTab.ordinal) 1 else -1
-                        selectedTab = tab
+                        selectStudioTab(tab)
                     }
                 )
             }
@@ -437,6 +450,21 @@ fun SmartIslandHomeScreen(
                         .fillMaxSize()
                         .background(MaterialTheme.colorScheme.background)
                         .verticalScroll(rememberScrollState())
+                    .pointerInput(selectedTab) {
+                        var dragDistance = 0f
+                        detectHorizontalDragGestures(
+                            onDragStart = { dragDistance = 0f },
+                            onHorizontalDrag = { _, amount -> dragDistance += amount },
+                            onDragEnd = {
+                                if (abs(dragDistance) >= swipeThresholdPx) {
+                                    val nextIndex = (selectedTab.ordinal + if (dragDistance < 0) 1 else -1)
+                                        .coerceIn(StudioTab.entries.indices)
+                                    selectStudioTab(StudioTab.entries[nextIndex])
+                                }
+                                dragDistance = 0f
+                            }
+                        )
+                    }
                         .padding(
                             start = horizontalPad,
                             end = horizontalPad,
@@ -453,39 +481,37 @@ fun SmartIslandHomeScreen(
                             activeDetailSection = FeatureDetailSection.PermissionsCenter
                         }
                     )
+                    StudioPageControls(
+                        selectedTab = selectedTab,
+                        onPrevious = { selectStudioTab(StudioTab.entries[(selectedTab.ordinal - 1).coerceAtLeast(0)]) },
+                        onNext = { selectStudioTab(StudioTab.entries[(selectedTab.ordinal + 1).coerceAtMost(StudioTab.entries.lastIndex)]) }
+                    )
 
                     when (selectedTab) {
                         StudioTab.Studio -> {
-                            MasterPowerCard(
+                            HomeMinimalMenu(
                                 enabled = settings.enabled,
                                 canEnable = canEnable,
-                                overlayGranted = overlayGranted,
-                                notificationGranted = notificationGranted,
-                                batteryIgnored = batteryIgnored,
-                                onCheckedChange = { turnOn ->
+                                onEnabledChange = { turnOn ->
                                     if (turnOn) {
                                         SystemServiceRecovery.requestRecovery(context)
                                     }
                                     scope.launch { resolvedRepository.setEnabled(turnOn) }
                                 },
-                                onSetupPermissionsClick = {
+                                onOpenLayout = { activeDesignMenu = null; selectStudioTab(StudioTab.Position) },
+                                onOpenDemo = { selectStudioTab(StudioTab.Demo) },
+                                onOpenSettings = { selectStudioTab(StudioTab.Settings) },
+                                onOpenHistory = {
+                                    transitionDirection = 1
+                                    activeDetailSection = FeatureDetailSection.NotificationHistory
+                                },
+                                onOpenGestures = {
+                                    transitionDirection = 1
+                                    activeDetailSection = FeatureDetailSection.GesturesGuide
+                                },
+                                onOpenPermissions = {
                                     transitionDirection = 1
                                     activeDetailSection = FeatureDetailSection.PermissionsCenter
-                                }
-                            )
-
-                            // Portrait / Landscape switch, then event toggles for that profile
-                            OrientationTabs(
-                                selected = orientationTab,
-                                onSelected = { orientationTab = it }
-                            )
-                            EventTogglesSection(
-                                settings = settings,
-                                repository = resolvedRepository,
-                                landscape = orientationTab == OrientationTab.Landscape,
-                                onOpenFaceIdSettings = {
-                                    transitionDirection = 1
-                                    activeDetailSection = FeatureDetailSection.FaceIdSettings
                                 }
                             )
                         }
@@ -495,41 +521,69 @@ fun SmartIslandHomeScreen(
                                 selected = orientationTab,
                                 onSelected = { orientationTab = it }
                             )
-                            run {
-                                if (orientationTab == OrientationTab.Landscape) {
-                                    LandscapeSection(
-                                        settings = settings,
-                                        repository = resolvedRepository
-                                    )
-                                } else {
-                                    PositionsSection(
-                                        settings = settings,
-                                        repository = resolvedRepository,
-                                        onNavigateToBackup = {
+                            if (activeDesignMenu == null) {
+                                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                                    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                                        HomeMenuTile(Modifier.weight(1f), stringResource(R.string.sec_positions), stringResource(R.string.sec_positions_desc), Icons.Rounded.Tune, BadgeGreen) { activeDesignMenu = "position" }
+                                        HomeMenuTile(Modifier.weight(1f), stringResource(R.string.design_animation_title), stringResource(R.string.anim_speed_desc), Icons.Rounded.Timer, BadgeAmber) { activeDesignMenu = "animation" }
+                                    }
+                                    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                                        HomeMenuTile(Modifier.weight(1f), stringResource(R.string.design_merge_title), stringResource(R.string.merge_style_desc), Icons.Rounded.Palette, BadgeViolet) { activeDesignMenu = "merge" }
+                                        HomeMenuTile(Modifier.weight(1f), stringResource(R.string.idle_widgets_title), stringResource(R.string.card_idle_widgets_subtitle), Icons.Rounded.Widgets, BadgeSky) { activeDesignMenu = "widgets" }
+                                    }
+                                    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                                        HomeMenuTile(Modifier.weight(1f), stringResource(R.string.design_events_title), stringResource(R.string.design_events_summary), Icons.Rounded.Notifications, BadgePink) { activeDesignMenu = "events" }
+                                        HomeMenuTile(Modifier.weight(1f), stringResource(R.string.detail_title_backup_restore), stringResource(R.string.card_backup_restore_desc), Icons.Rounded.SettingsBackupRestore, BadgeIndigo) {
                                             transitionDirection = 1
                                             activeDetailSection = FeatureDetailSection.BackupRestore
+                                        }
+                                    }
+                                }
+                            } else {
+                                val pageTitle = when (activeDesignMenu) {
+                                    "position" -> stringResource(R.string.sec_positions)
+                                    "animation" -> stringResource(R.string.design_animation_title)
+                                    "merge" -> stringResource(R.string.design_merge_title)
+                                    "widgets" -> stringResource(R.string.idle_widgets_title)
+                                    else -> stringResource(R.string.design_events_title)
+                                }
+                                OutlinedButton(onClick = { activeDesignMenu = null }, modifier = Modifier.fillMaxWidth()) {
+                                    Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = null, modifier = Modifier.size(18.dp))
+                                    Spacer(Modifier.width(8.dp))
+                                    Text(stringResource(R.string.design_back))
+                                }
+                                Text(pageTitle, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                                when (activeDesignMenu) {
+                                    "position" -> if (orientationTab == OrientationTab.Landscape) {
+                                        LandscapeSection(settings = settings, repository = resolvedRepository)
+                                    } else {
+                                        PositionsSection(
+                                            settings = settings,
+                                            repository = resolvedRepository,
+                                            onNavigateToBackup = {
+                                                activeDesignMenu = null
+                                                transitionDirection = 1
+                                                activeDetailSection = FeatureDetailSection.BackupRestore
+                                            }
+                                        )
+                                    }
+                                    "animation" -> AnimationSpeedSection(settings, resolvedRepository, orientationTab == OrientationTab.Landscape)
+                                    "merge" -> MergeStyleSection(settings, resolvedRepository, orientationTab == OrientationTab.Landscape)
+                                    "widgets" -> IdleWidgetsSection(settings, resolvedRepository, onOpenSettings = {
+                                        transitionDirection = 1
+                                        activeDetailSection = FeatureDetailSection.IdleWidgets
+                                    })
+                                    "events" -> EventTogglesSection(
+                                        settings = settings,
+                                        repository = resolvedRepository,
+                                        landscape = orientationTab == OrientationTab.Landscape,
+                                        onOpenFaceIdSettings = {
+                                            transitionDirection = 1
+                                            activeDetailSection = FeatureDetailSection.FaceIdSettings
                                         }
                                     )
                                 }
                             }
-                            AnimationSpeedSection(
-                                settings = settings,
-                                repository = resolvedRepository,
-                                landscape = orientationTab == OrientationTab.Landscape
-                            )
-                            MergeStyleSection(
-                                settings = settings,
-                                repository = resolvedRepository,
-                                landscape = orientationTab == OrientationTab.Landscape
-                            )
-                            IdleWidgetsSection(
-                                settings = settings,
-                                repository = resolvedRepository,
-                                onOpenSettings = {
-                                    transitionDirection = 1
-                                    activeDetailSection = FeatureDetailSection.IdleWidgets
-                                }
-                            )
                         }
 
                         StudioTab.Demo -> {
@@ -665,7 +719,7 @@ private fun StudioTopHeader(
             if (appIcon != null) {
                 Image(
                     bitmap = appIcon,
-                    contentDescription = "Smart Island Logo",
+                    contentDescription = "Logotipo de Ryx Isla",
                     modifier = Modifier
                         .size(42.dp)
                         .clip(RoundedCornerShape(12.dp))
@@ -735,6 +789,182 @@ private fun StudioTopHeader(
                     fontWeight = FontWeight.Bold
                 )
             }
+        }
+    }
+}
+
+@Composable
+private fun HomeMinimalMenu(
+    enabled: Boolean,
+    canEnable: Boolean,
+    onEnabledChange: (Boolean) -> Unit,
+    onOpenLayout: () -> Unit,
+    onOpenDemo: () -> Unit,
+    onOpenSettings: () -> Unit,
+    onOpenHistory: () -> Unit,
+    onOpenGestures: () -> Unit,
+    onOpenPermissions: () -> Unit
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Card(
+            modifier = Modifier.fillMaxWidth().animateContentSize(),
+            shape = RoundedCornerShape(24.dp),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f)),
+            elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 15.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Box(
+                    modifier = Modifier.size(46.dp).clip(RoundedCornerShape(15.dp))
+                        .background(Brush.linearGradient(listOf(Color(0xFF1F7048), Color(0xFF76A943)))),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(Icons.Rounded.FlashOn, contentDescription = null, tint = Color(0xFFFFD65A), modifier = Modifier.size(25.dp))
+                }
+                Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Text(stringResource(R.string.home_island_title), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                    Text(
+                        stringResource(if (canEnable) if (enabled) R.string.status_active else R.string.status_ready else R.string.status_setup_needed),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = if (canEnable && enabled) Color(0xFF218653) else MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                Switch(checked = enabled, enabled = canEnable || enabled, onCheckedChange = onEnabledChange)
+            }
+        }
+
+        Text(
+            text = stringResource(R.string.home_menu_title),
+            style = MaterialTheme.typography.titleSmall,
+            fontWeight = FontWeight.Bold,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(start = 3.dp, top = 2.dp)
+        )
+        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                HomeMenuTile(
+                    modifier = Modifier.weight(1f),
+                    title = stringResource(R.string.home_layout_title),
+                    subtitle = stringResource(R.string.home_layout_summary),
+                    icon = Icons.Rounded.Tune,
+                    iconColor = BadgeGreen,
+                    onClick = onOpenLayout
+                )
+                HomeMenuTile(
+                    modifier = Modifier.weight(1f),
+                    title = stringResource(R.string.home_preview_title),
+                    subtitle = stringResource(R.string.home_preview_summary),
+                    icon = Icons.Rounded.Science,
+                    iconColor = BadgeViolet,
+                    onClick = onOpenDemo
+                )
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                HomeMenuTile(
+                    modifier = Modifier.weight(1f),
+                    title = stringResource(R.string.home_history_title),
+                    subtitle = stringResource(R.string.home_history_summary),
+                    icon = Icons.Rounded.History,
+                    iconColor = BadgeIndigo,
+                    onClick = onOpenHistory
+                )
+                HomeMenuTile(
+                    modifier = Modifier.weight(1f),
+                    title = stringResource(R.string.home_gestures_title),
+                    subtitle = stringResource(R.string.home_gestures_summary),
+                    icon = Icons.Rounded.Gesture,
+                    iconColor = BadgePink,
+                    onClick = onOpenGestures
+                )
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                HomeMenuTile(
+                    modifier = Modifier.weight(1f),
+                    title = stringResource(R.string.home_settings_title),
+                    subtitle = stringResource(R.string.home_settings_summary),
+                    icon = Icons.Rounded.Settings,
+                    iconColor = MaterialTheme.colorScheme.primary,
+                    onClick = onOpenSettings
+                )
+                HomeMenuTile(
+                    modifier = Modifier.weight(1f),
+                    title = stringResource(R.string.home_permissions_title),
+                    subtitle = stringResource(if (canEnable) R.string.home_permissions_ready else R.string.home_permissions_summary),
+                    icon = Icons.Rounded.Shield,
+                    iconColor = if (canEnable) BadgeGreen else Color(0xFFE89531),
+                    onClick = onOpenPermissions
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun HomeMenuTile(
+    modifier: Modifier = Modifier,
+    title: String,
+    subtitle: String,
+    icon: ImageVector,
+    iconColor: Color,
+    onClick: () -> Unit
+) {
+    val shape = RoundedCornerShape(24.dp)
+    Box(
+        modifier = modifier
+            .aspectRatio(1f)
+            .clip(shape)
+            .background(
+                Brush.linearGradient(
+                    colors = listOf(
+                        iconColor.copy(alpha = 0.20f),
+                        MaterialTheme.colorScheme.surface.copy(alpha = 0.97f),
+                        MaterialTheme.colorScheme.surface
+                    )
+                )
+            )
+            .glassEdge(shape, glass = LocalLiquidGlass.current, dark = LocalGlassDark.current)
+            .border(1.dp, iconColor.copy(alpha = 0.24f), shape)
+            .bounceClick(onClick)
+            .padding(16.dp)
+    ) {
+        Box(
+            modifier = Modifier
+                .size(54.dp)
+                .clip(RoundedCornerShape(18.dp))
+                .background(iconColor.copy(alpha = 0.16f)),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(icon, contentDescription = null, tint = iconColor, modifier = Modifier.size(30.dp))
+        }
+        Icon(
+            imageVector = Icons.AutoMirrored.Rounded.KeyboardArrowRight,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.55f),
+            modifier = Modifier.align(Alignment.TopEnd).size(22.dp)
+        )
+        Column(
+            modifier = Modifier.align(Alignment.BottomStart),
+            verticalArrangement = Arrangement.spacedBy(5.dp)
+        ) {
+            Text(
+                title,
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onSurface,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis
+            )
+            Text(
+                subtitle,
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis
+            )
         }
     }
 }
@@ -1220,6 +1450,44 @@ private fun FeatureStudioNavigationCard(
 }
 
 @Composable
+private fun StudioPageControls(
+    selectedTab: StudioTab,
+    onPrevious: () -> Unit,
+    onNext: () -> Unit
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.Center
+    ) {
+        IconButton(onClick = onPrevious, enabled = selectedTab != StudioTab.entries.first()) {
+            Icon(
+                Icons.AutoMirrored.Rounded.ArrowBack,
+                contentDescription = stringResource(R.string.studio_page_previous),
+                tint = if (selectedTab == StudioTab.entries.first()) MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.35f) else MaterialTheme.colorScheme.primary
+            )
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(7.dp), verticalAlignment = Alignment.CenterVertically) {
+            StudioTab.entries.forEach { tab ->
+                Box(
+                    modifier = Modifier
+                        .size(width = if (tab == selectedTab) 22.dp else 7.dp, height = 7.dp)
+                        .clip(CircleShape)
+                        .background(if (tab == selectedTab) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant)
+                )
+            }
+        }
+        IconButton(onClick = onNext, enabled = selectedTab != StudioTab.entries.last()) {
+            Icon(
+                Icons.AutoMirrored.Rounded.KeyboardArrowRight,
+                contentDescription = stringResource(R.string.studio_page_next),
+                tint = if (selectedTab == StudioTab.entries.last()) MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.35f) else MaterialTheme.colorScheme.primary
+            )
+        }
+    }
+}
+
+@Composable
 private fun StudioBottomNavigationBar(
     selectedTab: StudioTab,
     onTabSelected: (StudioTab) -> Unit
@@ -1539,7 +1807,7 @@ private fun WelcomeDialog(
                 if (appIcon != null) {
                     Image(
                         bitmap = appIcon,
-                        contentDescription = "Smart Island Logo",
+                        contentDescription = "Logotipo de Ryx Isla",
                         modifier = Modifier
                             .size(68.dp)
                             .clip(RoundedCornerShape(18.dp))
@@ -1642,7 +1910,7 @@ private fun WelcomeDialog(
                 }
 
                 TextButton(onClick = onTakeTour, modifier = Modifier.fillMaxWidth()) {
-                    Text("Take a quick tour of the gestures", fontWeight = FontWeight.SemiBold)
+                    Text("Ver una guía rápida de los gestos", fontWeight = FontWeight.SemiBold)
                 }
             }
         }

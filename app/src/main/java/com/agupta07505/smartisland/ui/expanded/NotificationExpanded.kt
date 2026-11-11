@@ -44,6 +44,8 @@ import androidx.compose.material.icons.automirrored.rounded.Send
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.KeyboardArrowDown
 import androidx.compose.material.icons.rounded.KeyboardArrowUp
+import androidx.compose.material.icons.rounded.MusicNote
+import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import com.agupta07505.smartisland.ui.IslandText as Text
@@ -596,16 +598,23 @@ private fun MediaThumbnail(media: com.agupta07505.smartisland.model.Notification
             .background(LocalIslandPalette.current.tint(0.08f))
             .then(if (onExpand != null) Modifier.bounceClick(onExpand) else Modifier)
     ) {
-        NotificationMediaView(
-            media = media,
-            modifier = Modifier.fillMaxSize(),
-            contentScale = if (media.isSticker) {
-                androidx.compose.ui.layout.ContentScale.Fit
-            } else {
-                androidx.compose.ui.layout.ContentScale.Crop
-            },
-            maxSidePx = 192
-        )
+        if (media.kind == com.agupta07505.smartisland.model.NotificationMediaKind.IMAGE) {
+            NotificationMediaView(
+                media = media,
+                modifier = Modifier.fillMaxSize(),
+                contentScale = if (media.isSticker) androidx.compose.ui.layout.ContentScale.Fit else androidx.compose.ui.layout.ContentScale.Crop,
+                maxSidePx = 192
+            )
+        } else {
+            Box(Modifier.fillMaxSize().background(Color(0xFF202020)), contentAlignment = Alignment.Center) {
+                Icon(
+                    imageVector = if (media.kind == com.agupta07505.smartisland.model.NotificationMediaKind.AUDIO) Icons.Rounded.MusicNote else Icons.Rounded.PlayArrow,
+                    contentDescription = null,
+                    tint = Color.White,
+                    modifier = Modifier.size(28.dp)
+                )
+            }
+        }
     }
 }
 

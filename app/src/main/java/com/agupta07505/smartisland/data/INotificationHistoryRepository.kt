@@ -12,6 +12,7 @@ import kotlinx.coroutines.flow.StateFlow
 interface INotificationHistoryRepository {
     val history: StateFlow<List<NotificationHistoryEntry>>
     suspend fun saveEntry(entry: NotificationHistoryEntry)
+    suspend fun replaceAll(entries: List<NotificationHistoryEntry>): Boolean
     suspend fun markAsOpened(notificationKey: String)
     suspend fun deleteEntry(id: Long)
     suspend fun deleteByPackage(packageName: String): Int

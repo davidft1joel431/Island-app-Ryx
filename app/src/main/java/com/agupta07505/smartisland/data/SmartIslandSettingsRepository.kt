@@ -21,6 +21,8 @@ import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.core.stringSetPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import java.io.IOException
+import org.json.JSONArray
+import org.json.JSONObject
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.catch
@@ -79,6 +81,12 @@ class SmartIslandSettingsRepository(private val context: Context) {
         val NavigationEnabled = booleanPreferencesKey("navigation_enabled")
         val DisabledNotificationPackages = stringSetPreferencesKey("disabled_notification_packages")
         val DisabledSoundPackages = stringSetPreferencesKey("disabled_sound_packages")
+        val PriorityNotificationConversations = stringSetPreferencesKey("priority_notification_conversations")
+        val IgnoredNotificationConversations = stringSetPreferencesKey("ignored_notification_conversations")
+        val KnownNotificationConversations = stringPreferencesKey("known_notification_conversations")
+        val NotificationConversationAvatars = stringPreferencesKey("notification_conversation_avatars")
+        val NotificationConversationSounds = stringPreferencesKey("notification_conversation_sounds")
+        val NormalNotificationSoundUri = stringPreferencesKey("normal_notification_sound_uri")
         val DisabledEvents = stringSetPreferencesKey("disabled_events")
         val HideWhenIdle = booleanPreferencesKey("hide_when_idle")
         val AutoHidePill = booleanPreferencesKey("auto_hide_pill")
@@ -371,6 +379,13 @@ class SmartIslandSettingsRepository(private val context: Context) {
                     ?.filter { pkg -> pkg.isNotBlank() && pkg.length <= MAX_PACKAGE_NAME_LENGTH }
                     ?.toSet()
                     ?: defaults.disabledSoundPackages,
+                priorityNotificationConversations = prefs[Keys.PriorityNotificationConversations] ?: emptySet(),
+                ignoredNotificationConversations = prefs[Keys.IgnoredNotificationConversations] ?: emptySet(),
+                knownNotificationConversations = decodeKnownConversations(prefs[Keys.KnownNotificationConversations]),
+                notificationConversationAvatars = decodeNotificationConversationAvatars(prefs[Keys.NotificationConversationAvatars]),
+                notificationConversationSounds = decodeNotificationConversationSounds(prefs[Keys.NotificationConversationSounds]),
+                normalNotificationSoundUri = prefs[Keys.NormalNotificationSoundUri]
+                    ?.takeIf { it.startsWith("content://") && it.length <= 2048 },
                 disabledEvents = prefs[Keys.DisabledEvents]
                     ?.filter { it.isNotBlank() && it.length <= 64 }
                     ?.toSet()
@@ -878,6 +893,43 @@ class SmartIslandSettingsRepository(private val context: Context) {
             .asSequence()
             .filter { pkg -> pkg.isNotBlank() && pkg.length <= MAX_PACKAGE_NAME_LENGTH }
             .toSet()
+    }
+
+    suspend fun setPriorityNotificationConversations(value: Set<String>) = editSafely {
+        it[Keys.PriorityNotificationConversations] = value.filter { key -> key.length <= 255 }.toSet()
+    }
+
+    suspend fun setIgnoredNotificationConversations(value: Set<String>) = editSafely {
+        it[Keys.IgnoredNotificationConversations] = value.filter { key -> key.length <= 255 }.toSet()
+    }
+
+    /** Records only the conversation name shown by Android, never its message text. */
+    suspend fun rememberNotificationConversation(key: String, title: String, avatarBase64: String? = null) = editSafely { prefs ->
+        if (key.isBlank() || key.length > 255 || title.isBlank()) return@editSafely
+        val known = decodeKnownConversations(prefs[Keys.KnownNotificationConversations]).toMutableMap()
+        known.remove(key)
+        known[key] = title.take(120)
+        while (known.size > 100) known.remove(known.keys.first())
+        prefs[Keys.KnownNotificationConversations] = encodeKnownConversations(known)
+        if (!avatarBase64.isNullOrBlank() && avatarBase64.length <= 7000) {
+            val avatars = decodeNotificationConversationAvatars(prefs[Keys.NotificationConversationAvatars]).toMutableMap()
+            avatars.remove(key)
+            avatars[key] = avatarBase64
+            while (avatars.size > 100) avatars.remove(avatars.keys.first())
+            prefs[Keys.NotificationConversationAvatars] = encodeNotificationConversationAvatars(avatars)
+        }
+    }
+
+    suspend fun setNotificationConversationSound(key: String, uri: String?) = editSafely { prefs ->
+        if (key.isBlank() || key.length > 255) return@editSafely
+        val sounds = decodeNotificationConversationSounds(prefs[Keys.NotificationConversationSounds]).toMutableMap()
+        if (uri.isNullOrBlank()) sounds.remove(key) else sounds[key] = uri.take(2048)
+        prefs[Keys.NotificationConversationSounds] = encodeNotificationConversationSounds(sounds)
+    }
+
+    suspend fun setNormalNotificationSound(uri: String?) = editSafely { prefs ->
+        if (uri.isNullOrBlank()) prefs.remove(Keys.NormalNotificationSoundUri)
+        else if (uri.startsWith("content://") && uri.length <= 2048) prefs[Keys.NormalNotificationSoundUri] = uri
     }
     suspend fun setHideWhenIdle(value: Boolean) = editSafely {
         it[Keys.HideWhenIdle] = value
@@ -1458,6 +1510,13 @@ class SmartIslandSettingsRepository(private val context: Context) {
             .filter { it.isNotBlank() && it.length <= MAX_PACKAGE_NAME_LENGTH }
             .toSet()
         prefs[Keys.DisabledSoundPackages] = settings.disabledSoundPackages
+        prefs[Keys.PriorityNotificationConversations] = settings.priorityNotificationConversations
+        prefs[Keys.IgnoredNotificationConversations] = settings.ignoredNotificationConversations
+        prefs[Keys.KnownNotificationConversations] = encodeKnownConversations(settings.knownNotificationConversations)
+        prefs[Keys.NotificationConversationAvatars] = encodeNotificationConversationAvatars(settings.notificationConversationAvatars)
+        prefs[Keys.NotificationConversationSounds] = encodeNotificationConversationSounds(settings.notificationConversationSounds)
+        if (settings.normalNotificationSoundUri.isNullOrBlank()) prefs.remove(Keys.NormalNotificationSoundUri)
+        else prefs[Keys.NormalNotificationSoundUri] = settings.normalNotificationSoundUri.take(2048)
         prefs[Keys.DisabledEvents] = settings.disabledEvents
             .asSequence()
             .filter { it.isNotBlank() && it.length <= MAX_PACKAGE_NAME_LENGTH }
@@ -1713,6 +1772,60 @@ class SmartIslandSettingsRepository(private val context: Context) {
             Log.e(TAG, "Unable to persist settings", error)
         }
     }
+
+    private fun decodeKnownConversations(raw: String?): Map<String, String> = runCatching {
+        val array = JSONArray(raw ?: return emptyMap())
+        buildMap {
+            for (index in 0 until array.length()) {
+                val item = array.optJSONObject(index) ?: continue
+                val key = item.optString("key").takeIf { it.isNotBlank() && it.length <= 255 } ?: continue
+                val title = item.optString("title").takeIf { it.isNotBlank() } ?: continue
+                put(key, title.take(120))
+            }
+        }
+    }.getOrDefault(emptyMap())
+
+    private fun encodeKnownConversations(values: Map<String, String>): String = JSONArray().apply {
+        values.entries.toList().takeLast(100).forEach { (key, title) ->
+            put(JSONObject().put("key", key.take(255)).put("title", title.take(120)))
+        }
+    }.toString()
+
+    private fun decodeNotificationConversationAvatars(raw: String?): Map<String, String> = runCatching {
+        val array = JSONArray(raw ?: return emptyMap())
+        buildMap {
+            for (index in 0 until array.length()) {
+                val item = array.optJSONObject(index) ?: continue
+                val key = item.optString("key").takeIf { it.isNotBlank() && it.length <= 255 } ?: continue
+                val avatar = item.optString("avatar").takeIf { it.length in 1..7000 } ?: continue
+                put(key, avatar)
+            }
+        }
+    }.getOrDefault(emptyMap())
+
+    private fun encodeNotificationConversationAvatars(values: Map<String, String>): String = JSONArray().apply {
+        values.entries.toList().takeLast(100).forEach { (key, avatar) ->
+            if (avatar.length <= 7000) put(JSONObject().put("key", key.take(255)).put("avatar", avatar))
+        }
+    }.toString()
+
+    private fun decodeNotificationConversationSounds(raw: String?): Map<String, String> = runCatching {
+        val array = JSONArray(raw ?: return emptyMap())
+        buildMap {
+            for (index in 0 until array.length()) {
+                val item = array.optJSONObject(index) ?: continue
+                val key = item.optString("key").takeIf { it.isNotBlank() && it.length <= 255 } ?: continue
+                val uri = item.optString("uri").takeIf { it.startsWith("content://") && it.length <= 2048 } ?: continue
+                put(key, uri)
+            }
+        }
+    }.getOrDefault(emptyMap())
+
+    private fun encodeNotificationConversationSounds(values: Map<String, String>): String = JSONArray().apply {
+        values.entries.toList().takeLast(100).forEach { (key, uri) ->
+            put(JSONObject().put("key", key.take(255)).put("uri", uri.take(2048)))
+        }
+    }.toString()
 
     private fun validDimension(
         value: Float?,

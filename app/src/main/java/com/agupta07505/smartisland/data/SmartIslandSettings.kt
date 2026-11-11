@@ -62,6 +62,18 @@ data class SmartIslandSettings(
     val navigationEnabled: Boolean = true,
     val disabledNotificationPackages: Set<String> = emptySet(),
     val disabledSoundPackages: Set<String> = emptySet(),
+    /** Conversation keys the user marked as priority in Ryx Isla. */
+    val priorityNotificationConversations: Set<String> = emptySet(),
+    /** Conversation keys hidden and silenced on the island; Android's original alert is controlled by its source channel. */
+    val ignoredNotificationConversations: Set<String> = emptySet(),
+    /** Recently seen MessagingStyle conversations: stable key to the name exposed by the notification. */
+    val knownNotificationConversations: Map<String, String> = emptyMap(),
+    /** Small cached sender avatars from MessagingStyle notifications, keyed by conversation. */
+    val notificationConversationAvatars: Map<String, String> = emptyMap(),
+    /** Persisted user-selected audio document URIs for priority conversations. */
+    val notificationConversationSounds: Map<String, String> = emptyMap(),
+    /** One shared user-selected sound for all non-priority island notifications. */
+    val normalNotificationSoundUri: String? = null,
     val disabledEvents: Set<String> = emptySet(),
     val hideWhenIdle: Boolean = false,
     val autoHidePill: Boolean = false,
@@ -474,6 +486,31 @@ data class SmartIslandSettings(
         val disabledSoundArray = JSONArray()
         disabledSoundPackages.forEach { disabledSoundArray.put(it) }
         settingsObj.put("disabledSoundPackages", disabledSoundArray)
+
+        settingsObj.put("priorityNotificationConversations", JSONArray().also { array ->
+            priorityNotificationConversations.forEach { array.put(it) }
+        })
+        settingsObj.put("ignoredNotificationConversations", JSONArray().also { array ->
+            ignoredNotificationConversations.forEach { array.put(it) }
+        })
+        settingsObj.put("knownNotificationConversations", JSONArray().also { array ->
+            knownNotificationConversations.entries.toList().takeLast(100).forEach { (key, title) ->
+                array.put(JSONObject().put("key", key).put("title", title))
+            }
+        })
+        settingsObj.put("notificationConversationAvatars", JSONArray().also { array ->
+            notificationConversationAvatars.entries.toList().takeLast(100).forEach { (key, avatar) ->
+                array.put(JSONObject().put("key", key).put("avatar", avatar))
+            }
+        })
+        settingsObj.put("notificationConversationSounds", JSONArray().also { array ->
+            notificationConversationSounds.entries.toList().takeLast(100).forEach { (key, uri) ->
+                array.put(JSONObject().put("key", key).put("uri", uri))
+            }
+        })
+        normalNotificationSoundUri?.takeIf { it.startsWith("content://") && it.length <= 2048 }?.let {
+            settingsObj.put("normalNotificationSoundUri", it)
+        }
 
         val disabledEventsArray = JSONArray()
         disabledEvents.forEach { disabledEventsArray.put(it) }
@@ -916,6 +953,41 @@ data class SmartIslandSettings(
                 navigationEnabled = obj.optBoolean("navigationEnabled", defaults.navigationEnabled),
                 disabledNotificationPackages = safeStringSet("disabledNotificationPackages", defaults.disabledNotificationPackages),
                 disabledSoundPackages = safeStringSet("disabledSoundPackages", defaults.disabledSoundPackages),
+                priorityNotificationConversations = safeStringSet("priorityNotificationConversations", defaults.priorityNotificationConversations),
+                ignoredNotificationConversations = safeStringSet("ignoredNotificationConversations", defaults.ignoredNotificationConversations),
+                knownNotificationConversations = obj.optJSONArray("knownNotificationConversations")?.let { array ->
+                    buildMap {
+                        for (index in 0 until array.length()) {
+                            val item = array.optJSONObject(index) ?: continue
+                            val key = item.optString("key").takeIf { it.isNotBlank() && it.length <= 255 } ?: continue
+                            val title = item.optString("title").takeIf { it.isNotBlank() } ?: continue
+                            put(key, title.take(120))
+                        }
+                    }
+                } ?: defaults.knownNotificationConversations,
+                notificationConversationAvatars = obj.optJSONArray("notificationConversationAvatars")?.let { array ->
+                    buildMap {
+                        for (index in 0 until array.length()) {
+                            val item = array.optJSONObject(index) ?: continue
+                            val key = item.optString("key").takeIf { it.isNotBlank() && it.length <= 255 } ?: continue
+                            val avatar = item.optString("avatar").takeIf { it.length in 1..7000 } ?: continue
+                            put(key, avatar)
+                        }
+                    }
+                } ?: defaults.notificationConversationAvatars,
+                notificationConversationSounds = obj.optJSONArray("notificationConversationSounds")?.let { array ->
+                    buildMap {
+                        for (index in 0 until array.length()) {
+                            val item = array.optJSONObject(index) ?: continue
+                            val key = item.optString("key").takeIf { it.isNotBlank() && it.length <= 255 } ?: continue
+                            val uri = item.optString("uri").takeIf { it.startsWith("content://") && it.length <= 2048 } ?: continue
+                            put(key, uri)
+                        }
+                    }
+                } ?: defaults.notificationConversationSounds,
+                normalNotificationSoundUri = obj.optString("normalNotificationSoundUri")
+                    .takeIf { it.startsWith("content://") && it.length <= 2048 }
+                    ?: defaults.normalNotificationSoundUri,
                 disabledEvents = safeStringSet("disabledEvents", defaults.disabledEvents),
                 hideWhenIdle = obj.optBoolean("hideWhenIdle", defaults.hideWhenIdle),
                 autoHidePill = obj.optBoolean("autoHidePill", defaults.autoHidePill),

@@ -27,6 +27,7 @@ import com.agupta07505.smartisland.util.expandedText
 import com.agupta07505.smartisland.util.readerTextWithoutPictures
 import android.graphics.Bitmap
 import android.graphics.drawable.Icon
+import android.util.Base64
 import android.media.AudioAttributes
 import android.media.AudioManager
 import android.media.MediaMetadata
@@ -53,6 +54,7 @@ import com.agupta07505.smartisland.model.IslandMode
 import com.agupta07505.smartisland.model.IslandNotification
 import com.agupta07505.smartisland.model.IslandNotificationAction
 import com.agupta07505.smartisland.util.NotificationCooldownManager
+import com.agupta07505.smartisland.util.NotificationConversationRules
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
@@ -64,6 +66,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import java.util.concurrent.ConcurrentHashMap
+import java.io.ByteArrayOutputStream
 import javax.inject.Inject
 
 @AndroidEntryPoint
@@ -85,6 +88,7 @@ class SmartIslandNotificationListenerService : NotificationListenerService() {
     private var lastHistoryCleanupTime = 0L
     private val cooldownReleaseJobs = ConcurrentHashMap<String, Job>()
     @Volatile private var lastSoundPlayedTimeMs = 0L
+    @Volatile private var activeNotificationRingtone: Ringtone? = null
     @Volatile private var lastAutoExpandTimeMs = 0L
 
     private val viewButtonReceiver = object : android.content.BroadcastReceiver() {
@@ -414,6 +418,8 @@ class SmartIslandNotificationListenerService : NotificationListenerService() {
         voipMonitor = null
         isSystemConnected = false
         lastSoundPlayedTimeMs = 0L
+        runCatching { activeNotificationRingtone?.stop() }
+        activeNotificationRingtone = null
         lastAutoExpandTimeMs = 0L
         cooldownReleaseJobs.values.forEach { it.cancel() }
         cooldownReleaseJobs.clear()
@@ -525,6 +531,17 @@ class SmartIslandNotificationListenerService : NotificationListenerService() {
             traceStage(sbn, "DROPPED", "stage=group-summary shadeCancel=${currentSettings.hideFromNotificationShade}")
             pendingRemovals.remove(sbn.key)?.cancel()
             return@runCatchingLogged
+        }
+
+        notificationConversation(sbn, rankingMap)?.let { conversation ->
+            val avatar = loadConversationAvatar(sbn)
+            if (currentSettings.knownNotificationConversations[conversation.key] != conversation.title ||
+                (!avatar.isNullOrBlank() && currentSettings.notificationConversationAvatars[conversation.key] != avatar)
+            ) {
+                serviceScope.launch {
+                    repository.rememberNotificationConversation(conversation.key, conversation.title, avatar)
+                }
+            }
         }
 
         // Suppress from the shade synchronously, before the coroutine is scheduled, so the notification never appears
@@ -984,6 +1001,7 @@ class SmartIslandNotificationListenerService : NotificationListenerService() {
             settings.navigationEnabled,
             settings.deviceType
         )
+        val conversation = if (mode == IslandMode.Notification) notificationConversation(sbn) else null
         android.util.Log.d(TAG, "handleNotificationPosted: mode=$mode key=${sbn.key} title=${extras.getCharSequence(Notification.EXTRA_TITLE)}")
 
         // Quiet imports of what is already in the shade are not new alerts, so they neither count
@@ -1628,7 +1646,8 @@ class SmartIslandNotificationListenerService : NotificationListenerService() {
                         noExpandPackages = settings.noExpandPackages,
                         packageName = sbn.packageName,
                         mode = mode,
-                        isLoud = !(mode == IslandMode.Notification && isSilentNotification(sbn))
+                        isLoud = !(mode == IslandMode.Notification && isSilentNotification(sbn)) ||
+                            (conversation?.key?.let { it in settings.priorityNotificationConversations } == true)
                     )
                 ) {
                     val now = SystemClock.elapsedRealtime()
@@ -1644,7 +1663,7 @@ class SmartIslandNotificationListenerService : NotificationListenerService() {
             }
         )
 
-        if (mode == IslandMode.Notification && pictures.isEmpty() && mediaReader.expectsPicture(notification, notifText)) {
+        if (mode == IslandMode.Notification && pictures.isEmpty() && mediaReader.expectsMedia(notification, notifText)) {
             scheduleLatePicture(sbn, notification, notifText)
         }
 
@@ -1679,7 +1698,24 @@ class SmartIslandNotificationListenerService : NotificationListenerService() {
         // system plays its own sound and a second one would double it.
         val isRecordingEvent = mode == IslandMode.ScreenRecording || mode == IslandMode.AudioRecording ||
             isRecordingNotification(sbn, notification)
-        if (!isInitialSync && removedFromShade && isNewNotif && (mode == IslandMode.Notification || shouldIslandOnly) &&
+        val notificationContentChanged = existingNotif == null ||
+            existingNotif.title != notifTitle || existingNotif.text != notifText
+        val mayAlertAgain = (notification.flags and Notification.FLAG_ONLY_ALERT_ONCE) == 0
+        val isPriorityConversation = conversation?.key?.let { it in settings.priorityNotificationConversations } == true
+        val selectedSoundUri = if (isPriorityConversation) {
+            conversation?.key?.let { settings.notificationConversationSounds[it] }
+        } else {
+            settings.normalNotificationSoundUri
+        }
+        val hasSelectedCustomSound = selectedSoundUri?.let { rawUri ->
+            runCatching { Uri.parse(rawUri).scheme == "content" }.getOrDefault(false)
+        } == true
+        val systemSoundUnavailable = isNotificationSoundUnavailable(sbn)
+        val islandMustPlayConfiguredSound = systemSoundUnavailable &&
+            (isPriorityConversation || hasSelectedCustomSound)
+        if (!isInitialSync && (removedFromShade || islandMustPlayConfiguredSound) &&
+            (isNewNotif || notificationContentChanged) && mayAlertAgain &&
+            (mode == IslandMode.Notification || shouldIslandOnly) &&
             mode != IslandMode.DownloadUpload && !isRecordingEvent
         ) {
             playNotificationSound(sbn)
@@ -1857,6 +1893,28 @@ class SmartIslandNotificationListenerService : NotificationListenerService() {
             importance < NotificationManager.IMPORTANCE_DEFAULT
     }
 
+    private fun isNotificationSoundUnavailable(sbn: StatusBarNotification): Boolean {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val ranking = Ranking()
+            val fromRanking = currentRanking?.getRanking(sbn.key, ranking) == true
+            val channel = (if (fromRanking) ranking.channel else null)
+                ?: runCatching {
+                    (getSystemService(android.content.Context.NOTIFICATION_SERVICE) as? NotificationManager)
+                        ?.getNotificationChannel(sbn.notification.channelId)
+                }.getOrNull()
+            if (channel != null) {
+                return channel.importance < NotificationManager.IMPORTANCE_DEFAULT ||
+                    channel.sound == null || channel.sound == Uri.EMPTY
+            }
+            return fromRanking && ranking.importance < NotificationManager.IMPORTANCE_DEFAULT
+        }
+        @Suppress("DEPRECATION")
+        val sound = sbn.notification.sound
+        @Suppress("DEPRECATION")
+        val defaults = sbn.notification.defaults
+        return (sound == null || sound == Uri.EMPTY) && (defaults and Notification.DEFAULT_SOUND) == 0
+    }
+
     private fun importShadeNotifications() {
         val settings = currentSettings
         if (!settings.enabled) return
@@ -1925,6 +1983,18 @@ class SmartIslandNotificationListenerService : NotificationListenerService() {
             return "do-not-disturb"
         }
         val pm = runCatching { packageManager }.getOrNull() ?: return null
+        if (sbn.notification.toIslandMode(
+                sbn,
+                currentSettings.liveActivitiesEnabled,
+                currentSettings.navigationEnabled,
+                currentSettings.deviceType
+            ) == IslandMode.Notification
+        ) {
+            val conversation = notificationConversation(sbn, rankingMap)
+            if (conversation != null && conversation.key in currentSettings.ignoredNotificationConversations) {
+                return "conversation-ignored"
+            }
+        }
         // An event switched off in every displayable profile must stay in the normal shade: neither shown in the
         // island nor cancelled.
         val disabled = currentSettings.disabledEvents
@@ -1959,6 +2029,27 @@ class SmartIslandNotificationListenerService : NotificationListenerService() {
                 TransferKind.DOWNLOAD
             }
         )
+
+    private fun notificationConversation(
+        sbn: StatusBarNotification,
+        rankingMap: RankingMap? = null
+    ): com.agupta07505.smartisland.util.NotificationConversation? {
+        val notification = sbn.notification
+        val ranking = Ranking()
+        val channel = if (rankingMap?.getRanking(sbn.key, ranking) == true) {
+            ranking.channel
+        } else {
+            val current = Ranking()
+            if (currentRanking?.getRanking(sbn.key, current) == true) current.channel else null
+        }
+        val conversationId = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            channel?.conversationId ?: runCatching {
+                (getSystemService(android.content.Context.NOTIFICATION_SERVICE) as? NotificationManager)
+                    ?.getNotificationChannel(notification.channelId)?.conversationId
+            }.getOrNull()
+        } else null
+        return NotificationConversationRules.fromNotification(notification, sbn.packageName, conversationId)
+    }
 
     private fun shouldHideFromShade(notification: Notification, mode: IslandMode, packageName: String): Boolean {
         if (!shouldBeIslandOnly(notification, mode)) return false
@@ -2081,11 +2172,13 @@ class SmartIslandNotificationListenerService : NotificationListenerService() {
 
     private fun playNotificationSound(sbn: StatusBarNotification) {
         if (!AppEventRules.maySound(currentSettings.disabledSoundPackages, sbn.packageName)) return
+        val conversation = notificationConversation(sbn)
+        if (conversation != null && conversation.key in currentSettings.ignoredNotificationConversations) return
+        val isPriorityConversation = conversation?.key?.let { it in currentSettings.priorityNotificationConversations } == true
         // Do Not Disturb always keeps the island quiet, even when it is set to show cards during DND.
         if (isBlockedByDoNotDisturb(sbn)) return
         val now = SystemClock.elapsedRealtime()
         if (now - lastSoundPlayedTimeMs < SOUND_DEBOUNCE_MS) return
-        lastSoundPlayedTimeMs = now
         runCatchingLogged(TAG, "Failed to play notification sound for ${sbn.packageName}") {
             val audioManager = getSystemService(android.content.Context.AUDIO_SERVICE) as? AudioManager
             if (audioManager == null || audioManager.ringerMode != AudioManager.RINGER_MODE_NORMAL) return
@@ -2094,23 +2187,44 @@ class SmartIslandNotificationListenerService : NotificationListenerService() {
             var soundUri: Uri? = null
             var audioAttributes: AudioAttributes? = null
 
+            val selectedUri = if (isPriorityConversation) {
+                conversation?.key?.let { currentSettings.notificationConversationSounds[it] }
+            } else {
+                currentSettings.normalNotificationSoundUri
+            }
+            runCatching { selectedUri?.let(Uri::parse) }.getOrNull()
+                    ?.takeIf { it.scheme == "content" }
+                ?.let { selectedSound ->
+                    soundUri = selectedSound
+                    audioAttributes = AudioAttributes.Builder()
+                        .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                        .setUsage(AudioAttributes.USAGE_NOTIFICATION)
+                        .build()
+                }
+
             // Notification channel (API 26+).
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            if (soundUri == null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 val ranking = Ranking()
                 val hasRanking = currentRanking?.getRanking(sbn.key, ranking) == true
-                val channel = if (hasRanking) ranking.channel else null
+                val channel = (if (hasRanking) ranking.channel else null)
+                    ?: (getSystemService(android.content.Context.NOTIFICATION_SERVICE) as? NotificationManager)
+                        ?.getNotificationChannel(notification.channelId)
 
                 if (channel != null) {
                     // Silent channels (IMPORTANCE_NONE, IMPORTANCE_MIN, IMPORTANCE_LOW) must not play sound
-                    if (channel.importance < NotificationManager.IMPORTANCE_DEFAULT) {
-                        return
-                    }
+                    if (channel.importance < NotificationManager.IMPORTANCE_DEFAULT && !isPriorityConversation) return
                     val chSound = channel.sound
                     if (chSound == null || chSound == Uri.EMPTY || chSound.toString().isEmpty()) {
-                        return
+                        if (!isPriorityConversation) return
+                        soundUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
+                    } else {
+                        soundUri = chSound
+                        audioAttributes = channel.audioAttributes
                     }
-                    soundUri = chSound
-                    audioAttributes = channel.audioAttributes
+                } else if (hasRanking && ranking.importance >= NotificationManager.IMPORTANCE_DEFAULT) {
+                    // Some ROMs omit the channel object from listener rankings even though the notification is alerting.
+                    // In that case use the system notification tone instead of silently dropping the island alert.
+                    soundUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
                 }
             }
 
@@ -2133,14 +2247,15 @@ class SmartIslandNotificationListenerService : NotificationListenerService() {
                 return
             }
 
-            // Play the exact notification sound.
+            // Use the channel's tone. Keep a strong reference while it plays; several ROMs stopped
+            // short-lived Ringtone instances before the clip became audible.
+            val fallbackUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
             var ringtone: Ringtone? = runCatching {
                 RingtoneManager.getRingtone(applicationContext, soundUri)
             }.getOrNull()
 
-            // Fallback to default tone if custom URI failed to load
+            // Fall back to the system tone if the app-specific sound URI cannot be opened.
             if (ringtone == null) {
-                val fallbackUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
                 ringtone = runCatching {
                     RingtoneManager.getRingtone(applicationContext, fallbackUri)
                 }.getOrNull()
@@ -2152,7 +2267,20 @@ class SmartIslandNotificationListenerService : NotificationListenerService() {
                     .setUsage(AudioAttributes.USAGE_NOTIFICATION)
                     .build()
                 ringtone.audioAttributes = attrs
-                ringtone.play()
+                runCatching { activeNotificationRingtone?.stop() }
+                activeNotificationRingtone = ringtone
+                try {
+                    ringtone.play()
+                } catch (playError: Exception) {
+                    android.util.Log.w(TAG, "Notification channel tone could not play; trying the system tone", playError)
+                    runCatching { ringtone.stop() }
+                    if (soundUri == fallbackUri) throw playError
+                    val fallback = RingtoneManager.getRingtone(applicationContext, fallbackUri) ?: throw playError
+                    fallback.audioAttributes = attrs
+                    activeNotificationRingtone = fallback
+                    fallback.play()
+                }
+                lastSoundPlayedTimeMs = SystemClock.elapsedRealtime()
             }
         }
     }
@@ -2239,6 +2367,18 @@ class SmartIslandNotificationListenerService : NotificationListenerService() {
             } else null
         }
     }
+
+    /** Snapshot the latest sender photo exposed by MessagingStyle so it remains available in settings. */
+    private fun loadConversationAvatar(sbn: StatusBarNotification): String? = runCatching {
+        val style = androidx.core.app.NotificationCompat.MessagingStyle
+            .extractMessagingStyleFromNotification(sbn.notification) ?: return null
+        val icon = style.messages.lastOrNull()?.person?.icon ?: return null
+        val bitmap = icon.loadDrawable(this)?.toBitmap(width = 64, height = 64) ?: return null
+        ByteArrayOutputStream().use { output ->
+            bitmap.compress(Bitmap.CompressFormat.JPEG, 78, output)
+            Base64.encodeToString(output.toByteArray(), Base64.NO_WRAP).takeIf { it.length <= 7000 }
+        }
+    }.getOrNull()
 
     private fun Any?.toBitmapOrNull(): Bitmap? {
         return when (this) {

@@ -8,6 +8,9 @@
 package com.agupta07505.smartisland.model
 
 import android.graphics.Bitmap
+import java.io.File
+
+enum class NotificationMediaKind { IMAGE, AUDIO, VIDEO }
 
 /**
  * A picture or sticker a notification carries. [animatedBytes] holds the original file for animated images (WebP /
@@ -16,6 +19,9 @@ import android.graphics.Bitmap
 class NotificationMedia(
     val still: Bitmap,
     val animatedBytes: ByteArray? = null,
-    val isSticker: Boolean = false
+    val isSticker: Boolean = false,
+    val kind: NotificationMediaKind = NotificationMediaKind.IMAGE,
+    val file: File? = null,
+    val mimeType: String? = null
 ) {
 }

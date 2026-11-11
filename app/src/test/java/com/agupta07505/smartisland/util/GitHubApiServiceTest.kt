@@ -15,38 +15,38 @@ class GitHubApiServiceTest {
 
     @Test
     fun testIsNewerVersion_newerMajor_returnsTrue() {
-        assertTrue(GitHubApiService.isNewerVersion("v6.0.0", "5.0.0"))
-        assertTrue(GitHubApiService.isNewerVersion("6.0", "5.2.1"))
+        assertTrue(GitHubApiService.isNewerVersion("v4.0.0", "3.5.0"))
+        assertTrue(GitHubApiService.isNewerVersion("4.0", "3.5.1"))
     }
 
     @Test
     fun testIsNewerVersion_newerMinor_returnsTrue() {
-        assertTrue(GitHubApiService.isNewerVersion("v5.1.0", "5.0.0"))
-        assertTrue(GitHubApiService.isNewerVersion("5.2", "5.1.9"))
+        assertTrue(GitHubApiService.isNewerVersion("v3.6.0", "3.5.0"))
+        assertTrue(GitHubApiService.isNewerVersion("3.6", "3.5.9"))
     }
 
     @Test
     fun testIsNewerVersion_newerPatch_returnsTrue() {
-        assertTrue(GitHubApiService.isNewerVersion("v5.0.1", "5.0.0"))
-        assertTrue(GitHubApiService.isNewerVersion("5.0.2", "5.0.1"))
+        assertTrue(GitHubApiService.isNewerVersion("v3.5.1", "3.5.0"))
+        assertTrue(GitHubApiService.isNewerVersion("3.5.2", "3.5.1"))
     }
 
     @Test
     fun testIsNewerVersion_sameVersion_returnsFalse() {
-        assertFalse(GitHubApiService.isNewerVersion("v5.0.0", "5.0.0"))
-        assertFalse(GitHubApiService.isNewerVersion("5.0", "5.0"))
+        assertFalse(GitHubApiService.isNewerVersion("v3.5.0", "3.5.0"))
+        assertFalse(GitHubApiService.isNewerVersion("3.5", "3.5"))
     }
 
     @Test
     fun testIsNewerVersion_olderVersion_returnsFalse() {
-        assertFalse(GitHubApiService.isNewerVersion("v4.9.9", "5.0.0"))
-        assertFalse(GitHubApiService.isNewerVersion("5.0.0", "5.0.1"))
-        assertFalse(GitHubApiService.isNewerVersion("4.0", "5.0"))
+        assertFalse(GitHubApiService.isNewerVersion("v3.4.9", "3.5.0"))
+        assertFalse(GitHubApiService.isNewerVersion("3.5.0", "3.5.1"))
+        assertFalse(GitHubApiService.isNewerVersion("2.0", "3.0"))
     }
 
     @Test
     fun testIsNewerVersion_withSuffix_handlesCleanly() {
-        assertTrue(GitHubApiService.isNewerVersion("v5.1.0-beta", "5.0.0"))
-        assertFalse(GitHubApiService.isNewerVersion("v5.0.0-rc1", "5.0.0"))
+        assertTrue(GitHubApiService.isNewerVersion("v3.6.0-beta", "3.5.0"))
+        assertFalse(GitHubApiService.isNewerVersion("v3.5.0-rc1", "3.5.0"))
     }
 }

@@ -1,18 +1,18 @@
 <?xml version='1.0' encoding='utf-8'?>
 <resources>
-    <string name="app_name">スマートアイランド</string>
+    <string name="app_name">Ryx Isla</string>
     <string name="app_subtitle">フローティング・ダイナミック・オーバーレイ</string>
-    <string name="app_description">スマートアイランドは、美しいフローティング体験、インタラクティブコントロール、および流体アニメーションでAndroidの通知を想像し、すべてを重要なものにします.</string>
-    <string name="accessibility_service_label">スマートアイランドサービス</string>
-    <string name="accessibility_service_description">スマートアイランドオーバーレイがステータスバーの上に座るようにすることで、タッチ干渉なしでカメラのカットアウトの周りの丸薬をタップできます.</string>
+    <string name="app_description">Ryx Islaは、美しいフローティング体験、インタラクティブコントロール、および流体アニメーションでAndroidの通知を想像し、すべてを重要なものにします.</string>
+    <string name="accessibility_service_label">Ryx Islaサービス</string>
+    <string name="accessibility_service_description">Ryx Islaオーバーレイがステータスバーの上に座るようにすることで、タッチ干渉なしでカメラのカットアウトの周りの丸薬をタップできます.</string>
     <string name="grant_accessibility">ステータスバーのオーバーレイを開始するためのアクセス許可の付与</string>
-    <string name="made_by">アニメッシュ・グプタの❤️で作って</string>
+    <string name="made_by">David Joelがペルーで開発</string>
     <string name="tab_studio">ホーム &gt;</string>
     <string name="tab_position">レイアウト</string>
     <string name="tab_settings">コンテンツ</string>
     <string name="tab_features">特徴:</string>
     <string name="tab_system">システムについて</string>
-    <string name="master_switch_title">スマートアイランド</string>
+    <string name="master_switch_title">Ryx Isla</string>
     <string name="master_switch_active_desc">アクティブ</string>
     <string name="master_switch_ready_desc">オフ — タップして開始</string>
     <string name="master_switch_missing_desc">必要な許可</string>
@@ -21,7 +21,7 @@
     <string name="status_setup_needed">必要なセットアップ</string>
     <string name="status_action_required">アクション 必須</string>
     <string name="btn_grant_required_permissions">助成金の許可</string>
-    <string name="enable_smart_island">スマートアイランドを有効にする</string>
+    <string name="enable_smart_island">Ryx Islaを有効にする</string>
     <string name="overlay_ready">オーバーレイサービスは準備ができています</string>
     <string name="grant_overlay">オーバーレイ権限を付与する</string>
     <string name="simulation_lab_title">試してみる</string>
@@ -108,11 +108,11 @@
     <string name="btn_checking_for_updates">アップデートの確認</string>
     <string name="changelogs_title">変更ログ</string>
     <string name="changelogs_desc">リリースノートと更新履歴</string>
-    <string name="status_up_to_date">スマートアイランドが最新</string>
+    <string name="status_up_to_date">Ryx Islaが最新</string>
     <string name="status_update_available">新しいバージョンの%1$sが利用可能です</string>
     <string name="btn_download_apk">APKをダウンロード</string>
     <string name="detail_title_permissions_center">パーミッション&amp;セットアップセンター</string>
-    <string name="detail_title_about_app">スマートアイランドについて</string>
+    <string name="detail_title_about_app">Ryx Islaについて</string>
     <string name="detail_title_support_community">サポート&amp;フィードバック</string>
     <string name="shizuku_card_title">Shizuku 1-Tap 自動セットアップ</string>
     <string name="shizuku_card_desc">各システム設定ページを開くことなく、志津区の許可を付与します。 助成金額を選択してください.</string>
@@ -122,11 +122,11 @@
     <string name="shizuku_success">しずくで付与された許可</string>
     <string name="shizuku_failed">%1$sのセットアップが失敗しました</string>
     <string name="perm_accessibility_title">アクセシビリティ オーバーレイ</string>
-    <string name="perm_accessibility_desc">ステータスバーやノッチエリアを上回るスマートアイランドが動的に浮かぶ</string>
+    <string name="perm_accessibility_desc">ステータスバーやノッチエリアを上回るRyx Islaが動的に浮かぶ</string>
     <string name="perm_notification_title">通知アクセス</string>
     <string name="perm_notification_desc">受信メッセージ、コール、メディアメタデータ、ライブトラッキングアラートを読み込みます</string>
     <string name="perm_bluetooth_title">周辺機器</string>
-    <string name="perm_bluetooth_desc">スマートアイランドがBluetoothデバイス接続を検出し、接続デバイスイベントを表示</string>
+    <string name="perm_bluetooth_desc">Ryx IslaがBluetoothデバイス接続を検出し、接続デバイスイベントを表示</string>
     <string name="perm_battery_title">バッテリー最適化バイパス</string>
     <string name="perm_battery_desc">Android および攻撃的な OEM タスク キラーは、バックグラウンドサービスの終了を防ぎます</string>
     <string name="perm_status_granted">助成対象者</string>
@@ -209,7 +209,7 @@
     <string name="color_stopwatch_laps">ストップウォッチ&amp;ラップ</string>
     <string name="color_stopwatch_laps_desc">ストップウォッチのアイコンを回転させ、タイマーを消去</string>
     <string name="color_pill_background">丸薬の背景色</string>
-    <string name="color_pill_background_desc">スマートアイランドコンテナのベース背景色</string>
+    <string name="color_pill_background_desc">Ryx Islaコンテナのベース背景色</string>
     <string name="color_hex_input">六角色コード</string>
     <string name="color_hex_hint">6桁の六角 (例: 000000 または 1C1C1E)</string>
     <string name="color_hex_error">無効な六角形のカラーフォーマット</string>
@@ -220,7 +220,7 @@
     <string name="color_blue">ブルージュ</string>
     <string name="btn_save_color">保存色</string>
     <string name="btn_cancel">キャンセル</string>
-    <string name="gestures_guide_title">スマートアイランドジェスチャーガイド</string>
+    <string name="gestures_guide_title">Ryx Islaジェスチャーガイド</string>
     <string name="gestures_guide_desc">通知、呼び出し、マルチタスクを制御するための5つの直観的なジェスチャー</string>
     <string name="gesture_1_tap_tab">1. タップ</string>
     <string name="gesture_2_swipe_up_tab">2.スワイプアップ</string>
@@ -241,7 +241,7 @@
     <string name="gesture_4_swipe_down_desc">島のカードから下方にドラッグして、Android Freeformのフローティングウィンドウマルチタスクモードでアクティブなアプリを起動します.</string>
     <string name="gesture_5_swipe_horizontal_title">5. 横のスワイプ(左/右)</string>
     <string name="gesture_5_swipe_horizontal_sub">複数の通知間の切り替え</string>
-    <string name="gesture_5_swipe_horizontal_desc">複数の通知がスマートアイランドでキューイングされると、拡張されたカードの左または右横にスワイプして、アクティブなアラート間のページに移動します.</string>
+    <string name="gesture_5_swipe_horizontal_desc">複数の通知がRyx Islaでキューイングされると、拡張されたカードの左または右横にスワイプして、アクティブなアラート間のページに移動します.</string>
     <string name="enable_swipe_gestures_title">スワイプジェスチャーを有効にする</string>
     <string name="enable_swipe_gestures_desc">島でのスワイプアクションを有効にします。 すべてのスワイプジェスチャーを完全に無効にし、偶発的な行動を防ぐためにオフにします.</string>
     <string name="swipe_customization_title">スワイプアクションをカスタマイズ</string>
@@ -308,7 +308,7 @@
     <string name="lock_screen_title">ロック スクリーン及びプライバシーの監視</string>
     <string name="lock_screen_desc">デバイスがロックされ、機密通知コンテンツを保護するときに島の行動を制御</string>
     <string name="toggle_show_lock_screen_title">ロック画面で島を表示</string>
-    <string name="toggle_show_lock_screen_desc">デバイスがロックされたときに浮かび上がるスマートアイランドをキープ</string>
+    <string name="toggle_show_lock_screen_desc">デバイスがロックされたときに浮かび上がるRyx Islaをキープ</string>
     <string name="privacy_level_title">画面コンテンツのプライバシーレベルをロックする</string>
     <string name="privacy_app_icon_only">アプリアイコンのみ(プライベート)</string>
     <string name="privacy_full_content">フルコンテンツプレビュー</string>
@@ -321,14 +321,14 @@
     <string name="toggle_quick_actions_title">通知クイックアクション</string>
     <string name="toggle_quick_actions_desc">アクション可能なボタンを表示 応答, マーク読み取り, 拡張カードで却下</string>
     <string name="toggle_mirror_only_title">ミラーのみ(システムシェードからの非表示)</string>
-    <string name="toggle_mirror_only_desc">スマートアイランドでのみ通知を表示し、デフォルトの通知シェードから隠す</string>
+    <string name="toggle_mirror_only_desc">Ryx Islaでのみ通知を表示し、デフォルトの通知シェードから隠す</string>
     <string name="toggle_auto_hide_idle_title">オートハイドの丸いときの丸薬</string>
     <string name="toggle_auto_hide_idle_desc">アクティブなアラート、音楽、または動的イベントがない場合、ピルを完全に隠す</string>
     <string name="toggle_auto_hide_pill_title">活動の後の自動隠された丸薬</string>
     <string name="toggle_auto_hide_pill_desc">通知がアクティブな場合でも、セット時間後に自動的に丸薬と円を非表示にします。 エリアをタップすると、再びエリアが表示されます.</string>
     <string name="auto_hide_timeout_label">アクティビティタイムアウトを非表示</string>
     <string name="toggle_show_in_landscape_title">風景モードの表示</string>
-    <string name="toggle_show_in_landscape_desc">デバイスを回転させるとスマートアイランドが見える状態の方向に保つ</string>
+    <string name="toggle_show_in_landscape_desc">デバイスを回転させるとRyx Islaが見える状態の方向に保つ</string>
     <string name="toggle_bluetooth_battery_title">Bluetoothバッテリー&amp;イヤホンアニメーション</string>
     <string name="toggle_bluetooth_battery_desc">接続されたデバイスのバッテリーのパーセンテージを表示し、島のイヤホンアイコンとスムーズに交互に</string>
     <string name="toggle_battery_mode_title">バッテリー&amp;充電イベント</string>
@@ -363,13 +363,13 @@
     <string name="no_installed_apps_found">インストールされたアプリが見つかりません</string>
     <string name="no_apps_matching_query">\"%1$s\" に一致するアプリはありません</string>
     <string name="btn_manage_apps">管理するアプリを選択</string>
-    <string name="all_apps_enabled_note">インストールしたアプリは、現在、スマートアイランドのサウンドで動作します.</string>
+    <string name="all_apps_enabled_note">インストールしたアプリは、現在、Ryx Islaのサウンドで動作します.</string>
     <string name="customized_apps_title">カスタマイズアプリ(%1$d)</string>
     <string name="app_options_title">%1$sの設定</string>
-    <string name="option_island_notifications">スマートアイランド通知</string>
+    <string name="option_island_notifications">Ryx Isla通知</string>
     <string name="option_island_notifications_desc">島の丸薬と拡大されたビューでこのアプリから通知を表示</string>
     <string name="option_island_sound">アイランド通知サウンド</string>
-    <string name="option_island_sound_desc">このアプリがスマートアイランドで警告したときにサウンドエフェクトを再生</string>
+    <string name="option_island_sound_desc">このアプリがRyx Islaで警告したときにサウンドエフェクトを再生</string>
     <string name="option_cooldown_bypass">バイパスアンチスパムクールダウン</string>
     <string name="option_cooldown_bypass_desc">急激なメッセージが破裂する時でさえ、常にすぐに警告します</string>
     <string name="tag_excluded_from_island">島から除外</string>
@@ -419,7 +419,7 @@
     <string name="report_bug_desc">GitHubでデバイスの詳細を提出する</string>
     <string name="license_title">ライセンス(GNU GPL v3)</string>
     <string name="license_desc">フリー&amp;オープンソースソフトウェア</string>
-    <string name="about_title">スマートアイランドについて</string>
+    <string name="about_title">Ryx Islaについて</string>
     <string name="github_update_center_title">GitHubアップデートセンター</string>
     <string name="current_version_label">現在のバージョン: v%1$s</string>
     <string name="btn_check_updates">チェックイン</string>
@@ -431,7 +431,7 @@
     <string name="repo_insights_title">リポジトリのインサイト</string>
     <string name="contributors_title">トップコントリビューター</string>
     <string name="recent_commits_title">最近のコミット</string>
-    <string name="welcome_title">スマートアイランドスタジオへようこそ</string>
+    <string name="welcome_title">Ryx Islaスタジオへようこそ</string>
     <string name="welcome_desc">Android用のプライベートでカスタマイズ可能なフローティングオーバーレイ体験。 広告、ゼロトラッキング、完全オープンソースなし.</string>
     <string name="btn_get_started">始める</string>
     <string name="expanded_battery_saver">バッテリーセーバー ON</string>
@@ -459,8 +459,8 @@
     <string name="expanded_action_reply">スタッフ</string>
     <string name="expanded_action_mark_read">マーク 読み込み</string>
     <string name="expanded_action_dismiss">免責事項</string>
-    <string name="quick_launch_open_settings">スマートアイランドの設定を開く</string>
-    <string name="quick_launch_apps_unavailable">選択したアプリは利用できません。 スマートアイランドでアプリのショートカットを更新します.</string>
+    <string name="quick_launch_open_settings">Ryx Islaの設定を開く</string>
+    <string name="quick_launch_apps_unavailable">選択したアプリは利用できません。 Ryx Islaでアプリのショートカットを更新します.</string>
     <string name="privacy_policy_title">プライバシーポリシー</string>
     <string name="privacy_policy_desc">100% Onデバイス&amp;ゼロトラッキング</string>
     <string name="terms_of_use_title">利用規約</string>
@@ -478,7 +478,7 @@
     <string name="backup_export_card_desc">現在の島ジオメトリ、カスタムテーマ、ルールをAndroidストレージアクセスフレームワークを使用してポータブル.jsonファイルに保存します.</string>
     <string name="btn_export_backup">エクスポートバックアップ(JSON)</string>
     <string name="backup_restore_card_title">バックアップから復元</string>
-    <string name="backup_restore_card_desc">以前にエクスポートされたスマートアイランドJSONバックアップファイルを選択して、すべての調整と設定を復元します.</string>
+    <string name="backup_restore_card_desc">以前にエクスポートされたRyx IslaJSONバックアップファイルを選択して、すべての調整と設定を復元します.</string>
     <string name="btn_restore_backup">バックアップファイルの選択</string>
     <string name="backup_reset_card_title">工場出荷時のデフォルト設定</string>
     <string name="backup_reset_card_desc">すべての島のサイズ、位置、オフセット、色のテーマ、ルールを元のデフォルト値に戻します.</string>
@@ -491,7 +491,7 @@
     <string name="toast_backup_export_failed">バックアップを保存できなかった: %1$s</string>
     <string name="toast_backup_restored_success">正常に復元された設定!</string>
     <string name="toast_backup_restore_failed">バックアップを復元する失敗:%1$s</string>
-    <string name="toast_backup_invalid_file">選択したファイルは、有効なスマートアイランドバックアップではありません.</string>
+    <string name="toast_backup_invalid_file">選択したファイルは、有効なRyx Islaバックアップではありません.</string>
     <string name="toast_reset_all_success">すべての設定はデフォルトにリセットされます</string>
     <string name="btn_backup_restore_shortcut">バックアップと復元</string>
     <string name="category_developer_options">開発者および診断</string>
@@ -525,7 +525,7 @@
     <string name="dev_mode_unlocked_banner_title">開発者モード アクティブ</string>
     <string name="dev_mode_unlocked_banner_desc">診断ロギングおよびシステムテレメトリーは開発者の選択で利用できます.</string>
     <string name="notch_mode_card_title">iPhoneノッチモード</string>
-    <string name="notch_mode_card_desc">スマートアイランドをトップ画面のエッジでドックした本格的なiPhoneスタイルのノッチに変形させ、丸みのあるボトムコーナーとゼロコンパニオンサークルで.</string>
+    <string name="notch_mode_card_desc">Ryx Islaをトップ画面のエッジでドックした本格的なiPhoneスタイルのノッチに変形させ、丸みのあるボトムコーナーとゼロコンパニオンサークルで.</string>
     <string name="notch_mode_toggle_title">IPhoneノッチモードを有効にする</string>
     <string name="notch_mode_toggle_desc">島を上端にドッキングし、二次右円を削除します</string>
     <string name="btn_apply_notch_preset">推奨iPhoneノッチサイズを適用</string>
@@ -671,7 +671,7 @@
     <string name="recent_apps_grant_access">利用アクセス設定を開く</string>
     <string name="recent_apps_empty">最近のアプリはまだありません</string>
     <string name="pinned_folder_full_unpinned">全 8 個のスロットを取っているので、%1$s は未完成</string>
-    <string name="shortcut_floating_window_off">スマートアイランドの設定でフローティングウィンドウがオフになっています.</string>
+    <string name="shortcut_floating_window_off">Ryx Islaの設定でフローティングウィンドウがオフになっています.</string>
     <string name="shortcut_split_unavailable">スプリット画面は現在使用できません.</string>
     <string name="pin_apps_add">追加する</string>
     <string name="sibling_picker_title">%1$s・%2$dカード</string>
@@ -680,8 +680,8 @@
     <string name="card_about_subtitle">バージョン、元のプロジェクトとライセンス</string>
     <string name="detail_title_about">お問い合わせ</string>
     <string name="about_version">バージョン%1$s</string>
-    <string name="about_based_on_title">SmartIsland 7.0.0 に基づく</string>
-    <string name="about_based_on_body">このアプリは、Animesh Gupta によって SmartIsland 7.0.0 に基づいています。 元のプロジェクトはオープンソースです。このバージョンはアニメーション、レイアウト、設定、機能を変更します.</string>
+    <string name="about_based_on_title">独立したプロジェクト</string>
+    <string name="about_based_on_body">Ryx IslaはDavid Joelによってペルーで開発されています。GNU GPL v3ライセンスと該当する著作権表示を保持しています。</string>
     <string name="about_open_original">オリジナルプロジェクトを開く</string>
     <string name="about_no_browser">リンクを開くためのアプリはありません.</string>
     <string name="about_license_title">ライセンス</string>
@@ -781,7 +781,7 @@
     <string name="utilities_editor_tab_one">タブ1</string>
     <string name="utilities_editor_tab_two">タブ2</string>
     <string name="utilities_editor_tab_hint">2番目のタブは、最初のタブの各セルが埋め込まれると島内でのみ表示されます.</string>
-    <string name="utility_settings_permission">スマートアイランドがこのシステム設定を変更できるようにする</string>
+    <string name="utility_settings_permission">Ryx Islaがこのシステム設定を変更できるようにする</string>
     <string name="utility_app_missing">アプリは利用できません</string>
     <string name="utility_no_flash">この装置に懐中電灯がありません</string>
     <string name="utility_no_calculator">計算アプリが見つかりません</string>
@@ -794,7 +794,7 @@
     <string name="utility_pick_cancel">キャンセル</string>
     <string name="utility_brightness">明るさ</string>
     <string name="utility_volume">ボリューム</string>
-    <string name="utility_brightness_permission">スマートアイランドがシステム設定を変更して明るさを変更できるようにする</string>
+    <string name="utility_brightness_permission">Ryx Islaがシステム設定を変更して明るさを変更できるようにする</string>
     <string name="utilities_editor_title">ユーティリティページ</string>
     <string name="utilities_editor_desc">クイックランチウィンドウでスワイプして到達します。 グリッドは4つのアイコンの2列です。空のセルをタップすると、ユーティリティやアプリウィジェットを追加し、アイテムを別のセルにドラッグしたり、別のアイテムに交換したりできます.</string>
     <string name="utilities_editor_add_title">ユーティリティに追加</string>
@@ -842,7 +842,7 @@
     <string name="idle_widget_notifications_desc">すべてのメッセージングとメールアプリからメッセージやメールを未読化し、カットアウトの左側にある番号としてメールを送信します。 タップすると、各アプリが何台あるかが表示されます。 何もないままスキップします.</string>
     <string name="idle_widget_modes_title">捨てない/モード</string>
     <string name="idle_widget_modes_desc">アクティブモード(おやすみ時間、運転など)はカットアウトの左にアイコンとして表示されます。モード名をタップします。どのモードも有効でない場合はスキップされます。モードを区別するためにサイレントモードへのアクセスを許可してください(Android 15以降)。</string>
-    <string name="idle_modes_access_desc">モードウィジェットは、そのままに、Don Not Disturb を表示します。 ベッドタイム、運転、その他のモードを別々に(Android 15以降)指示し、名前を表示するためには、Do Not Disturbアクセスのスマートアイランドを許可します。 どのモードがオンになっているかだけ読みます。何も変更しません.</string>
+    <string name="idle_modes_access_desc">モードウィジェットは、そのままに、Don Not Disturb を表示します。 ベッドタイム、運転、その他のモードを別々に(Android 15以降)指示し、名前を表示するためには、Do Not DisturbアクセスのRyx Islaを許可します。 どのモードがオンになっているかだけ読みます。何も変更しません.</string>
     <string name="idle_modes_access_button">助成金は、アクセスを抑制しない</string>
     <string name="idle_widgets_cycle_title">すべてのスイッチ</string>
     <string name="idle_widgets_seconds">%1$dのs</string>

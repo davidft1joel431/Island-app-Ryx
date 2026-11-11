@@ -21,6 +21,10 @@ import android.os.Bundle
 import android.util.LruCache
 import androidx.core.graphics.drawable.toBitmap
 import com.agupta07505.smartisland.model.NotificationMedia
+import com.agupta07505.smartisland.model.NotificationMediaKind
+import java.io.File
+import java.io.FileOutputStream
+import java.security.MessageDigest
 import java.nio.ByteBuffer
 import kotlin.math.max
 
@@ -30,6 +34,14 @@ import kotlin.math.max
  */
 class NotificationMediaReader(private val context: Context) {
     private val cache = LruCache<String, NotificationMedia>(24)
+    private val attachmentCache = File(context.cacheDir, "notification-attachments")
+
+    init {
+        runCatching {
+            attachmentCache.listFiles().orEmpty().filter { System.currentTimeMillis() - it.lastModified() > CACHE_MAX_AGE_MS }
+                .forEach { it.delete() }
+        }
+    }
 
     /**
      * [allowFallbacks] false is the fast read for building the card: the normal open of the picture link only, no
@@ -46,13 +58,13 @@ class NotificationMediaReader(private val context: Context) {
     }
 
     /** True when the notification carries a picture link, a big picture, or only a picture label as text (see PictureRetryPlan). */
-    fun expectsPicture(notification: Notification, shadeText: String): Boolean {
+    fun expectsMedia(notification: Notification, shadeText: String): Boolean {
         val extras = notification.extras ?: return false
         val hasLink = runCatching { extras.getParcelableArray(Notification.EXTRA_MESSAGES) }.getOrNull()
             ?.filterIsInstance<Bundle>()?.takeLast(MAX_MESSAGES_LOOKED_AT)
             ?.any { b ->
                 val mime = runCatching { b.getString(MESSAGE_TYPE) }.getOrNull()
-                messageUri(b) != null && (mime == null || mime.startsWith("image/"))
+                messageUri(b) != null && (mime == null || isSupportedMime(mime))
             } == true
         val hasBig = runCatching {
             extras.containsKey(Notification.EXTRA_PICTURE) ||
@@ -71,11 +83,20 @@ class NotificationMediaReader(private val context: Context) {
         for (bundle in bundles.takeLast(MAX_MESSAGES_LOOKED_AT)) {
             val uri = messageUri(bundle) ?: continue
             val mime = runCatching { bundle.getString(MESSAGE_TYPE) }.getOrNull()
-            if (mime != null && !mime.startsWith("image/")) continue
+            val kind = when {
+                mime == null || mime.startsWith("image/", ignoreCase = true) -> NotificationMediaKind.IMAGE
+                mime.startsWith("audio/", ignoreCase = true) -> NotificationMediaKind.AUDIO
+                mime.startsWith("video/", ignoreCase = true) -> NotificationMediaKind.VIDEO
+                else -> continue
+            }
             val cacheKey = "$key|$uri"
             val sticker = isStickerMessage(bundle, mime, shadeText)
             val media = cache.get(cacheKey)
-                ?: loadWithFallbacks(uri, mime, shadeText, packageName, postedAtMs, sticker, allowFallbacks)?.also { cache.put(cacheKey, it) }
+                ?: (if (kind == NotificationMediaKind.IMAGE) {
+                    loadWithFallbacks(uri, mime, shadeText, packageName, postedAtMs, sticker, allowFallbacks)
+                } else {
+                    loadAttachment(cacheKey, uri, mime ?: continue, kind)
+                })?.also { cache.put(cacheKey, it) }
             if (media != null) result.add(media)
         }
         return result.takeLast(MAX_MEDIA)
@@ -89,6 +110,64 @@ class NotificationMediaReader(private val context: Context) {
             bundle.getParcelable<Uri>(MESSAGE_URI)
         }
     }.getOrNull()
+
+    private fun loadAttachment(cacheKey: String, uri: Uri, mime: String, kind: NotificationMediaKind): NotificationMedia? {
+        var temporary: File? = null
+        return runCatching {
+            if (!attachmentCache.exists() && !attachmentCache.mkdirs()) return null
+            val safeKey = MessageDigest.getInstance("SHA-256").digest(cacheKey.toByteArray(Charsets.UTF_8))
+                .joinToString("") { "%02x".format(it.toInt() and 0xff) }
+            val target = File(attachmentCache, "$safeKey.media")
+            if (!target.isFile || target.length() == 0L) {
+                temporary = File(attachmentCache, "$safeKey.part")
+                var copied = 0L
+                val input = context.contentResolver.openInputStream(uri) ?: run {
+                    temporary?.delete()
+                    return null
+                }
+                input.use {
+                    FileOutputStream(temporary!!).use { output ->
+                        val buffer = ByteArray(32 * 1024)
+                        while (true) {
+                            val count = it.read(buffer)
+                            if (count < 0) break
+                            copied += count
+                            if (copied > MAX_ATTACHMENT_BYTES) throw AttachmentTooLargeException()
+                            output.write(buffer, 0, count)
+                        }
+                    }
+                } ?: return null
+                if (copied == 0L || !temporary!!.renameTo(target)) {
+                    temporary!!.delete()
+                    return null
+                }
+                temporary = null
+            }
+            target.setLastModified(System.currentTimeMillis())
+            trimAttachmentCache()
+            val placeholder = Bitmap.createBitmap(640, 360, Bitmap.Config.ARGB_8888)
+            val kind = if (mime.startsWith("audio/", true)) NotificationMediaKind.AUDIO else NotificationMediaKind.VIDEO
+            NotificationMedia(placeholder, kind = kind, file = target, mimeType = mime)
+        }.onFailure {
+            temporary?.delete()
+            AppLogRecorder.w(TAG, "${kind.name.lowercase()} attachment ${uri.scheme}://${uri.authority} could not be saved: ${it.javaClass.simpleName}")
+        }.getOrNull()
+    }
+
+    private fun trimAttachmentCache() {
+        runCatching {
+            val files = attachmentCache.listFiles().orEmpty().filter { it.isFile }.sortedBy { it.lastModified() }
+            var total = files.sumOf { it.length() }
+            for (file in files) {
+                if (total <= MAX_ATTACHMENT_CACHE_BYTES) break
+                val length = file.length()
+                if (file.delete()) total -= length
+            }
+        }
+    }
+
+    private fun isSupportedMime(mime: String): Boolean =
+        mime.startsWith("image/", true) || mime.startsWith("audio/", true) || mime.startsWith("video/", true)
 
     private fun isStickerMessage(bundle: Bundle, mime: String?, shadeText: String): Boolean {
         val own = runCatching { bundle.getCharSequence(MESSAGE_TEXT)?.toString() }.getOrNull().orEmpty()
@@ -268,6 +347,11 @@ class NotificationMediaReader(private val context: Context) {
         const val MAX_MESSAGES_LOOKED_AT = 6
         const val MAX_MEDIA = 4
         const val MAX_BYTES = 4 * 1024 * 1024
+        const val MAX_ATTACHMENT_BYTES = 16L * 1024L * 1024L
+        const val MAX_ATTACHMENT_CACHE_BYTES = 128L * 1024L * 1024L
+        const val CACHE_MAX_AGE_MS = 7L * 24L * 60L * 60L * 1000L
         const val MAX_SIDE = 1024
     }
+
+    private class AttachmentTooLargeException : IllegalArgumentException("Notification attachment exceeds the cache limit")
 }

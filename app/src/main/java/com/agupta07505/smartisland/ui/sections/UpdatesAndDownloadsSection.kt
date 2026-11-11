@@ -185,6 +185,7 @@ fun UpdatesAndDownloadsSection(
         modifier = Modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
+        DebugLanUpdateSection()
         AppUpdateCheckerCard(
             currentVersion = currentVersion,
             updateStatus = updateStatus,

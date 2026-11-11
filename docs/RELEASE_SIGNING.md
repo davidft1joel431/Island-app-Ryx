@@ -1,6 +1,6 @@
 # Release Signing With GitHub Actions
 
-This project can build a signed release APK in GitHub Actions without committing the keystore. The workflow lives at `.github/workflows/android.yml`.
+This project builds a signed release APK in GitHub Actions without committing the keystore. The workflow lives at `.github/workflows/release.yml` and publishes the signed `release` variant. The LAN APK updater is included only in debug builds.
 
 ## 1. Keep Signing Files Private
 
@@ -57,10 +57,9 @@ The workflow detects the key alias from `smartIsland.jks` automatically and uses
 
 Manual release build:
 
-1. Go to the repository on GitHub.
-2. Open `Actions`.
-3. Select `Build Android APK`.
-4. Click `Run workflow`.
+1. Update `versionName` and `versionCode` in `app/build.gradle.kts`.
+2. Push the matching `vX.Y.Z` tag and main branch changes.
+3. The `Publish Ryx Isla release` workflow builds and publishes `app-release.apk`.
 
 Tag release:
 
@@ -69,7 +68,7 @@ git tag v3.2.1
 git push origin v3.2.1
 ```
 
-When a tag starting with `v` is pushed, the workflow builds signed artifacts and publishes them to a GitHub release. Direct pushes to `main` and `dev` never build or publish releases under any circumstances.
+The workflow requires both repository secrets above. If either is missing, it stops instead of publishing an unsigned or debug APK.
 
 ## What Is `RUNNER_TEMP`?
 
@@ -86,7 +85,7 @@ That file is created inside GitHub's temporary runner environment, used for sign
 The workflow uploads one signed release APK:
 
 ```text
-SmartIsland-v3.0.apk
+RyxIsla.apk
 ```
 
 The version part comes from `versionName` in `app/build.gradle.kts`.

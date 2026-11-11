@@ -99,7 +99,7 @@ private fun gestureGroups(settings: SmartIslandSettings): List<GestureGroup> {
                 GestureLine(Icons.Rounded.Swipe, "Swipe right", actionText(settings.pillSwipeRightAction, SwipeAction.NextNotification, pill)),
                 GestureLine(Icons.Rounded.ArrowUpward, "Swipe up", actionText(settings.pillSwipeUpAction, SwipeAction.DismissCurrent, pill)),
                 GestureLine(Icons.Rounded.ArrowDownward, "Swipe down", "Expands the island (fixed, cannot be changed)."),
-                GestureLine(Icons.Rounded.TouchApp, "Long press", longPressText),
+                GestureLine(Icons.Rounded.TouchApp, "Mantén pulsado", longPressText),
             )
         ),
         GestureGroup(
@@ -126,7 +126,7 @@ private fun gestureGroups(settings: SmartIslandSettings): List<GestureGroup> {
             note = "The small circle that stays when there are no cards, mostly seen in landscape. Portrait has no separate circle: the middle band of the pill does its job.",
             lines = listOf(
                 GestureLine(Icons.Rounded.TouchApp, "Tap", "Brings back cards that the idle timeout put away. Landscape, while a card is on the island, the circle stays as a small control: one tap puts every card away at once and the circle swells, then settles."),
-                GestureLine(Icons.Rounded.TouchApp, "Long press", "$longPressTitle (hides or shows the pill by default). It never opens the quick-launch apps."),
+                GestureLine(Icons.Rounded.TouchApp, "Mantén pulsado", "$longPressTitle (oculta o muestra la cápsula de forma predeterminada; no abre los accesos directos.)"),
             )
         ),
         GestureGroup(
@@ -273,76 +273,76 @@ private fun tourSteps(settings: SmartIslandSettings): List<TourStep> {
     val cardHold = getSwipeActionTitle(SwipeAction.fromId(settings.swipeHoldUpAction, SwipeAction.DismissAll))
     return listOf(
         TourStep(
-            Icons.Rounded.Gesture, "Meet your island",
+            Icons.Rounded.Gesture, "Conoce Ryx Isla",
             listOf(
-                "Smart Island sits around your camera cutout and shows what is happening: calls, music, timers, charging, downloads and notifications.",
-                "It starts small, as the pill. Everything else opens from it with a touch.",
-                "It needs a few permissions to work. The Permissions screen in the app walks you through them."
+                "Ryx Isla se sitúa alrededor del recorte de la cámara y muestra llamadas, música, temporizadores, carga, descargas y notificaciones.",
+                "Al principio aparece como una cápsula. Tócala para abrir el resto de funciones.",
+                "Necesita algunos permisos para funcionar. La sección Permisos de la app te guía paso a paso."
             ),
-            "No cards yet? Play some music or start a timer and the pill will show it."
+            "¿Aún no aparece ninguna tarjeta? Reproduce música o inicia un temporizador para verla."
         ),
         TourStep(
-            Icons.Rounded.TouchApp, "Tap to open",
+            Icons.Rounded.TouchApp, "Toca para abrir",
             listOf(
-                "Tap a glyph on the pill once to expand it into a full card with its buttons.",
-                "Tap the empty middle of the pill, over the camera spot, to put the cards away. Open, the same spot at the top closes the island.",
-                "Tap the card to open the app it came from.",
-                "Tap anywhere outside the card to close it again.",
-                "Tap a smaller pill beside the main one to bring that event forward."
+                "Toca una vez el icono de la cápsula para expandirla y ver sus botones.",
+                "Toca el centro vacío de la cápsula, sobre la cámara, para contraer las tarjetas. Si está abierta, toca ese mismo lugar arriba para cerrarla.",
+                "Toca una tarjeta para abrir la aplicación que la envió.",
+                "Toca fuera de la tarjeta para volver a cerrarla.",
+                "Toca una cápsula pequeña junto a la principal para mostrar ese evento."
             ),
-            "On a hidden pill, one tap brings it back. Tapping the bare camera hole itself does nothing."
+            "Si la cápsula está oculta, tócala una vez para mostrarla. Tocar directamente el recorte de la cámara no hace nada."
         ),
         TourStep(
-            Icons.Rounded.Swipe, "Swipe the pill",
+            Icons.Rounded.Swipe, "Desliza la cápsula",
             listOf(
-                "Swipe left: $left.",
-                "Swipe right: $right.",
-                "Swipe up: $up.",
-                "Swipe down: expands the island."
+                "Desliza a la izquierda: $left.",
+                "Desliza a la derecha: $right.",
+                "Desliza hacia arriba: $up.",
+                "Desliza hacia abajo para expandir la isla."
             ),
-            "The island follows your finger. Change your mind halfway and pull back to cancel."
+            "La isla sigue el movimiento de tu dedo. Si cambias de idea, vuelve al inicio para cancelar."
         ),
         TourStep(
-            Icons.Rounded.TouchApp, "Long press",
+            Icons.Rounded.TouchApp, "Mantén pulsado",
             listOf(
                 if (settings.enableAppShortcuts) {
-                    "Long press the pill to open your quick-launch apps. Pin your favourites under App Shortcuts."
+                    "Mantén pulsada la cápsula para abrir tus aplicaciones favoritas. Añádelas en Accesos directos."
                 } else {
-                    "Long press the pill to hide or show it."
+                    "Mantén pulsada la cápsula para ocultarla o mostrarla."
                 },
-                "Long press the camera hole itself, when it sits outside the pill, or the middle band: the normal long press action, so hide or show by default.",
-                "On the small idle circle, a long press hides or shows the pill."
+                "Mantén pulsado el recorte de la cámara cuando quede fuera de la cápsula, o la zona central, para ejecutar la acción configurada.",
+                "Mantén pulsado el pequeño círculo cuando la isla esté inactiva para ocultar o mostrar la cápsula."
             ),
-            "Prefer hide / show on the pill? Turn App Shortcuts off, or change the long press action."
+            "¿Prefieres ocultar o mostrar la cápsula al mantenerla pulsada? Desactiva Accesos directos o cambia la acción de pulsación larga."
         ),
         TourStep(
-            Icons.Rounded.ArrowUpward, "On the open card",
+            Icons.Rounded.ArrowUpward, "En la tarjeta expandida",
             listOf(
-                "Swipe up: $cardUp.",
-                "Hold for a moment until you feel a pulse, then swipe up: $cardHold.",
-                "Swipe down opens long text, pictures and stickers when the card has them, one step at a time. Swipe up goes one step back.",
-                "Pull the handle at the card's bottom edge to open the app in a floating window."
+                "Desliza hacia arriba: $cardUp.",
+                "Mantén pulsado hasta sentir una vibración y, después, desliza hacia arriba: $cardHold.",
+                "Desliza hacia abajo para ampliar el texto, las imágenes o los stickers, paso a paso. Desliza hacia arriba para volver.",
+                "Arrastra el tirador del borde inferior de la tarjeta para abrir la app en una ventana flotante."
             ),
-            "Buttons on a card are the app's own, so Reply, Pause or Stop work just like in the shade."
+            "Los botones de la tarjeta pertenecen a la app que envió la notificación; responder, pausar o detener funcionan igual que en el panel de notificaciones."
         ),
         TourStep(
-            Icons.Rounded.Apps, "Quick-launch and utilities",
+            Icons.Rounded.Apps, "Accesos directos y utilidades",
             listOf(
-                "In the quick-launch window, swipe up or down to switch between your apps and the Utilities page.",
-                "Swipe left or right for Recents, when it is on.",
-                "Utilities are one-tap tiles: flashlight, Wi-Fi, timer, stopwatch, screenshot and more. You can add widgets too.",
-                "A widget that scrolls up and down has a thin edge strip on each side that swipes back to the apps."
+                "En la ventana de accesos directos, desliza arriba o abajo para alternar entre tus apps y Utilidades.",
+                "Desliza a izquierda o derecha para ver las aplicaciones recientes, si está activado.",
+                "Las utilidades son accesos de un toque: linterna, wifi, temporizador, cronómetro, captura de pantalla y más. También puedes añadir widgets.",
+                "Si un widget permite desplazarse, usa la franja estrecha de sus bordes para volver a las aplicaciones."
             ),
-            "Edit the grid under App Shortcuts."
+            "Personaliza la cuadrícula en Accesos directos."
         ),
         TourStep(
-            Icons.Rounded.Tune, "Make it yours",
+            Icons.Rounded.Tune, "Personaliza la isla",
             listOf(
-                "Every swipe action can be changed on the Gestures screen, or switched off.",
-                "Too twitchy or too stiff? Set Gesture sensitivity to Low, Normal or High.",
-                "Vibration strength, animation speed and colours are in Settings too."
+                "Puedes cambiar o desactivar cada gesto en la sección Gestos.",
+                "¿La sensibilidad es demasiado alta o baja? Ajusta la sensibilidad de los gestos.",
+                "En Ajustes también puedes cambiar la intensidad de vibración, la velocidad de animación y los colores."
             ),
-            "You can open this tour again any time from the top of the Gestures screen."
+            "Puedes volver a abrir esta guía cuando quieras desde la parte superior de Gestos."
         ),
     )
 }
@@ -369,13 +369,13 @@ fun NewUserTour(settings: SmartIslandSettings, onFinish: () -> Unit) {
             Column(modifier = Modifier.padding(22.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
                 Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                     Text(
-                        "Step ${index + 1} of ${steps.size}",
+                        "Paso ${index + 1} de ${steps.size}",
                         style = MaterialTheme.typography.labelMedium,
                         color = MaterialTheme.colorScheme.primary,
                         fontWeight = FontWeight.Bold,
                         modifier = Modifier.weight(1f)
                     )
-                    if (!last) TextButton(onClick = onFinish) { Text("Skip") }
+                    if (!last) TextButton(onClick = onFinish) { Text("Omitir") }
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     steps.indices.forEach { i ->
@@ -426,11 +426,11 @@ fun NewUserTour(settings: SmartIslandSettings, onFinish: () -> Unit) {
                 }
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     if (index > 0) {
-                        TextButton(onClick = { index -= 1 }) { Text("Back") }
+                        TextButton(onClick = { index -= 1 }) { Text("Atr?s") }
                     }
                     Spacer(Modifier.weight(1f))
                     Button(onClick = { if (last) onFinish() else index += 1 }, shape = RoundedCornerShape(14.dp)) {
-                        Text(if (last) "Done" else "Next", fontWeight = FontWeight.Bold)
+                        Text(if (last) "Listo" else "Siguiente", fontWeight = FontWeight.Bold)
                     }
                 }
             }
@@ -458,14 +458,14 @@ fun NewUserTourCard(onStart: () -> Unit) {
         ) {
             IconBadge(Icons.Rounded.Lightbulb, size = 40)
             Column(modifier = Modifier.weight(1f)) {
-                Text("New to Smart Island?", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                Text("¿Primera vez con Ryx Isla?", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                 Text(
-                    "Take a one-minute tour of the gestures.",
+                    "Conoce los gestos principales en una guía de un minuto.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
-            Text("Start", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
+            Text("Empezar", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
         }
     }
 }

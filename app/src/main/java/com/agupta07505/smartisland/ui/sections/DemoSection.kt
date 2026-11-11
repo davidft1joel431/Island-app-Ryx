@@ -9,7 +9,9 @@ package com.agupta07505.smartisland.ui.sections
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -23,6 +25,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.ClearAll
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import com.agupta07505.smartisland.ui.glass.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.FilledTonalButton
@@ -30,6 +33,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import com.agupta07505.smartisland.ui.glass.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -41,12 +45,18 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import com.agupta07505.smartisland.model.IslandNotification
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.agupta07505.smartisland.data.INotificationRepository
 import com.agupta07505.smartisland.data.SmartIslandSettings
+import com.agupta07505.smartisland.R
 import com.agupta07505.smartisland.model.IslandEvent
 import com.agupta07505.smartisland.ui.components.CollapsibleCard
 import com.agupta07505.smartisland.util.DemoEvents
@@ -64,6 +74,7 @@ fun DemoSection(
 ) {
     val context = LocalContext.current
     var openExpanded by rememberSaveable { mutableStateOf(true) }
+    var selectedGroup by rememberSaveable { mutableStateOf<String?>(null) }
     val noCards = remember { MutableStateFlow<List<IslandNotification>>(emptyList()) }
     val cards by (notificationRepository?.notifications ?: noCards).collectAsState()
     val showingKeys = cards.filter { DemoEvents.isDemoKey(it.key) }.map { it.key }.toSet()
@@ -120,14 +131,53 @@ fun DemoSection(
         }
 
         val faceIdState by com.agupta07505.smartisland.util.FaceIdController.state.collectAsState()
-        DemoEvents.available.groupBy { it.group }.entries.forEachIndexed { index, (group, events) ->
+        val eventGroups = remember { DemoEvents.available.groupBy { it.group }.entries.toList() }
+        if (selectedGroup == null) {
+            Text(stringResource(R.string.demo_choose_category), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            eventGroups.chunked(2).forEach { rowGroups ->
+                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    rowGroups.forEach { (group, events) ->
+                        val showingCount = events.count { DemoEvents.keyFor(it) in showingKeys }
+                        DemoCategoryTile(
+                            modifier = Modifier.weight(1f),
+                            title = stringResource(when (group) {
+                                "Power" -> R.string.demo_group_power
+                                "Connectivity" -> R.string.demo_group_connectivity
+                                else -> R.string.demo_group_activities
+                            }),
+                            subtitle = if (showingCount > 0) "$showingCount activos" else "${events.size} ejemplos",
+                            icon = iconFor(events.first()),
+                            color = when (group) {
+                                "Power" -> Color(0xFF16A34A)
+                                "Connectivity" -> Color(0xFF0EA5E9)
+                                else -> Color(0xFF8B5CF6)
+                            },
+                            onClick = { selectedGroup = group }
+                        )
+                    }
+                    if (rowGroups.size == 1) Spacer(Modifier.weight(1f))
+                }
+            }
+            Spacer(Modifier.size(1.dp))
+        } else {
+            OutlinedButton(onClick = { selectedGroup = null }, modifier = Modifier.fillMaxWidth()) {
+                Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = null, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.width(8.dp))
+                Text(stringResource(R.string.design_back))
+            }
+        }
+        eventGroups.filter { it.key == selectedGroup }.forEach { (group, events) ->
             val showingCount = events.count { DemoEvents.keyFor(it) in showingKeys }
             CollapsibleCard(
-                title = group,
+                title = stringResource(when (group) {
+                    "Power" -> R.string.demo_group_power
+                    "Connectivity" -> R.string.demo_group_connectivity
+                    else -> R.string.demo_group_activities
+                }),
                 stateKey = "demo_group_$group",
-                summary = if (showingCount > 0) "$showingCount showing" else "${events.size} samples",
+                summary = if (showingCount > 0) "$showingCount activos" else "${events.size} ejemplos",
                 icon = iconFor(events.first()),
-                initiallyExpanded = false
+                initiallyExpanded = true
             ) {
                 events.forEachIndexed { rowIndex, event ->
                     if (rowIndex > 0) {
@@ -208,6 +258,38 @@ fun DemoSection(
                     }
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun DemoCategoryTile(
+    modifier: Modifier,
+    title: String,
+    subtitle: String,
+    icon: ImageVector,
+    color: Color,
+    onClick: () -> Unit
+) {
+    val shape = RoundedCornerShape(24.dp)
+    Column(
+        modifier = modifier
+            .aspectRatio(1f)
+            .clip(shape)
+            .background(Brush.linearGradient(listOf(color.copy(alpha = 0.22f), MaterialTheme.colorScheme.surface)))
+            .clickable(onClick = onClick)
+            .padding(16.dp),
+        verticalArrangement = Arrangement.SpaceBetween
+    ) {
+        Box(
+            modifier = Modifier.size(54.dp).clip(RoundedCornerShape(18.dp)).background(color.copy(alpha = 0.16f)),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(icon, contentDescription = null, tint = color, modifier = Modifier.size(30.dp))
+        }
+        Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
+            Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            Text(subtitle, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
         }
     }
 }

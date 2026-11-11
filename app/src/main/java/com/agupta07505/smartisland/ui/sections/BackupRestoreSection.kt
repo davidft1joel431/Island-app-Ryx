@@ -58,6 +58,8 @@ import com.agupta07505.smartisland.BuildConfig
 import com.agupta07505.smartisland.R
 import com.agupta07505.smartisland.data.SmartIslandSettings
 import com.agupta07505.smartisland.data.SmartIslandSettingsRepository
+import com.agupta07505.smartisland.data.NotificationHistoryEntry
+import com.agupta07505.smartisland.di.SmartIslandRepositories
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -66,6 +68,8 @@ import java.util.Date
 import java.util.Locale
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
+import org.json.JSONArray
+import org.json.JSONObject
 
 @Composable
 fun BackupRestoreSection(
@@ -74,6 +78,7 @@ fun BackupRestoreSection(
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+    val historyRepository = remember(context) { SmartIslandRepositories.historyRepository(context) }
 
     // Dialog state survives rotation: the picked backup is kept as its JSON text (a plain string
     // that can be saved) and parsed again, instead of holding the parsed objects.
@@ -94,7 +99,12 @@ fun BackupRestoreSection(
         if (uri == null) return@rememberLauncherForActivityResult
         scope.launch(Dispatchers.IO) {
             try {
-                val jsonString = settings.toJson(appVersion = BuildConfig.VERSION_NAME)
+                historyRepository.reload()
+                val backup = JSONObject(settings.toJson(appVersion = BuildConfig.VERSION_NAME))
+                backup.put("notificationHistory", JSONArray().apply {
+                    historyRepository.history.value.take(1000).forEach { put(it.toBackupJson()) }
+                })
+                val jsonString = backup.toString(2)
                 context.contentResolver.openOutputStream(uri)?.use { out ->
                     out.write(jsonString.toByteArray(Charsets.UTF_8))
                     out.flush()
@@ -137,6 +147,12 @@ fun BackupRestoreSection(
                 val restored = runCatching { SmartIslandSettings.fromJson(jsonString) }.getOrNull()
 
                 if (restored == null) {
+                    withContext(Dispatchers.Main) {
+                        Toast.makeText(context, context.getString(R.string.toast_backup_invalid_file), Toast.LENGTH_SHORT).show()
+                    }
+                    return@launch
+                }
+                runCatching { parseNotificationHistoryBackup(jsonString) }.onFailure {
                     withContext(Dispatchers.Main) {
                         Toast.makeText(context, context.getString(R.string.toast_backup_invalid_file), Toast.LENGTH_SHORT).show()
                     }
@@ -490,12 +506,15 @@ fun BackupRestoreSection(
                 Button(
                     onClick = {
                         val toRestore = pendingRestoreSettings
+                        val historyToRestore = pendingRestoreJson?.let { runCatching { parseNotificationHistoryBackup(it) }.getOrNull() }
                         if (toRestore != null) {
                             scope.launch {
                                 repository.restoreSettings(toRestore)
+                                val historyRestored = historyToRestore?.let { historyRepository.replaceAll(it) } ?: true
                                 Toast.makeText(
                                     context,
-                                    context.getString(R.string.toast_backup_restored_success),
+                                    if (historyRestored) context.getString(R.string.toast_backup_restored_success)
+                                    else context.getString(R.string.toast_backup_restore_failed, context.getString(R.string.toast_backup_history_restore_failed)),
                                     Toast.LENGTH_LONG
                                 ).show()
                             }
@@ -567,4 +586,14 @@ fun BackupRestoreSection(
             }
         )
     }
+}
+
+private fun parseNotificationHistoryBackup(json: String): List<NotificationHistoryEntry>? {
+    val root = JSONObject(json)
+    if (!root.has("notificationHistory")) return null
+    val array = root.optJSONArray("notificationHistory")
+        ?: throw IllegalArgumentException("notificationHistory must be a JSON array")
+    return List(minOf(array.length(), 1000)) { index ->
+        array.optJSONObject(index)?.let(NotificationHistoryEntry::fromBackupJson)
+    }.filterNotNull()
 }
