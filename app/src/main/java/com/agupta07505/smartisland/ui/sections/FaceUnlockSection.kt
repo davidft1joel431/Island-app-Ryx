@@ -200,7 +200,7 @@ fun FaceUnlockSection(
                 }
                 OutlinedButton(
                     enabled = captureText != null && !capturing,
-                    onClick = { saveLauncher.launch("smartisland_face_unlock_capture.txt") }
+                    onClick = { saveLauncher.launch("ryxisla_face_unlock_capture.txt") }
                 ) { Text("Save capture") }
             }
             status?.let {

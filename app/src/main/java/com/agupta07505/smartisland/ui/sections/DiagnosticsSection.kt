@@ -147,7 +147,7 @@ fun DiagnosticsSection(
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     Button(onClick = {
                         val stamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date())
-                        exportLauncher.launch("smartisland_log_$stamp.txt")
+                        exportLauncher.launch("ryxisla_log_$stamp.txt")
                     }) { Text("Export log") }
                     OutlinedButton(onClick = {
                         AppLogRecorder.clear(context)

@@ -27,6 +27,8 @@
         tools:ignore="ProtectedPermissions" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.VIBRATE" />
+    <!-- Keep the CPU awake briefly so prioritized notification audio can start while the display is off. -->
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
     <!-- Brightness slider on the Utilities page: writing the screen brightness needs this special permission (granted in system settings). -->
     <uses-permission
         android:name="android.permission.WRITE_SETTINGS"

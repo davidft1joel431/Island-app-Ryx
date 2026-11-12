@@ -311,7 +311,7 @@ fun BackupRestoreSection(
                 OutlinedButton(
                     onClick = {
                         val timestamp = java.text.SimpleDateFormat("yyyyMMdd_HHmmss", java.util.Locale.US).format(java.util.Date())
-                        val filename = "smartisland_backup_$timestamp.json"
+                        val filename = "ryxisla_backup_$timestamp.json"
                         exportLauncher.launch(filename)
                     },
                     shape = RoundedCornerShape(12.dp),

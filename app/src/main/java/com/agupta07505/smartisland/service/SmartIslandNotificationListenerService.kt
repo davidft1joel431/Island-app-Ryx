@@ -89,6 +89,7 @@ class SmartIslandNotificationListenerService : NotificationListenerService() {
     private val cooldownReleaseJobs = ConcurrentHashMap<String, Job>()
     @Volatile private var lastSoundPlayedTimeMs = 0L
     @Volatile private var activeNotificationRingtone: Ringtone? = null
+    @Volatile private var prioritySoundWakeLock: android.os.PowerManager.WakeLock? = null
     @Volatile private var lastAutoExpandTimeMs = 0L
 
     private val viewButtonReceiver = object : android.content.BroadcastReceiver() {
@@ -420,6 +421,8 @@ class SmartIslandNotificationListenerService : NotificationListenerService() {
         lastSoundPlayedTimeMs = 0L
         runCatching { activeNotificationRingtone?.stop() }
         activeNotificationRingtone = null
+        runCatching { prioritySoundWakeLock?.takeIf { it.isHeld }?.release() }
+        prioritySoundWakeLock = null
         lastAutoExpandTimeMs = 0L
         cooldownReleaseJobs.values.forEach { it.cancel() }
         cooldownReleaseJobs.clear()
@@ -2270,6 +2273,7 @@ class SmartIslandNotificationListenerService : NotificationListenerService() {
                 runCatching { activeNotificationRingtone?.stop() }
                 activeNotificationRingtone = ringtone
                 try {
+                    keepPrioritySoundCpuAwakeIfScreenOff(isPriorityConversation)
                     ringtone.play()
                 } catch (playError: Exception) {
                     android.util.Log.w(TAG, "Notification channel tone could not play; trying the system tone", playError)
@@ -2278,10 +2282,30 @@ class SmartIslandNotificationListenerService : NotificationListenerService() {
                     val fallback = RingtoneManager.getRingtone(applicationContext, fallbackUri) ?: throw playError
                     fallback.audioAttributes = attrs
                     activeNotificationRingtone = fallback
+                    keepPrioritySoundCpuAwakeIfScreenOff(isPriorityConversation)
                     fallback.play()
                 }
                 lastSoundPlayedTimeMs = SystemClock.elapsedRealtime()
             }
+        }
+    }
+
+    /** A bounded CPU wake lock lets the notification audio start reliably while the display is off. */
+    private fun keepPrioritySoundCpuAwakeIfScreenOff(isPriorityConversation: Boolean) {
+        if (!isPriorityConversation) return
+        val powerManager = getSystemService(android.content.Context.POWER_SERVICE) as? android.os.PowerManager ?: return
+        if (powerManager.isInteractive) return
+        runCatching {
+            prioritySoundWakeLock?.takeIf { it.isHeld }?.release()
+            prioritySoundWakeLock = powerManager.newWakeLock(
+                android.os.PowerManager.PARTIAL_WAKE_LOCK,
+                "$packageName:priority-notification-audio"
+            ).apply {
+                setReferenceCounted(false)
+                acquire(PRIORITY_SOUND_WAKE_LOCK_TIMEOUT_MS)
+            }
+        }.onFailure { error ->
+            android.util.Log.w(TAG, "Could not keep CPU awake for prioritized notification audio", error)
         }
     }
 
@@ -2534,6 +2558,7 @@ class SmartIslandNotificationListenerService : NotificationListenerService() {
         private const val INITIAL_SUPPRESSION_WINDOW_MS = 1500L
         private const val REPLY_GRACE_MS = 6000L
         private const val SOUND_DEBOUNCE_MS = 1200L
+        private const val PRIORITY_SOUND_WAKE_LOCK_TIMEOUT_MS = 15_000L
         private const val AUTO_EXPAND_DEBOUNCE_MS = 1500L
 
         private val INITIAL_RESYNC_DELAYS_MS = longArrayOf(1_500L, 3_500L)

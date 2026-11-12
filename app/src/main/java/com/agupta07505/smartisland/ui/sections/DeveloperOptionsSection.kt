@@ -264,7 +264,7 @@ fun DeveloperOptionsSection(
                 Button(
                     onClick = {
                         val timestamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date())
-                        exportLauncher.launch("smartisland_logs_$timestamp.txt")
+                        exportLauncher.launch("ryxisla_logs_$timestamp.txt")
                     },
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(12.dp),

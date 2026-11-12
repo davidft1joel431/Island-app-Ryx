@@ -69,7 +69,7 @@ object AppLogRecorder {
         if (enabled) {
             isRecording = true
             saveRecordingFlag(context, true)
-            record("I", TAG, "Diagnostic log recording started for Smart Island v${BuildConfig.VERSION_NAME} (pid ${Process.myPid()})")
+            record("I", TAG, "Diagnostic log recording started for Ryx Isla v${BuildConfig.VERSION_NAME} (pid ${Process.myPid()})")
             record("I", TAG, "Environment: " + runCatching { EnvironmentDiagnostics.snapshot(context) }.getOrDefault("unavailable"))
         } else {
             record("I", TAG, "Diagnostic log recording paused")
