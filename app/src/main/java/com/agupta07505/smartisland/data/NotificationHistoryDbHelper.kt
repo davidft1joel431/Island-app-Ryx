@@ -84,7 +84,7 @@ class NotificationHistoryDbHelper(context: Context) : SQLiteOpenHelper(
         db.beginTransaction()
         try {
             db.delete(TABLE_HISTORY, null, null)
-            entries.take(1000).forEach { entry ->
+            entries.take(INotificationHistoryRepository.MAX_BACKUP_ENTRIES).forEach { entry ->
                 db.insertOrThrow(TABLE_HISTORY, null, contentValues(entry))
             }
             db.setTransactionSuccessful()

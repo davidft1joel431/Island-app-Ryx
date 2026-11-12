@@ -492,6 +492,9 @@ fun SmartIslandHomeScreen(
                             HomeMinimalMenu(
                                 enabled = settings.enabled,
                                 canEnable = canEnable,
+                                overlayGranted = overlayGranted,
+                                notificationGranted = notificationGranted,
+                                batteryIgnored = batteryIgnored,
                                 onEnabledChange = { turnOn ->
                                     if (turnOn) {
                                         SystemServiceRecovery.requestRecovery(context)
@@ -797,6 +800,9 @@ private fun StudioTopHeader(
 private fun HomeMinimalMenu(
     enabled: Boolean,
     canEnable: Boolean,
+    overlayGranted: Boolean,
+    notificationGranted: Boolean,
+    batteryIgnored: Boolean,
     onEnabledChange: (Boolean) -> Unit,
     onOpenLayout: () -> Unit,
     onOpenDemo: () -> Unit,
@@ -806,36 +812,7 @@ private fun HomeMinimalMenu(
     onOpenPermissions: () -> Unit
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Card(
-            modifier = Modifier.fillMaxWidth().animateContentSize(),
-            shape = RoundedCornerShape(24.dp),
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f)),
-            elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
-        ) {
-            Row(
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 15.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                Box(
-                    modifier = Modifier.size(46.dp).clip(RoundedCornerShape(15.dp))
-                        .background(Brush.linearGradient(listOf(Color(0xFF1F7048), Color(0xFF76A943)))),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(Icons.Rounded.FlashOn, contentDescription = null, tint = Color(0xFFFFD65A), modifier = Modifier.size(25.dp))
-                }
-                Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                    Text(stringResource(R.string.home_island_title), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                    Text(
-                        stringResource(if (canEnable) if (enabled) R.string.status_active else R.string.status_ready else R.string.status_setup_needed),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = if (canEnable && enabled) Color(0xFF218653) else MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-                Switch(checked = enabled, enabled = canEnable || enabled, onCheckedChange = onEnabledChange)
-            }
-        }
+        HomeIslandLivePreview()
 
         Text(
             text = stringResource(R.string.home_menu_title),
@@ -897,6 +874,128 @@ private fun HomeMinimalMenu(
                     icon = Icons.Rounded.Shield,
                     iconColor = if (canEnable) BadgeGreen else Color(0xFFE89531),
                     onClick = onOpenPermissions
+                )
+            }
+        }
+
+        MasterPowerCard(
+            enabled = enabled,
+            canEnable = canEnable,
+            overlayGranted = overlayGranted,
+            notificationGranted = notificationGranted,
+            batteryIgnored = batteryIgnored,
+            onCheckedChange = onEnabledChange,
+            onSetupPermissionsClick = onOpenPermissions
+        )
+    }
+}
+
+@Composable
+private fun HomeIslandLivePreview() {
+    var expanded by rememberSaveable { mutableStateOf(true) }
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(24.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f)),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
+    ) {
+        Column(
+            modifier = Modifier.fillMaxWidth().padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                Text(
+                    stringResource(R.string.home_live_preview_title),
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold
+                )
+                Text(
+                    stringResource(R.string.home_live_preview_summary),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(164.dp)
+                    .clip(RoundedCornerShape(20.dp))
+                    .background(Color(0xFF111512))
+                    .clickable { expanded = !expanded },
+                contentAlignment = Alignment.TopCenter
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 10.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("9:41", color = Color.White.copy(alpha = 0.88f), style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.SemiBold)
+                    Box(Modifier.width(44.dp).height(4.dp).clip(CircleShape).background(Color.White.copy(alpha = 0.18f)))
+                    Text("5G  100%", color = Color.White.copy(alpha = 0.76f), style = MaterialTheme.typography.labelSmall)
+                }
+
+                Row(
+                    modifier = Modifier
+                        .padding(top = 38.dp)
+                        .fillMaxWidth(if (expanded) 0.88f else 0.52f)
+                        .height(if (expanded) 78.dp else 42.dp)
+                        .clip(RoundedCornerShape(if (expanded) 25.dp else 24.dp))
+                        .background(Color(0xFF050606))
+                        .animateContentSize()
+                        .padding(horizontal = if (expanded) 12.dp else 10.dp, vertical = if (expanded) 10.dp else 7.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(9.dp)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(if (expanded) 38.dp else 25.dp)
+                            .clip(CircleShape)
+                            .background(Brush.linearGradient(listOf(Color(0xFF28764B), Color(0xFF75A941)))),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            Icons.Rounded.Notifications,
+                            contentDescription = null,
+                            tint = Color(0xFFFFD65A),
+                            modifier = Modifier.size(if (expanded) 21.dp else 15.dp)
+                        )
+                    }
+                    Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(1.dp)) {
+                        Text(
+                            if (expanded) stringResource(R.string.home_preview_chat_name) else stringResource(R.string.mode_notification),
+                            color = Color.White.copy(alpha = 0.78f),
+                            style = MaterialTheme.typography.labelSmall,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        Text(
+                            if (expanded) stringResource(R.string.home_preview_chat_message) else stringResource(R.string.home_preview_chat_name),
+                            color = Color.White,
+                            style = if (expanded) MaterialTheme.typography.bodySmall else MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.SemiBold,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                    if (expanded) {
+                        Text(
+                            stringResource(R.string.home_preview_reply),
+                            color = Color(0xFFFFD65A),
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.Bold
+                        )
+                    } else {
+                        Box(Modifier.size(7.dp).clip(CircleShape).background(Color(0xFF8CD653)))
+                    }
+                }
+
+                Text(
+                    text = stringResource(if (expanded) R.string.home_preview_expanded_label else R.string.home_preview_collapsed_label),
+                    modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 11.dp),
+                    color = Color.White.copy(alpha = 0.56f),
+                    style = MaterialTheme.typography.labelSmall
                 )
             }
         }

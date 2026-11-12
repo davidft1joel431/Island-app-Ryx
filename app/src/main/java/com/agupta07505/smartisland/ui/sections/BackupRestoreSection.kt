@@ -80,10 +80,9 @@ fun BackupRestoreSection(
     val scope = rememberCoroutineScope()
     val historyRepository = remember(context) { SmartIslandRepositories.historyRepository(context) }
 
-    // Dialog state survives rotation: the picked backup is kept as its JSON text (a plain string
-    // that can be saved) and parsed again, instead of holding the parsed objects.
     var showRestoreDialog by rememberSaveable { mutableStateOf(false) }
-    var pendingRestoreJson by rememberSaveable { mutableStateOf<String?>(null) }
+    // Large history backups stay in memory instead of being copied into Android's saved-state Bundle.
+    var pendingRestoreJson by remember { mutableStateOf<String?>(null) }
     val pendingRestoreSettings = remember(pendingRestoreJson) {
         pendingRestoreJson?.let { runCatching { SmartIslandSettings.fromJson(it) }.getOrNull() }
     }
@@ -99,20 +98,26 @@ fun BackupRestoreSection(
         if (uri == null) return@rememberLauncherForActivityResult
         scope.launch(Dispatchers.IO) {
             try {
-                historyRepository.reload()
+                val historyEntries = historyRepository.getBackupEntries()
                 val backup = JSONObject(settings.toJson(appVersion = BuildConfig.VERSION_NAME))
                 backup.put("notificationHistory", JSONArray().apply {
-                    historyRepository.history.value.take(1000).forEach { put(it.toBackupJson()) }
+                    historyEntries.forEach { put(it.toBackupJson()) }
                 })
                 val jsonString = backup.toString(2)
-                context.contentResolver.openOutputStream(uri)?.use { out ->
+                val outputStream = context.contentResolver.openOutputStream(uri)
+                    ?: throw java.io.IOException("Could not open the backup destination")
+                outputStream.use { out ->
                     out.write(jsonString.toByteArray(Charsets.UTF_8))
                     out.flush()
                 }
                 withContext(Dispatchers.Main) {
                     Toast.makeText(
                         context,
-                        context.getString(R.string.toast_backup_exported_success),
+                        if (historyEntries.isEmpty()) {
+                            context.getString(R.string.toast_backup_exported_no_history)
+                        } else {
+                            context.getString(R.string.toast_backup_exported_success_with_history, historyEntries.size)
+                        },
                         Toast.LENGTH_LONG
                     ).show()
                 }
@@ -593,7 +598,7 @@ private fun parseNotificationHistoryBackup(json: String): List<NotificationHisto
     if (!root.has("notificationHistory")) return null
     val array = root.optJSONArray("notificationHistory")
         ?: throw IllegalArgumentException("notificationHistory must be a JSON array")
-    return List(minOf(array.length(), 1000)) { index ->
+    return List(minOf(array.length(), com.agupta07505.smartisland.data.INotificationHistoryRepository.MAX_BACKUP_ENTRIES)) { index ->
         array.optJSONObject(index)?.let(NotificationHistoryEntry::fromBackupJson)
     }.filterNotNull()
 }

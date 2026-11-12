@@ -45,6 +45,10 @@ class NotificationHistoryRepository @Inject constructor(
         _history.value = entries
     }
 
+    override suspend fun getBackupEntries(): List<NotificationHistoryEntry> = withContext(Dispatchers.IO) {
+        dbHelper.getAllEntries(limit = INotificationHistoryRepository.MAX_BACKUP_ENTRIES)
+    }
+
     override suspend fun saveEntry(entry: NotificationHistoryEntry) = withContext(Dispatchers.IO) {
         val id = dbHelper.insertEntry(entry)
         val savedEntry = if (id > 0) entry.copy(id = id) else entry
@@ -54,7 +58,7 @@ class NotificationHistoryRepository @Inject constructor(
     }
 
     override suspend fun replaceAll(entries: List<NotificationHistoryEntry>): Boolean = withContext(Dispatchers.IO) {
-        val replaced = dbHelper.replaceAll(entries.take(1000))
+        val replaced = dbHelper.replaceAll(entries.take(INotificationHistoryRepository.MAX_BACKUP_ENTRIES))
         if (replaced) reload()
         replaced
     }

@@ -11,6 +11,7 @@ import kotlinx.coroutines.flow.StateFlow
 
 interface INotificationHistoryRepository {
     val history: StateFlow<List<NotificationHistoryEntry>>
+    suspend fun getBackupEntries(): List<NotificationHistoryEntry>
     suspend fun saveEntry(entry: NotificationHistoryEntry)
     suspend fun replaceAll(entries: List<NotificationHistoryEntry>): Boolean
     suspend fun markAsOpened(notificationKey: String)
@@ -20,4 +21,8 @@ interface INotificationHistoryRepository {
     suspend fun search(query: String): List<NotificationHistoryEntry>
     suspend fun cleanupOldEntries(retentionHours: Int)
     suspend fun reload()
+
+    companion object {
+        const val MAX_BACKUP_ENTRIES = 10_000
+    }
 }
