@@ -37,6 +37,15 @@
     <string name="game_mode_no_matching_apps">No apps match this search.</string>
     <string name="game_mode_add_game">Add</string>
     <string name="game_mode_remove_game">Remove</string>
+    <string name="game_mode_detected_game">Detected by Android</string>
+    <string name="demo_header_title">Island preview studio</string>
+    <string name="demo_state_unavailable">The island service is not ready. Reopen the app and try again.</string>
+    <string name="demo_state_disabled">The island is off. Turn it on from Home to preview these examples.</string>
+    <string name="demo_state_ready">Choose an example to preview it on the island. Temporary events close automatically; persistent examples stay until cleared.</string>
+    <string name="demo_open_expanded">Open previews expanded</string>
+    <string name="demo_clear_empty">No demo cards are showing</string>
+    <string name="demo_clear_count">Clear all demo cards (%1$d)</string>
+    <string name="demo_category_count">%1$d interactive examples</string>
     <string name="about_creator">Created by David Joel · Peru</string>
     <string name="settings_hub_title">Control centre</string>
     <string name="settings_hub_subtitle">Personalise the island and manage its features.</string>

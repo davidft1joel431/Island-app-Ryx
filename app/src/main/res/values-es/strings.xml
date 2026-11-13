@@ -73,6 +73,15 @@
     <string name="demo_group_power">Energía</string>
     <string name="demo_group_connectivity">Conectividad</string>
     <string name="demo_group_activities">Actividades</string>
+    <string name="game_mode_detected_game">Detectado por Android</string>
+    <string name="demo_header_title">Vista previa de la isla</string>
+    <string name="demo_state_unavailable">El servicio de la isla no está listo. Vuelve a abrir la app e inténtalo de nuevo.</string>
+    <string name="demo_state_disabled">La isla está desactivada. Actívala desde Inicio para probar estos ejemplos.</string>
+    <string name="demo_state_ready">Elige un ejemplo para verlo en la isla. Los eventos temporales se cierran solos; los demás permanecen hasta que los quites.</string>
+    <string name="demo_open_expanded">Abrir las vistas expandidas</string>
+    <string name="demo_clear_empty">No hay tarjetas de demostración visibles</string>
+    <string name="demo_clear_count">Quitar todas las tarjetas (%1$d)</string>
+    <string name="demo_category_count">%1$d ejemplos interactivos</string>
     <string name="studio_page_previous">Menú anterior</string>
     <string name="studio_page_next">Menú siguiente</string>
     <string name="home_layout_title">Personalizar la isla</string>

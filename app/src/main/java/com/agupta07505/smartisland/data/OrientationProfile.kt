@@ -201,6 +201,7 @@ private fun SmartIslandSettings.landscapeContentPillFor(
         yOffset = y,
         cornerRadius = portrait.landscapeCornerRadius,
         opacity = portrait.landscapeOpacity,
+        mediaOpacity = portrait.landscapeOpacity,
         circlePosition = innerCircleSide(placedSide, mirrorCirclePosition(portrait.circlePosition, state.reversed))
     )
 }

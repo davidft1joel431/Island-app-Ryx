@@ -20,6 +20,11 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalDensity
+import kotlin.math.abs
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.ClearAll
@@ -78,8 +83,29 @@ fun DemoSection(
     val noCards = remember { MutableStateFlow<List<IslandNotification>>(emptyList()) }
     val cards by (notificationRepository?.notifications ?: noCards).collectAsState()
     val showingKeys = cards.filter { DemoEvents.isDemoKey(it.key) }.map { it.key }.toSet()
+    val swipeThreshold = with(LocalDensity.current) { 72.dp.toPx() }
+    val groupNames = remember { DemoEvents.available.map { it.group }.distinct() }
+    BackHandler(enabled = selectedGroup != null) { selectedGroup = null }
 
-    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+    Column(
+        modifier = Modifier.pointerInput(selectedGroup) {
+            var drag = 0f
+            detectHorizontalDragGestures(
+                onDragStart = { drag = 0f },
+                onHorizontalDrag = { _, delta -> drag += delta },
+                onDragEnd = {
+                    if (abs(drag) >= swipeThreshold) {
+                        if (drag > 0f) selectedGroup = null
+                        else if (selectedGroup != null) {
+                            val next = groupNames.indexOf(selectedGroup) + 1
+                            selectedGroup = groupNames.getOrNull(next)
+                        }
+                    }
+                }
+            )
+        },
+        verticalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
         Card(
             modifier = Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(20.dp),
@@ -89,17 +115,16 @@ fun DemoSection(
         ) {
             Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Text(
-                    text = "Sample cards",
+                    text = stringResource(R.string.demo_header_title),
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.onSurface
                 )
                 Text(
                     text = when {
-                        notificationRepository == null -> "The island is not ready yet. Open the app again."
-                        !settings.enabled -> "The island is off. Turn it on from the Home tab, then tap a button to see that card."
-                        else -> "Tap Show to put a sample card on the island. Short events leave by themselves; " +
-                            "the others stay until you clear them. Events switched off on the Home tab stay hidden."
+                        notificationRepository == null -> stringResource(R.string.demo_state_unavailable)
+                        !settings.enabled -> stringResource(R.string.demo_state_disabled)
+                        else -> stringResource(R.string.demo_state_ready)
                     },
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -110,7 +135,7 @@ fun DemoSection(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        text = "Open the card expanded",
+                        text = stringResource(R.string.demo_open_expanded),
                         style = MaterialTheme.typography.bodyMedium,
                         fontWeight = FontWeight.SemiBold,
                         color = MaterialTheme.colorScheme.onSurface,
@@ -125,7 +150,7 @@ fun DemoSection(
                 ) {
                     Icon(Icons.Rounded.ClearAll, contentDescription = null, modifier = Modifier.size(18.dp))
                     Spacer(Modifier.width(8.dp))
-                    Text(if (showingKeys.isEmpty()) "No demo cards showing" else "Clear all demo cards (${showingKeys.size})")
+                    Text(if (showingKeys.isEmpty()) stringResource(R.string.demo_clear_empty) else stringResource(R.string.demo_clear_count, showingKeys.size))
                 }
             }
         }
@@ -160,10 +185,32 @@ fun DemoSection(
             }
             Spacer(Modifier.size(1.dp))
         } else {
-            OutlinedButton(onClick = { selectedGroup = null }, modifier = Modifier.fillMaxWidth()) {
-                Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = null, modifier = Modifier.size(18.dp))
-                Spacer(Modifier.width(8.dp))
-                Text(stringResource(R.string.design_back))
+            val activeEvents = eventGroups.firstOrNull { it.key == selectedGroup }?.value.orEmpty()
+            val activeTitle = when (selectedGroup) {
+                "Power" -> stringResource(R.string.demo_group_power)
+                "Connectivity" -> stringResource(R.string.demo_group_connectivity)
+                else -> stringResource(R.string.demo_group_activities)
+            }
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(20.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.55f)),
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)),
+                elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    IconButton(onClick = { selectedGroup = null }) {
+                        Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = stringResource(R.string.design_back), tint = MaterialTheme.colorScheme.primary)
+                    }
+                    Column(Modifier.weight(1f)) {
+                        Text(activeTitle, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                        Text(stringResource(R.string.demo_category_count, activeEvents.size), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    Icon(iconFor(activeEvents.firstOrNull() ?: IslandEvent.LOW_BATTERY), contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(horizontal = 8.dp).size(24.dp))
+                }
             }
         }
         eventGroups.filter { it.key == selectedGroup }.forEach { (group, events) ->

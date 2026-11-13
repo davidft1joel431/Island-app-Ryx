@@ -219,6 +219,7 @@ private data class PermissionSnapshot(
 )
 
 internal enum class FeatureDetailSection {
+    GameMode,
     NotificationRules,
     AppShortcuts,
     NotificationHistory,
@@ -510,6 +511,9 @@ fun SmartIslandHomeScreen(
         // The weather page is opened from the Idle widgets page, so back goes there; every other page goes home.
         activeDetailSection = if (activeDetailSection in IDLE_SETTINGS_PAGES) FeatureDetailSection.IdleWidgets else null
     }
+    BackHandler(enabled = activeDetailSection == null && selectedTab == StudioTab.Position && activeDesignMenu != null) {
+        activeDesignMenu = null
+    }
 
     CompositionLocalProvider(LocalSearchFocus provides searchFocus) {
     Scaffold(
@@ -572,9 +576,17 @@ fun SmartIslandHomeScreen(
                             onHorizontalDrag = { _, amount -> dragDistance += amount },
                             onDragEnd = {
                                 if (abs(dragDistance) >= swipeThresholdPx) {
-                                    val nextIndex = (selectedTab.ordinal + if (dragDistance < 0) 1 else -1)
-                                        .coerceIn(StudioTab.entries.indices)
-                                    selectStudioTab(StudioTab.entries[nextIndex])
+                                    if (selectedTab == StudioTab.Demo) {
+                                        // Demo owns its internal category gestures; keep them from changing root tabs.
+                                    } else if (selectedTab == StudioTab.Position && activeDesignMenu != null) {
+                                        val menus = listOf("position", "animation", "merge", "widgets", "events")
+                                        val next = menus.indexOf(activeDesignMenu) + if (dragDistance < 0) 1 else -1
+                                        activeDesignMenu = menus.getOrNull(next)
+                                    } else {
+                                        val nextIndex = (selectedTab.ordinal + if (dragDistance < 0) 1 else -1)
+                                            .coerceIn(StudioTab.entries.indices)
+                                        selectStudioTab(StudioTab.entries[nextIndex])
+                                    }
                                 }
                                 dragDistance = 0f
                             }
@@ -605,11 +617,13 @@ fun SmartIslandHomeScreen(
                     if (homeSearchQuery.isNotBlank()) {
                         SettingsSearchResults(query = homeSearchQuery, results = homeSearchResults, onPick = onSearchPick)
                     } else {
-                    StudioPageControls(
-                        selectedTab = selectedTab,
-                        onPrevious = { selectStudioTab(StudioTab.entries[(selectedTab.ordinal - 1).coerceAtLeast(0)]) },
-                        onNext = { selectStudioTab(StudioTab.entries[(selectedTab.ordinal + 1).coerceAtMost(StudioTab.entries.lastIndex)]) }
-                    )
+                    if (!(selectedTab == StudioTab.Position && activeDesignMenu != null)) {
+                        StudioPageControls(
+                            selectedTab = selectedTab,
+                            onPrevious = { selectStudioTab(StudioTab.entries[(selectedTab.ordinal - 1).coerceAtLeast(0)]) },
+                            onNext = { selectStudioTab(StudioTab.entries[(selectedTab.ordinal + 1).coerceAtMost(StudioTab.entries.lastIndex)]) }
+                        )
+                    }
 
                     AnimatedContent(
                         targetState = selectedTab,
@@ -772,24 +786,6 @@ fun SmartIslandHomeScreen(
                                 onFontMixChange = { enabled, light, regular, medium ->
                                     scope.launch { resolvedRepository.setFontMix(enabled, light, regular, medium) }
                                 },
-                                onHideIslandInGamesChange = { enabled ->
-                                    scope.launch { resolvedRepository.setHideIslandInGames(enabled) }
-                                },
-                                onShowNotificationIslandInGamesChange = { enabled ->
-                                    scope.launch { resolvedRepository.setShowNotificationIslandInGames(enabled) }
-                                },
-                                onPlayNotificationSoundInGamesChange = { enabled ->
-                                    scope.launch { resolvedRepository.setPlayNotificationSoundInGames(enabled) }
-                                },
-                                onGameIslandVisibilityOverridesChange = { values ->
-                                    scope.launch { resolvedRepository.setGameIslandVisibilityOverrides(values) }
-                                },
-                                onGameSoundOverridesChange = { values ->
-                                    scope.launch { resolvedRepository.setGameSoundOverrides(values) }
-                                },
-                                onAdditionalGamePackagesChange = { values ->
-                                    scope.launch { resolvedRepository.setAdditionalGamePackages(values) }
-                                },
                                 onNavigateTo = { section ->
                                     transitionDirection = 1
                                     activeDetailSection = section
@@ -806,6 +802,7 @@ fun SmartIslandHomeScreen(
                     section = detailSection,
                     settings = settings,
                     repository = resolvedRepository,
+                    refreshVersion = refreshVersion,
                     overlayGranted = overlayGranted,
                     notificationGranted = notificationGranted,
                     batteryIgnored = batteryIgnored,
@@ -1418,12 +1415,6 @@ private fun SettingsOverviewSection(
     onAccentChange: (Long) -> Unit,
     onIslandFontChange: (String) -> Unit,
     onFontMixChange: (Boolean, String, String, String) -> Unit,
-    onHideIslandInGamesChange: (Boolean) -> Unit,
-    onShowNotificationIslandInGamesChange: (Boolean) -> Unit,
-    onPlayNotificationSoundInGamesChange: (Boolean) -> Unit,
-    onGameIslandVisibilityOverridesChange: (Map<String, Boolean>) -> Unit,
-    onGameSoundOverridesChange: (Map<String, Boolean>) -> Unit,
-    onAdditionalGamePackagesChange: (Set<String>) -> Unit,
     onNavigateTo: (FeatureDetailSection) -> Unit
 ) {
     val canEnable = overlayGranted && notificationGranted
@@ -1485,20 +1476,12 @@ private fun SettingsOverviewSection(
                 Text(stringResource(R.string.settings_hub_title), style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
                 Text(stringResource(R.string.settings_hub_subtitle), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
-            GameModeCard(
-                hideIdleIsland = settings.hideIslandInGames,
-                showNotifications = settings.showNotificationIslandInGames,
-                playSound = settings.playNotificationSoundInGames,
-                onHideIdleIslandChange = onHideIslandInGamesChange,
-                onShowNotificationsChange = onShowNotificationIslandInGamesChange,
-                onPlaySoundChange = onPlayNotificationSoundInGamesChange,
-                islandOverrides = settings.gameIslandVisibilityOverrides,
-                soundOverrides = settings.gameSoundOverrides,
-                onIslandOverridesChange = onGameIslandVisibilityOverridesChange,
-                onSoundOverridesChange = onGameSoundOverridesChange,
-                additionalGamePackages = settings.additionalGamePackages,
-                onAdditionalGamePackagesChange = onAdditionalGamePackagesChange,
-                refreshVersion = refreshVersion
+            FeatureStudioNavigationCard(
+                title = stringResource(R.string.game_mode_title),
+                subtitle = stringResource(R.string.game_mode_summary),
+                icon = Icons.Rounded.SportsEsports,
+                iconColor = BadgeGreen,
+                onClick = { onNavigateTo(FeatureDetailSection.GameMode) }
             )
             // Appearance: the app's own theme, then the island's colours. (Position, size, shadow and the
             // animation choices are on the Layout tab.)
@@ -1785,23 +1768,28 @@ private fun GameModeCard(
                             label = { Text(stringResource(R.string.game_mode_search_apps)) }
                         )
                         val normalizedQuery = manualGameSearch.trim()
-                        val appCandidates = installedApps.filter { (app, isSystemGame) ->
-                            !isSystemGame && app.packageName !in additionalGamePackages &&
-                                normalizedQuery.length >= 2 &&
-                                (app.label.contains(normalizedQuery, ignoreCase = true) || app.packageName.contains(normalizedQuery, ignoreCase = true))
-                        }.take(30)
-                        if (normalizedQuery.length >= 2 && appCandidates.isEmpty()) {
+                        val appCandidates = installedApps.filter { (app, _) ->
+                            normalizedQuery.isBlank() || app.label.contains(normalizedQuery, ignoreCase = true) ||
+                                app.packageName.contains(normalizedQuery, ignoreCase = true)
+                        }
+                        if (appCandidates.isEmpty()) {
                             Text(stringResource(R.string.game_mode_no_matching_apps), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
-                        appCandidates.forEach { (app, _) ->
+                        appCandidates.forEach { (app, isSystemGame) ->
                             Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                                 GameAppIcon(packageName = app.packageName, label = app.label)
                                 Column(Modifier.weight(1f).padding(end = 8.dp)) {
                                     Text(app.label, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
                                     Text(app.packageName, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                 }
-                                TextButton(onClick = { onAdditionalGamePackagesChange(additionalGamePackages + app.packageName) }) {
-                                    Text(stringResource(R.string.game_mode_add_game))
+                                when {
+                                    app.packageName in additionalGamePackages -> TextButton(onClick = { onAdditionalGamePackagesChange(additionalGamePackages - app.packageName) }) {
+                                        Text(stringResource(R.string.game_mode_remove_game))
+                                    }
+                                    isSystemGame -> Text(stringResource(R.string.game_mode_detected_game), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
+                                    else -> TextButton(onClick = { onAdditionalGamePackagesChange(additionalGamePackages + app.packageName) }) {
+                                        Text(stringResource(R.string.game_mode_add_game))
+                                    }
                                 }
                             }
                         }
@@ -2116,6 +2104,7 @@ private fun DetailScreenHost(
     section: FeatureDetailSection,
     settings: SmartIslandSettings,
     repository: SmartIslandSettingsRepository,
+    refreshVersion: Int,
     overlayGranted: Boolean,
     notificationGranted: Boolean,
     batteryIgnored: Boolean,
@@ -2132,12 +2121,23 @@ private fun DetailScreenHost(
     val scrollModifier = if (isScrollableParent) Modifier.verticalScroll(rememberScrollState()) else Modifier
     val screenWidthDp = LocalConfiguration.current.screenWidthDp
     val horizontalPad = contentSidePadding(screenWidthDp)
+    val detailSwipeThresholdPx = with(LocalDensity.current) { 72.dp.toPx() }
 
     Column(
         modifier = Modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
             .then(scrollModifier)
+            .pointerInput(section) {
+                var dragDistance = 0f
+                detectHorizontalDragGestures(
+                    onDragStart = { dragDistance = 0f },
+                    onHorizontalDrag = { _, amount -> dragDistance += amount },
+                    onDragEnd = {
+                        if (dragDistance >= detailSwipeThresholdPx) onBack()
+                    }
+                )
+            }
             .padding(
                 start = horizontalPad,
                 end = horizontalPad,
@@ -2178,6 +2178,7 @@ private fun DetailScreenHost(
             }
             Spacer(modifier = Modifier.width(12.dp))
             val sectionIcon = when (section) {
+                FeatureDetailSection.GameMode -> Icons.Rounded.SportsEsports
                 FeatureDetailSection.NotificationRules -> Icons.Rounded.Notifications
                 FeatureDetailSection.AppShortcuts -> Icons.Rounded.Apps
                 FeatureDetailSection.NotificationHistory -> Icons.Rounded.History
@@ -2208,6 +2209,7 @@ private fun DetailScreenHost(
             }
             Spacer(modifier = Modifier.width(12.dp))
             val title = when (section) {
+                FeatureDetailSection.GameMode -> stringResource(R.string.game_mode_title)
                 FeatureDetailSection.NotificationRules -> stringResource(R.string.detail_title_notifications_privacy)
                 FeatureDetailSection.AppShortcuts -> stringResource(R.string.detail_title_app_shortcuts)
                 FeatureDetailSection.NotificationHistory -> stringResource(R.string.detail_title_notification_history)
@@ -2248,6 +2250,23 @@ private fun DetailScreenHost(
 
         SettingsControlsTheme {
         when (section) {
+            FeatureDetailSection.GameMode -> {
+                GameModeCard(
+                    hideIdleIsland = settings.hideIslandInGames,
+                    showNotifications = settings.showNotificationIslandInGames,
+                    playSound = settings.playNotificationSoundInGames,
+                    onHideIdleIslandChange = { scope.launch { repository.setHideIslandInGames(it) } },
+                    onShowNotificationsChange = { scope.launch { repository.setShowNotificationIslandInGames(it) } },
+                    onPlaySoundChange = { scope.launch { repository.setPlayNotificationSoundInGames(it) } },
+                    islandOverrides = settings.gameIslandVisibilityOverrides,
+                    soundOverrides = settings.gameSoundOverrides,
+                    onIslandOverridesChange = { scope.launch { repository.setGameIslandVisibilityOverrides(it) } },
+                    onSoundOverridesChange = { scope.launch { repository.setGameSoundOverrides(it) } },
+                    additionalGamePackages = settings.additionalGamePackages,
+                    onAdditionalGamePackagesChange = { scope.launch { repository.setAdditionalGamePackages(it) } },
+                    refreshVersion = refreshVersion
+                )
+            }
             FeatureDetailSection.NotificationRules -> {
                 NotificationsAndPrivacySection(settings = settings, repository = repository)
             }

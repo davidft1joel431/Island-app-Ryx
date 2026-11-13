@@ -47,8 +47,12 @@ object LandscapeCameraDetector {
     fun read(context: Context, isLandscape: Boolean): OrientationState {
         val metrics = context.resources.displayMetrics
         val density = metrics.density
-        val screenWidthDp = if (density > 0f) metrics.widthPixels / density else 0f
-        val screenHeightDp = if (density > 0f) metrics.heightPixels / density else 0f
+        val shortSidePx = minOf(metrics.widthPixels, metrics.heightPixels)
+        val longSidePx = maxOf(metrics.widthPixels, metrics.heightPixels)
+        val screenWidthPx = if (isLandscape) longSidePx else shortSidePx
+        val screenHeightPx = if (isLandscape) shortSidePx else longSidePx
+        val screenWidthDp = if (density > 0f) screenWidthPx / density else 0f
+        val screenHeightDp = if (density > 0f) screenHeightPx / density else 0f
         if (!isLandscape) {
             return OrientationState(isLandscape = false, screenWidthDp = screenWidthDp)
         }
@@ -66,7 +70,7 @@ object LandscapeCameraDetector {
 
         val camera = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             val rects = runCatching { (dmDisplay ?: display)?.cutout?.boundingRects }.getOrNull().orEmpty()
-            fromRects(rects, metrics.widthPixels, density)
+            fromRects(rects, screenWidthPx, density)
         } else {
             null
         }

@@ -22,6 +22,7 @@ import androidx.compose.material.icons.rounded.Palette
 import androidx.compose.material.icons.rounded.People
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material.icons.rounded.SettingsBackupRestore
+import androidx.compose.material.icons.rounded.SportsEsports
 import androidx.compose.material.icons.rounded.Shield
 import androidx.compose.material.icons.rounded.Timer
 import androidx.compose.material.icons.rounded.Tune
@@ -75,6 +76,7 @@ internal fun buildSettingsSearchIndex(str: (Int) -> String): List<SettingsSearch
     val shortcutScreen = str(R.string.card_app_shortcuts_title)
     val historyScreen = str(R.string.card_notification_history_title)
     val backupScreen = str(R.string.card_backup_restore_title)
+    val gameModeScreen = str(R.string.game_mode_title)
     val permScreen = str(R.string.card_permissions_setup_title)
     val diagScreen = "Diagnostic log"
     val aboutScreen = str(R.string.card_about_title)
@@ -100,6 +102,12 @@ internal fun buildSettingsSearchIndex(str: (Int) -> String): List<SettingsSearch
     }
 
     fun detail(section: FeatureDetailSection) = SearchTarget.Detail(section)
+
+    add(
+        "game_mode.screen", gameModeScreen, detail(FeatureDetailSection.GameMode), gameModeScreen,
+        Icons.Rounded.SportsEsports, str(R.string.game_mode_summary),
+        listOf("game", "games", "gaming", "sound", "apps", "juegos", "modo de juego")
+    )
 
     IslandEvent.entries.forEach { event ->
         add(
