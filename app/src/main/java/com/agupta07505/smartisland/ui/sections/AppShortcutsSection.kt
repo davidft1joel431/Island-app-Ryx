@@ -39,7 +39,7 @@ import androidx.compose.material.icons.rounded.Folder
 import androidx.compose.material.icons.rounded.History
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material3.AlertDialog
-import com.agupta07505.smartisland.ui.glass.Card
+import com.agupta07505.smartisland.ui.components.SettingsCard as Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.FilledTonalButton

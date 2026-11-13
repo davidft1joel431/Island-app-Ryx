@@ -387,9 +387,14 @@ class IslandViewModel(
         foregroundPackage,
         settingsRepo.settings,
         orientation,
-        foregroundIsGame
-    ) { fg, raw, state, isGame ->
-        if (raw.hideIslandInGames && isGame) ExemptMode.Off else IslandExemption.modeFor(
+        foregroundIsGame,
+        baseVisible
+    ) { fg, raw, state, isGame, notificationsToShow ->
+        val showGameNotification = fg?.let { raw.gameIslandVisibilityOverrides[it] }
+            ?: raw.showNotificationIslandInGames
+        if (raw.hideIslandInGames && isGame &&
+            (!showGameNotification || notificationsToShow.isEmpty())
+        ) ExemptMode.Off else IslandExemption.modeFor(
             fg, raw.islandExemptApps, raw.islandExemptAppsStatic, raw.islandExemptAppsLandscape, state.isLandscape
         )
     }.distinctUntilChanged().stateIn(
@@ -413,7 +418,11 @@ class IslandViewModel(
     /** The exemption right now, computed from the current values instead of the flow above. */
     fun exemptionNow(): ExemptMode {
         val raw = rawSettings.value
-        if (raw.hideIslandInGames && foregroundIsGame.value) return ExemptMode.Off
+        val showGameNotification = foregroundPackage.value?.let { raw.gameIslandVisibilityOverrides[it] }
+            ?: raw.showNotificationIslandInGames
+        if (raw.hideIslandInGames && foregroundIsGame.value &&
+            (!showGameNotification || baseVisible.value.isEmpty())
+        ) return ExemptMode.Off
         return IslandExemption.modeFor(
             foregroundPackage.value, raw.islandExemptApps, raw.islandExemptAppsStatic, raw.islandExemptAppsLandscape,
             orientation.value.isLandscape

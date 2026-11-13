@@ -417,13 +417,15 @@ class SmartIslandOverlayService : AccessibilityService() {
                 }
             )
             viewModel.foregroundPackage.value = next
-            viewModel.foregroundIsGame.value = next?.let { pkg ->
-                if (pkg == packageName) false else runCatching {
-                    packageManager.getApplicationInfo(pkg, 0).category == android.content.pm.ApplicationInfo.CATEGORY_GAME
-                }.getOrDefault(false)
-            } ?: false
             updateWindowLayoutParams(isWindowExpanded, viewModel.displaySettings.value)
         }
+        val manuallyAddedGames = viewModel.settingsSnapshot().additionalGamePackages
+        viewModel.foregroundIsGame.value = next?.let { pkg ->
+            if (pkg == packageName) false else pkg in manuallyAddedGames || runCatching {
+                packageManager.getApplicationInfo(pkg, 0).category == android.content.pm.ApplicationInfo.CATEGORY_GAME
+            }.getOrDefault(false)
+        } ?: false
+        SmartIslandNotificationListenerService.foregroundGamePackage = next?.takeIf { viewModel.foregroundIsGame.value }
         return true
     }
 
@@ -1108,6 +1110,7 @@ class SmartIslandOverlayService : AccessibilityService() {
         com.agupta07505.smartisland.util.AppLogRecorder.w("OverlayLifecycle", "onDestroy: overlay service destroyed (pid=${android.os.Process.myPid()})")
         destroyed = true
         isSystemConnected = false
+        SmartIslandNotificationListenerService.foregroundGamePackage = null
         com.agupta07505.smartisland.util.UtilityBridge.clear()
         com.agupta07505.smartisland.util.SystemAnimScale.stop(this)
         unregisterRotationListener()

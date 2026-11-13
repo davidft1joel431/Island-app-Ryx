@@ -61,8 +61,11 @@ fun Modifier.glassEdge(shape: Shape, glass: Boolean, dark: Boolean): Modifier {
         )
         drawOutline(outline, brush = rim, style = Stroke(width = 1.2.dp.toPx()))
         if (!dark) {
-            // On a light backdrop a white rim alone vanishes: a faint dark line just inside keeps the panel's edge readable.
-            drawOutline(outline, color = Color.Black.copy(alpha = 0.05f), style = Stroke(width = 0.6.dp.toPx()))
+            // The dark inner rim keeps light panels visible over bright wallpapers.
+            drawOutline(outline, color = Color.Black.copy(alpha = 0.12f), style = Stroke(width = 0.8.dp.toPx()))
+        } else {
+            // A white inner rim defines cards over dark and heavily tinted wallpapers.
+            drawOutline(outline, color = Color.White.copy(alpha = 0.16f), style = Stroke(width = 0.8.dp.toPx()))
         }
         // Glare: the light streak along the top that the kit's shader puts on the surface normal facing the light.
         val glareHeight = 56.dp.toPx().coerceAtMost(size.height)

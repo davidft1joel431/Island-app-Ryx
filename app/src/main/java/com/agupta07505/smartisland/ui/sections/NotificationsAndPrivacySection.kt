@@ -71,7 +71,8 @@ import androidx.compose.material3.FilterChipDefaults
 import com.agupta07505.smartisland.ui.SliderSettingItem
 import com.agupta07505.smartisland.ui.bounceClick
 import kotlin.math.roundToInt
-import com.agupta07505.smartisland.ui.glass.Card
+import com.agupta07505.smartisland.ui.components.SettingsCard as Card
+import com.agupta07505.smartisland.ui.components.SettingsControlDefaults
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -217,11 +218,8 @@ fun NotificationsAndPrivacySection(
                         readOnly = true,
                         label = { Text(stringResource(R.string.select_device_oem)) },
                         trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = isDeviceMenuExpanded) },
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedBorderColor = MaterialTheme.colorScheme.primary,
-                            unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant
-                        ),
-                        shape = RoundedCornerShape(14.dp),
+                        colors = SettingsControlDefaults.fieldColors(),
+                        shape = SettingsControlDefaults.fieldShape,
                         modifier = Modifier
                             .menuAnchor(ExposedDropdownMenuAnchorType.PrimaryNotEditable, true)
                             .fillMaxWidth()
@@ -922,11 +920,8 @@ fun NotificationsAndPrivacySection(
                                     Icon(Icons.Rounded.Search, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
                                 },
                                 singleLine = true,
-                                shape = RoundedCornerShape(14.dp),
-                                colors = OutlinedTextFieldDefaults.colors(
-                                    focusedBorderColor = MaterialTheme.colorScheme.primary,
-                                    unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant
-                                ),
+                                shape = SettingsControlDefaults.fieldShape,
+                                colors = SettingsControlDefaults.fieldColors(),
                                 modifier = Modifier.fillMaxWidth()
                             )
 
@@ -1404,11 +1399,8 @@ fun NotificationsAndPrivacySection(
                                 }
                             },
                             singleLine = true,
-                            shape = RoundedCornerShape(12.dp),
-                            colors = OutlinedTextFieldDefaults.colors(
-                                focusedBorderColor = MaterialTheme.colorScheme.primary,
-                                unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant
-                            ),
+                            shape = SettingsControlDefaults.fieldShape,
+                            colors = SettingsControlDefaults.fieldColors(),
                             modifier = Modifier.fillMaxWidth()
                         )
 

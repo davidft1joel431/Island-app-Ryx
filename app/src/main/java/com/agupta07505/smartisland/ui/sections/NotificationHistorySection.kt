@@ -14,7 +14,10 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
+import android.net.Uri
 import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.collection.LruCache
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
@@ -54,6 +57,8 @@ import androidx.compose.material.icons.rounded.ContentCopy
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.DeleteSweep
 import androidx.compose.material.icons.rounded.FilterList
+import androidx.compose.material.icons.rounded.FileDownload
+import androidx.compose.material.icons.rounded.FileUpload
 import androidx.compose.material.icons.rounded.History
 import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material.icons.rounded.Schedule
@@ -62,7 +67,8 @@ import androidx.compose.material.icons.rounded.Security
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
-import com.agupta07505.smartisland.ui.glass.Card
+import com.agupta07505.smartisland.ui.components.SettingsCard as Card
+import com.agupta07505.smartisland.ui.components.SettingsControlDefaults
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -108,6 +114,8 @@ import com.agupta07505.smartisland.util.runCatchingLogged
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import org.json.JSONArray
+import org.json.JSONObject
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Date
@@ -193,6 +201,98 @@ fun NotificationHistorySection(
     var selectedEntryIdForDetails by rememberSaveable { mutableStateOf<Long?>(null) }
     val selectedEntryForDetails = selectedEntryIdForDetails?.let { id -> historyEntries.firstOrNull { it.id == id } }
     var retentionMenuExpanded by rememberSaveable { mutableStateOf(false) }
+    var pendingHistoryRestore by remember { mutableStateOf<List<NotificationHistoryEntry>?>(null) }
+
+    val historyExportLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.CreateDocument("application/json")
+    ) { uri: Uri? ->
+        if (uri != null) {
+            scope.launch {
+                try {
+                    val entryCount = withContext(Dispatchers.IO) {
+                        val entries = resolvedHistoryRepo.getBackupEntries()
+                        val backup = JSONObject()
+                            .put("format", NOTIFICATION_HISTORY_BACKUP_FORMAT)
+                            .put("version", NOTIFICATION_HISTORY_BACKUP_VERSION)
+                            .put("exportedAt", System.currentTimeMillis())
+                            .put("notificationHistory", JSONArray().apply {
+                                entries.forEach { put(it.toBackupJson()) }
+                            })
+                        val output = context.contentResolver.openOutputStream(uri)
+                            ?: throw java.io.IOException("Could not open the backup destination")
+                        output.use { it.write(backup.toString(2).toByteArray(Charsets.UTF_8)) }
+                        entries.size
+                    }
+                    Toast.makeText(
+                        context,
+                        context.getString(R.string.history_backup_export_success, entryCount),
+                        Toast.LENGTH_LONG
+                    ).show()
+                } catch (_: Exception) {
+                    Toast.makeText(context, context.getString(R.string.history_backup_export_failed), Toast.LENGTH_LONG).show()
+                }
+            }
+        }
+    }
+
+    val historyImportLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument()
+    ) { uri: Uri? ->
+        if (uri != null) {
+            scope.launch {
+                val restoredEntries = try {
+                    withContext(Dispatchers.IO) {
+                        context.contentResolver.openInputStream(uri)?.bufferedReader(Charsets.UTF_8)?.use {
+                            parseNotificationHistoryBackupFile(it.readText())
+                        }
+                    }
+                } catch (_: Exception) {
+                    null
+                }
+                if (restoredEntries == null) {
+                    Toast.makeText(context, context.getString(R.string.history_backup_invalid), Toast.LENGTH_LONG).show()
+                } else {
+                    pendingHistoryRestore = restoredEntries
+                }
+            }
+        }
+    }
+
+    pendingHistoryRestore?.let { entries ->
+        AlertDialog(
+            onDismissRequest = { pendingHistoryRestore = null },
+            title = { Text(stringResource(R.string.history_backup_restore_title)) },
+            text = { Text(stringResource(R.string.history_backup_restore_desc, entries.size)) },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        scope.launch {
+                            val restored = withContext(Dispatchers.IO) {
+                                resolvedHistoryRepo.replaceAll(entries)
+                            }
+                            Toast.makeText(
+                                context,
+                                if (restored) {
+                                    context.getString(R.string.history_backup_restore_success, entries.size)
+                                } else {
+                                    context.getString(R.string.history_backup_import_failed)
+                                },
+                                Toast.LENGTH_LONG
+                            ).show()
+                        }
+                        pendingHistoryRestore = null
+                    }
+                ) {
+                    Text(stringResource(R.string.history_backup_restore_confirm))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingHistoryRestore = null }) {
+                    Text(stringResource(R.string.btn_cancel))
+                }
+            }
+        )
+    }
 
     val appSummaries = remember(historyEntries) {
         historyEntries
@@ -427,6 +527,77 @@ fun NotificationHistorySection(
             }
         }
 
+        item(key = "notification_history_backup") {
+            Card(
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                shape = RoundedCornerShape(16.dp),
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(42.dp)
+                                .clip(CircleShape)
+                                .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                Icons.Rounded.FileDownload,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(22.dp)
+                            )
+                        }
+                        Column {
+                            Text(
+                                stringResource(R.string.history_backup_title),
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Text(
+                                stringResource(R.string.history_backup_desc),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedButton(
+                            modifier = Modifier.weight(1f),
+                            onClick = {
+                                val name = "ryxisla_historial_${SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date())}.json"
+                                historyExportLauncher.launch(name)
+                            },
+                            shape = RoundedCornerShape(10.dp),
+                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 8.dp)
+                        ) {
+                            Icon(Icons.Rounded.FileDownload, contentDescription = null, modifier = Modifier.size(17.dp))
+                            Spacer(Modifier.width(6.dp))
+                            Text(stringResource(R.string.history_backup_export), style = MaterialTheme.typography.labelLarge)
+                        }
+                        Button(
+                            modifier = Modifier.weight(1f),
+                            onClick = { historyImportLauncher.launch(arrayOf("application/json", "application/*", "text/*")) },
+                            shape = RoundedCornerShape(10.dp),
+                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 8.dp)
+                        ) {
+                            Icon(Icons.Rounded.FileUpload, contentDescription = null, modifier = Modifier.size(17.dp))
+                            Spacer(Modifier.width(6.dp))
+                            Text(stringResource(R.string.history_backup_import), style = MaterialTheme.typography.labelLarge)
+                        }
+                    }
+                }
+            }
+        }
+
         if (!settings.enableNotificationHistory) {
             item(key = "header_disabled_banner") {
                 Card(
@@ -598,11 +769,8 @@ fun NotificationHistorySection(
                                 }
                             },
                             singleLine = true,
-                            shape = RoundedCornerShape(12.dp),
-                            colors = OutlinedTextFieldDefaults.colors(
-                                focusedBorderColor = MaterialTheme.colorScheme.primary,
-                                unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
-                            ),
+                            shape = SettingsControlDefaults.fieldShape,
+                            colors = SettingsControlDefaults.fieldColors(),
                             modifier = Modifier.fillMaxWidth()
                         )
 
@@ -861,6 +1029,23 @@ fun NotificationHistorySection(
             }
         }
     }
+}
+
+private const val NOTIFICATION_HISTORY_BACKUP_FORMAT = "ryx-isla-notification-history"
+private const val NOTIFICATION_HISTORY_BACKUP_VERSION = 1
+
+private fun parseNotificationHistoryBackupFile(jsonText: String): List<NotificationHistoryEntry>? {
+    val root = JSONObject(jsonText)
+    val entries = when {
+        root.optString("format") == NOTIFICATION_HISTORY_BACKUP_FORMAT &&
+            root.optInt("version") == NOTIFICATION_HISTORY_BACKUP_VERSION -> root.optJSONArray("notificationHistory")
+        root.has("notificationHistory") -> root.optJSONArray("notificationHistory")
+        else -> null
+    } ?: return null
+
+    return List(minOf(entries.length(), INotificationHistoryRepository.MAX_BACKUP_ENTRIES)) { index ->
+        entries.optJSONObject(index)?.let(NotificationHistoryEntry::fromBackupJson)
+    }.filterNotNull()
 }
 
 @OptIn(ExperimentalLayoutApi::class)

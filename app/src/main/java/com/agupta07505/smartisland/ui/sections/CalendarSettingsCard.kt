@@ -34,7 +34,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.agupta07505.smartisland.R
-import com.agupta07505.smartisland.ui.glass.Card
+import com.agupta07505.smartisland.ui.components.SettingsCard as Card
 import com.agupta07505.smartisland.util.CalendarReader
 
 /**

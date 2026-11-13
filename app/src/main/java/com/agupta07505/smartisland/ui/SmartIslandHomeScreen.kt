@@ -15,20 +15,26 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
-import android.os.Handler
-import android.os.Looper
 import android.provider.Settings
+import android.speech.RecognizerIntent
+import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.ContextCompat
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.togetherWith
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
@@ -55,12 +61,17 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
+import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
 import androidx.compose.material.icons.rounded.Apps
+import androidx.compose.material.icons.rounded.ArrowDownward
 import com.agupta07505.smartisland.ui.sections.UpdatesAndDownloadsSection
 import com.agupta07505.smartisland.ui.sections.SupportSection
 import com.agupta07505.smartisland.ui.sections.DeveloperOptionsSection
@@ -99,6 +110,7 @@ import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.CircularProgressIndicator
 import com.agupta07505.smartisland.ui.glass.LocalGlassDark
 import com.agupta07505.smartisland.ui.glass.LocalLiquidGlass
 import com.agupta07505.smartisland.ui.glass.ThemedBackdrop
@@ -107,6 +119,7 @@ import com.agupta07505.smartisland.ui.glass.Switch
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.Text
 import com.agupta07505.smartisland.ui.components.CollapsibleCard
+import com.agupta07505.smartisland.ui.components.SettingsControlsTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
@@ -115,10 +128,12 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.zIndex
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
@@ -183,7 +198,9 @@ import com.agupta07505.smartisland.ui.search.SettingsSearchField
 import com.agupta07505.smartisland.ui.search.SettingsSearchResults
 import com.agupta07505.smartisland.ui.search.buildSettingsSearchIndex
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 
@@ -193,6 +210,13 @@ internal enum class StudioTab {
     Demo,
     Settings
 }
+
+private data class PermissionSnapshot(
+    val overlay: Boolean,
+    val notifications: Boolean,
+    val batteryIgnored: Boolean,
+    val bluetooth: Boolean
+)
 
 internal enum class FeatureDetailSection {
     NotificationRules,
@@ -277,44 +301,45 @@ fun SmartIslandHomeScreen(
         com.agupta07505.smartisland.ui.sections.NewUserTour(settings = settings, onFinish = { showTour = false })
     }
 
-    var overlayGranted by remember { mutableStateOf(isAccessibilityServiceEnabled(context)) }
-    var notificationGranted by remember { mutableStateOf(isNotificationListenerEnabled(context)) }
-    var batteryIgnored by remember { mutableStateOf(isBatteryOptimizationIgnored(context)) }
-
-    val batteryRefreshHandler = remember { Handler(Looper.getMainLooper()) }
-
-    DisposableEffect(Unit) {
-        onDispose {
-            batteryRefreshHandler.removeCallbacksAndMessages(null)
-        }
-    }
+    var overlayGranted by remember { mutableStateOf(false) }
+    var notificationGranted by remember { mutableStateOf(false) }
+    var batteryIgnored by remember { mutableStateOf(false) }
+    var bluetoothGranted by remember { mutableStateOf(false) }
 
     fun refreshBatteryOptimizationWithRetry() {
-        batteryRefreshHandler.removeCallbacksAndMessages(null)
-
-        val initialState = isBatteryOptimizationIgnored(context)
-        batteryIgnored = initialState
-
-        var attempts = 0
-
-        val refreshRunnable = object : Runnable {
-            override fun run() {
-                val currentState = isBatteryOptimizationIgnored(context)
+        scope.launch {
+            val initialState = withContext(Dispatchers.IO) { isBatteryOptimizationIgnored(context) }
+            batteryIgnored = initialState
+            repeat(8) {
+                delay(150L)
+                val currentState = withContext(Dispatchers.IO) { isBatteryOptimizationIgnored(context) }
                 batteryIgnored = currentState
-                attempts++
-
-                if (currentState != initialState || attempts >= 8) {
-                    return
-                }
-
-                batteryRefreshHandler.postDelayed(this, 150L)
+                if (currentState != initialState) return@launch
             }
         }
-
-        batteryRefreshHandler.postDelayed(refreshRunnable, 150L)
     }
 
-    var bluetoothGranted by remember { mutableStateOf(isBluetoothConnectPermissionGranted(context)) }
+    fun refreshPermissionState() {
+        scope.launch {
+            val state = withContext(Dispatchers.IO) {
+                PermissionSnapshot(
+                    overlay = isAccessibilityServiceEnabled(context),
+                    notifications = isNotificationListenerEnabled(context),
+                    batteryIgnored = isBatteryOptimizationIgnored(context),
+                    bluetooth = isBluetoothConnectPermissionGranted(context)
+                )
+            }
+            overlayGranted = state.overlay
+            notificationGranted = state.notifications
+            batteryIgnored = state.batteryIgnored
+            bluetoothGranted = state.bluetooth
+            refreshBatteryOptimizationWithRetry()
+        }
+    }
+
+    LaunchedEffect(context) {
+        refreshPermissionState()
+    }
 
     val bluetoothPermissionLauncher =
         rememberLauncherForActivityResult(
@@ -324,18 +349,14 @@ fun SmartIslandHomeScreen(
 
             if (granted) {
                 SystemServiceRecovery.resetAccessibilityRefreshAttempt()
-                SystemServiceRecovery.requestRecovery(context)
+                scope.launch(Dispatchers.IO) { SystemServiceRecovery.requestRecovery(context) }
             }
         }
 
     DisposableEffect(lifecycleOwner, context) {
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME) {
-                overlayGranted = isAccessibilityServiceEnabled(context)
-                notificationGranted = isNotificationListenerEnabled(context)
-                refreshBatteryOptimizationWithRetry()
-                bluetoothGranted = isBluetoothConnectPermissionGranted(context)
-                SystemServiceRecovery.requestRecovery(context)
+                refreshPermissionState()
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
@@ -351,14 +372,56 @@ fun SmartIslandHomeScreen(
     // Settings search: the query survives rotation; the focus state tells the chosen row to
     // scroll into view and flash once its screen is showing.
     var searchQuery by rememberSaveable { mutableStateOf("") }
+    var homeSearchQuery by rememberSaveable { mutableStateOf("") }
+    var voiceSearchTargetsSettings by remember { mutableStateOf(false) }
     val searchFocus = remember { SearchFocusState() }
     val configuration = LocalConfiguration.current
-    val searchIndex = remember(context, configuration) {
-        buildSettingsSearchIndex { id -> context.getString(id) }
+    var searchIndex by remember(context, configuration) {
+        mutableStateOf<List<SettingsSearchEntry>>(emptyList())
+    }
+    LaunchedEffect(context, configuration) {
+        searchIndex = withContext(Dispatchers.Default) {
+            buildSettingsSearchIndex { id -> context.getString(id) }
+        }
     }
     val searchResults = remember(searchIndex, searchQuery) {
         val byId = searchIndex.associateBy { it.item.id }
         SettingsSearch.search(searchIndex.map { it.item }, searchQuery).mapNotNull { byId[it.id] }
+    }
+    val homeSearchResults = remember(searchIndex, homeSearchQuery) {
+        val byId = searchIndex.associateBy { it.item.id }
+        SettingsSearch.search(searchIndex.map { it.item }, homeSearchQuery).mapNotNull { byId[it.id] }
+    }
+    val voiceIntent = remember(context) {
+        Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+            putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+            putExtra(RecognizerIntent.EXTRA_LANGUAGE, "es-PE")
+            putExtra(RecognizerIntent.EXTRA_PROMPT, context.getString(R.string.search_voice_prompt))
+            putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1)
+        }
+    }
+    val voiceRecognitionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+        val spokenQuery = result.data?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)?.firstOrNull()?.trim().orEmpty()
+        if (spokenQuery.isNotBlank()) {
+            if (voiceSearchTargetsSettings) searchQuery = spokenQuery else homeSearchQuery = spokenQuery
+        }
+    }
+    val microphonePermissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        if (granted) {
+            runCatching { voiceRecognitionLauncher.launch(voiceIntent) }
+                .onFailure { Toast.makeText(context, R.string.search_voice_unavailable, Toast.LENGTH_SHORT).show() }
+        } else {
+            Toast.makeText(context, R.string.search_voice_permission_denied, Toast.LENGTH_SHORT).show()
+        }
+    }
+    val startVoiceSearch: (settingsSearch: Boolean) -> Unit = { settingsSearch ->
+        voiceSearchTargetsSettings = settingsSearch
+        if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
+            runCatching { voiceRecognitionLauncher.launch(voiceIntent) }
+                .onFailure { Toast.makeText(context, R.string.search_voice_unavailable, Toast.LENGTH_SHORT).show() }
+        } else {
+            microphonePermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+        }
     }
     // A jump stays armed for a few seconds, then is forgotten so the row never flashes again
     // when the user later opens the same screen by hand.
@@ -369,6 +432,7 @@ fun SmartIslandHomeScreen(
         }
     }
     val onSearchPick: (SettingsSearchEntry) -> Unit = { entry ->
+        homeSearchQuery = ""
         when (val target = entry.target) {
             is SearchTarget.Tab -> {
                 transitionDirection = if (target.tab.ordinal > selectedTab.ordinal) 1 else -1
@@ -389,6 +453,41 @@ fun SmartIslandHomeScreen(
 
     val canEnable = overlayGranted && notificationGranted
     val swipeThresholdPx = with(LocalDensity.current) { 72.dp.toPx() }
+    val pullRefreshThresholdPx = with(LocalDensity.current) { 86.dp.toPx() }
+    var pullDistance by remember { mutableStateOf(0f) }
+    var isRefreshing by remember { mutableStateOf(false) }
+    var refreshVersion by remember { mutableIntStateOf(0) }
+    val runPullRefresh by rememberUpdatedState(newValue = {
+        if (!isRefreshing) {
+            isRefreshing = true
+            pullDistance = 0f
+            refreshVersion++
+            refreshPermissionState()
+            com.agupta07505.smartisland.util.IdleWeather.notifyRefreshed()
+            scope.launch {
+                delay(900L)
+                isRefreshing = false
+            }
+        }
+    })
+    val pullRefreshConnection = remember(pullRefreshThresholdPx) {
+        object : NestedScrollConnection {
+            override fun onPostScroll(consumed: Offset, available: Offset, source: androidx.compose.ui.input.nestedscroll.NestedScrollSource): Offset {
+                if (available.y > 0f && !isRefreshing) {
+                    pullDistance = (pullDistance + available.y).coerceAtMost(pullRefreshThresholdPx * 1.4f)
+                    if (pullDistance >= pullRefreshThresholdPx) runPullRefresh()
+                } else if (available.y < 0f) {
+                    pullDistance = 0f
+                }
+                return Offset.Zero
+            }
+
+            override suspend fun onPreFling(available: Velocity): Velocity {
+                pullDistance = 0f
+                return Velocity.Zero
+            }
+        }
+    }
 
     fun selectStudioTab(tab: StudioTab) {
         if (tab == selectedTab) return
@@ -440,8 +539,24 @@ fun SmartIslandHomeScreen(
             },
             label = "ScreenTransition"
         ) { detailSection ->
-            Box(Modifier.fillMaxSize()) {
+            Box(Modifier.fillMaxSize().nestedScroll(pullRefreshConnection)) {
             ThemedBackdrop()
+            if (pullDistance > 0f || isRefreshing) {
+                Row(
+                    modifier = Modifier.align(Alignment.TopCenter)
+                        .padding(top = WindowInsets.statusBars.asPaddingValues().calculateTopPadding() + 4.dp)
+                        .clip(RoundedCornerShape(20.dp))
+                        .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.94f))
+                        .zIndex(1f)
+                        .padding(horizontal = 14.dp, vertical = 9.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    if (isRefreshing) CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp)
+                    else Icon(Icons.Rounded.ArrowDownward, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Text(stringResource(if (isRefreshing) R.string.pull_to_refresh_running else R.string.pull_to_refresh_hint), style = MaterialTheme.typography.labelMedium)
+                }
+            }
             if (detailSection == null) {
                 val screenWidthDp = LocalConfiguration.current.screenWidthDp
                 val horizontalPad = contentSidePadding(screenWidthDp)
@@ -481,13 +596,36 @@ fun SmartIslandHomeScreen(
                             activeDetailSection = FeatureDetailSection.PermissionsCenter
                         }
                     )
+                    SettingsSearchField(
+                        query = homeSearchQuery,
+                        onQueryChange = { homeSearchQuery = it },
+                        placeholder = stringResource(R.string.home_search_hint),
+                        onVoiceSearch = { startVoiceSearch(false) }
+                    )
+                    if (homeSearchQuery.isNotBlank()) {
+                        SettingsSearchResults(query = homeSearchQuery, results = homeSearchResults, onPick = onSearchPick)
+                    } else {
                     StudioPageControls(
                         selectedTab = selectedTab,
                         onPrevious = { selectStudioTab(StudioTab.entries[(selectedTab.ordinal - 1).coerceAtLeast(0)]) },
                         onNext = { selectStudioTab(StudioTab.entries[(selectedTab.ordinal + 1).coerceAtMost(StudioTab.entries.lastIndex)]) }
                     )
 
-                    when (selectedTab) {
+                    AnimatedContent(
+                        targetState = selectedTab,
+                        transitionSpec = {
+                            val movingForward = targetState.ordinal > initialState.ordinal
+                            if (movingForward) {
+                                (slideInHorizontally(tween(300)) { it / 6 } + fadeIn(tween(220)))
+                                    .togetherWith(slideOutHorizontally(tween(240)) { -it / 10 } + fadeOut(tween(180)))
+                            } else {
+                                (slideInHorizontally(tween(300)) { -it / 6 } + fadeIn(tween(220)))
+                                    .togetherWith(slideOutHorizontally(tween(240)) { it / 10 } + fadeOut(tween(180)))
+                            }
+                        },
+                        label = "StudioTabTransition"
+                    ) { tab ->
+                    when (tab) {
                         StudioTab.Studio -> {
                             HomeMinimalMenu(
                                 enabled = settings.enabled,
@@ -497,7 +635,7 @@ fun SmartIslandHomeScreen(
                                 batteryIgnored = batteryIgnored,
                                 onEnabledChange = { turnOn ->
                                     if (turnOn) {
-                                        SystemServiceRecovery.requestRecovery(context)
+                                        scope.launch(Dispatchers.IO) { SystemServiceRecovery.requestRecovery(context) }
                                     }
                                     scope.launch { resolvedRepository.setEnabled(turnOn) }
                                 },
@@ -524,7 +662,20 @@ fun SmartIslandHomeScreen(
                                 selected = orientationTab,
                                 onSelected = { orientationTab = it }
                             )
-                            if (activeDesignMenu == null) {
+                            AnimatedContent(
+                                targetState = activeDesignMenu,
+                                transitionSpec = {
+                                    if (targetState != null) {
+                                        (slideInHorizontally(tween(320)) { it / 5 } + fadeIn(tween(220)) + scaleIn(tween(320), initialScale = 0.98f))
+                                            .togetherWith(slideOutHorizontally(tween(220)) { -it / 12 } + fadeOut(tween(180)))
+                                    } else {
+                                        (slideInHorizontally(tween(320)) { -it / 5 } + fadeIn(tween(220)) + scaleIn(tween(320), initialScale = 0.98f))
+                                            .togetherWith(slideOutHorizontally(tween(220)) { it / 12 } + fadeOut(tween(180)))
+                                    }
+                                },
+                                label = "DesignSubmenuTransition"
+                            ) { designMenu ->
+                            if (designMenu == null) {
                                 Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                                     Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                                         HomeMenuTile(Modifier.weight(1f), stringResource(R.string.sec_positions), stringResource(R.string.sec_positions_desc), Icons.Rounded.Tune, BadgeGreen) { activeDesignMenu = "position" }
@@ -543,7 +694,7 @@ fun SmartIslandHomeScreen(
                                     }
                                 }
                             } else {
-                                val pageTitle = when (activeDesignMenu) {
+                                val pageTitle = when (designMenu) {
                                     "position" -> stringResource(R.string.sec_positions)
                                     "animation" -> stringResource(R.string.design_animation_title)
                                     "merge" -> stringResource(R.string.design_merge_title)
@@ -556,7 +707,7 @@ fun SmartIslandHomeScreen(
                                     Text(stringResource(R.string.design_back))
                                 }
                                 Text(pageTitle, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-                                when (activeDesignMenu) {
+                                when (designMenu) {
                                     "position" -> if (orientationTab == OrientationTab.Landscape) {
                                         LandscapeSection(settings = settings, repository = resolvedRepository)
                                     } else {
@@ -587,6 +738,7 @@ fun SmartIslandHomeScreen(
                                     )
                                 }
                             }
+                            }
                         }
 
                         StudioTab.Demo -> {
@@ -601,6 +753,8 @@ fun SmartIslandHomeScreen(
                                 settings = settings,
                                 searchQuery = searchQuery,
                                 onSearchQueryChange = { searchQuery = it },
+                                onVoiceSearch = { startVoiceSearch(true) },
+                                refreshVersion = refreshVersion,
                                 searchResults = searchResults,
                                 onSearchPick = onSearchPick,
                                 overlayGranted = overlayGranted,
@@ -621,12 +775,29 @@ fun SmartIslandHomeScreen(
                                 onHideIslandInGamesChange = { enabled ->
                                     scope.launch { resolvedRepository.setHideIslandInGames(enabled) }
                                 },
+                                onShowNotificationIslandInGamesChange = { enabled ->
+                                    scope.launch { resolvedRepository.setShowNotificationIslandInGames(enabled) }
+                                },
+                                onPlayNotificationSoundInGamesChange = { enabled ->
+                                    scope.launch { resolvedRepository.setPlayNotificationSoundInGames(enabled) }
+                                },
+                                onGameIslandVisibilityOverridesChange = { values ->
+                                    scope.launch { resolvedRepository.setGameIslandVisibilityOverrides(values) }
+                                },
+                                onGameSoundOverridesChange = { values ->
+                                    scope.launch { resolvedRepository.setGameSoundOverrides(values) }
+                                },
+                                onAdditionalGamePackagesChange = { values ->
+                                    scope.launch { resolvedRepository.setAdditionalGamePackages(values) }
+                                },
                                 onNavigateTo = { section ->
                                     transitionDirection = 1
                                     activeDetailSection = section
                                 }
                             )
                         }
+                    }
+                    }
                     }
 
                 }
@@ -1234,6 +1405,8 @@ private fun SettingsOverviewSection(
     settings: SmartIslandSettings,
     searchQuery: String,
     onSearchQueryChange: (String) -> Unit,
+    onVoiceSearch: () -> Unit,
+    refreshVersion: Int,
     searchResults: List<SettingsSearchEntry>,
     onSearchPick: (SettingsSearchEntry) -> Unit,
     overlayGranted: Boolean,
@@ -1246,68 +1419,64 @@ private fun SettingsOverviewSection(
     onIslandFontChange: (String) -> Unit,
     onFontMixChange: (Boolean, String, String, String) -> Unit,
     onHideIslandInGamesChange: (Boolean) -> Unit,
+    onShowNotificationIslandInGamesChange: (Boolean) -> Unit,
+    onPlayNotificationSoundInGamesChange: (Boolean) -> Unit,
+    onGameIslandVisibilityOverridesChange: (Map<String, Boolean>) -> Unit,
+    onGameSoundOverridesChange: (Map<String, Boolean>) -> Unit,
+    onAdditionalGamePackagesChange: (Set<String>) -> Unit,
     onNavigateTo: (FeatureDetailSection) -> Unit
 ) {
     val canEnable = overlayGranted && notificationGranted
 
     val SystemGroup: @Composable () -> Unit = {
         SettingsCategoryGroup(title = stringResource(R.string.category_system_core)) {
-            FeatureStudioNavigationCard(
-                title = stringResource(R.string.card_permissions_setup_title),
-                subtitle = stringResource(R.string.settings_permissions_summary),
-                icon = Icons.Rounded.Shield,
-                iconColor = BadgeGreen,
-                statusText = if (!canEnable) stringResource(R.string.status_action_required) else null,
-                statusColor = if (canEnable) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.primary,
-                onClick = { onNavigateTo(FeatureDetailSection.PermissionsCenter) }
-            )
-
-            FeatureStudioNavigationCard(
-                title = stringResource(R.string.card_backup_restore_title),
-                subtitle = stringResource(R.string.settings_backup_summary),
-                icon = Icons.Rounded.SettingsBackupRestore,
-                iconColor = BadgeBlue,
-                onClick = { onNavigateTo(FeatureDetailSection.BackupRestore) }
-            )
-
-            FeatureStudioNavigationCard(
-                title = stringResource(R.string.card_updates_downloads_title),
-                subtitle = stringResource(R.string.settings_updates_summary),
-                icon = Icons.Rounded.Download,
-                iconColor = BadgeTeal,
-                onClick = { onNavigateTo(FeatureDetailSection.UpdatesAndDownloads) }
-            )
-
-            FeatureStudioNavigationCard(
-                title = stringResource(R.string.card_support_requests_title),
-                subtitle = stringResource(R.string.settings_support_summary),
-                icon = Icons.Rounded.People,
-                iconColor = BadgePink,
-                onClick = { onNavigateTo(FeatureDetailSection.SupportCommunity) }
-            )
-
-            FeatureStudioNavigationCard(
-                title = stringResource(R.string.card_developer_options_title),
-                subtitle = stringResource(R.string.settings_developer_summary),
-                icon = Icons.Rounded.Code,
-                iconColor = BadgeSlate,
-                statusText = if (settings.recordLogs) stringResource(R.string.status_recording) else null,
-                statusColor = MaterialTheme.colorScheme.primary,
-                onClick = { onNavigateTo(FeatureDetailSection.DeveloperOptions) }
-            )
-
-            FeatureStudioNavigationCard(
-                title = stringResource(R.string.card_about_title),
-                subtitle = stringResource(R.string.card_about_subtitle),
-                icon = Icons.Rounded.Info,
-                iconColor = BadgeSlate,
-                onClick = { onNavigateTo(FeatureDetailSection.About) }
+            SettingsBentoGrid(
+                entries = listOf(
+                    SettingsBentoEntry(
+                        stringResource(R.string.card_permissions_setup_title),
+                        stringResource(R.string.settings_permissions_summary),
+                        Icons.Rounded.Shield,
+                        if (canEnable) BadgeGreen else BadgeAmber,
+                        stringResource(if (canEnable) R.string.status_active else R.string.status_action_required)
+                    ) { onNavigateTo(FeatureDetailSection.PermissionsCenter) },
+                    SettingsBentoEntry(
+                        stringResource(R.string.card_backup_restore_title),
+                        stringResource(R.string.settings_backup_summary),
+                        Icons.Rounded.SettingsBackupRestore,
+                        BadgeBlue
+                    ) { onNavigateTo(FeatureDetailSection.BackupRestore) },
+                    SettingsBentoEntry(
+                        stringResource(R.string.card_updates_downloads_title),
+                        stringResource(R.string.settings_updates_summary),
+                        Icons.Rounded.Download,
+                        BadgeTeal
+                    ) { onNavigateTo(FeatureDetailSection.UpdatesAndDownloads) },
+                    SettingsBentoEntry(
+                        stringResource(R.string.card_support_requests_title),
+                        stringResource(R.string.settings_support_summary),
+                        Icons.Rounded.People,
+                        BadgePink
+                    ) { onNavigateTo(FeatureDetailSection.SupportCommunity) },
+                    SettingsBentoEntry(
+                        stringResource(R.string.card_developer_options_title),
+                        stringResource(R.string.settings_developer_summary),
+                        Icons.Rounded.Code,
+                        BadgeSlate,
+                        stringResource(R.string.status_recording).takeIf { settings.recordLogs }
+                    ) { onNavigateTo(FeatureDetailSection.DeveloperOptions) },
+                    SettingsBentoEntry(
+                        stringResource(R.string.card_about_title),
+                        stringResource(R.string.card_about_subtitle),
+                        Icons.Rounded.Info,
+                        BadgeSlate
+                    ) { onNavigateTo(FeatureDetailSection.About) }
+                )
             )
         }
     }
 
     Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
-        SettingsSearchField(query = searchQuery, onQueryChange = onSearchQueryChange)
+        SettingsSearchField(query = searchQuery, onQueryChange = onSearchQueryChange, onVoiceSearch = onVoiceSearch)
 
         if (searchQuery.isNotBlank()) {
             SettingsSearchResults(query = searchQuery, results = searchResults, onPick = onSearchPick)
@@ -1316,7 +1485,21 @@ private fun SettingsOverviewSection(
                 Text(stringResource(R.string.settings_hub_title), style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
                 Text(stringResource(R.string.settings_hub_subtitle), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
-            GameModeCard(enabled = settings.hideIslandInGames, onEnabledChange = onHideIslandInGamesChange)
+            GameModeCard(
+                hideIdleIsland = settings.hideIslandInGames,
+                showNotifications = settings.showNotificationIslandInGames,
+                playSound = settings.playNotificationSoundInGames,
+                onHideIdleIslandChange = onHideIslandInGamesChange,
+                onShowNotificationsChange = onShowNotificationIslandInGamesChange,
+                onPlaySoundChange = onPlayNotificationSoundInGamesChange,
+                islandOverrides = settings.gameIslandVisibilityOverrides,
+                soundOverrides = settings.gameSoundOverrides,
+                onIslandOverridesChange = onGameIslandVisibilityOverridesChange,
+                onSoundOverridesChange = onGameSoundOverridesChange,
+                additionalGamePackages = settings.additionalGamePackages,
+                onAdditionalGamePackagesChange = onAdditionalGamePackagesChange,
+                refreshVersion = refreshVersion
+            )
             // Appearance: the app's own theme, then the island's colours. (Position, size, shadow and the
             // animation choices are on the Layout tab.)
             SettingsCategoryGroup(title = stringResource(R.string.category_appearance_controls)) {
@@ -1384,31 +1567,14 @@ private data class SettingsBentoEntry(
 @Composable
 private fun SettingsBentoGrid(entries: List<SettingsBentoEntry>) {
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        entries.chunked(2).forEach { rowEntries ->
+        entries.chunked(2).forEachIndexed { rowIndex, rowEntries ->
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                rowEntries.forEach { entry ->
-                    Column(
-                        modifier = Modifier
-                            .weight(1f)
-                            .heightIn(min = 142.dp)
-                            .clip(RoundedCornerShape(20.dp))
-                            .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.94f))
-                            .border(1.dp, entry.tint.copy(alpha = 0.18f), RoundedCornerShape(20.dp))
-                            .bounceClick(entry.onClick)
-                            .padding(13.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                            Box(Modifier.size(38.dp).clip(RoundedCornerShape(13.dp)).background(entry.tint.copy(alpha = 0.14f)), contentAlignment = Alignment.Center) {
-                                Icon(entry.icon, contentDescription = null, tint = entry.tint, modifier = Modifier.size(20.dp))
-                            }
-                            entry.status?.let {
-                                Text(it, color = entry.tint, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                            }
-                        }
-                        Text(entry.title, style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.Bold, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                        Text(entry.description, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                    }
+                rowEntries.forEachIndexed { columnIndex, entry ->
+                    SettingsBentoTile(
+                        entry = entry,
+                        index = rowIndex * 2 + columnIndex,
+                        modifier = Modifier.weight(1f)
+                    )
                 }
                 if (rowEntries.size == 1) Spacer(Modifier.weight(1f))
             }
@@ -1417,24 +1583,305 @@ private fun SettingsBentoGrid(entries: List<SettingsBentoEntry>) {
 }
 
 @Composable
-private fun GameModeCard(enabled: Boolean, onEnabledChange: (Boolean) -> Unit) {
-    Row(
+private fun SettingsBentoTile(
+    entry: SettingsBentoEntry,
+    index: Int,
+    modifier: Modifier = Modifier
+) {
+    var visible by remember(entry.title) { mutableStateOf(false) }
+    LaunchedEffect(entry.title) {
+        delay((index * 42L).coerceAtMost(210L))
+        visible = true
+    }
+
+    AnimatedVisibility(
+        visible = visible,
+        modifier = modifier,
+        enter = fadeIn(tween(240)) +
+            slideInVertically(tween(300)) { it / 12 } +
+            scaleIn(tween(300), initialScale = 0.97f)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(min = 150.dp)
+                .clip(RoundedCornerShape(22.dp))
+                .background(
+                    Brush.linearGradient(
+                        listOf(
+                            entry.tint.copy(alpha = 0.10f),
+                            MaterialTheme.colorScheme.surface.copy(alpha = 0.97f)
+                        )
+                    )
+                )
+                .border(
+                    1.dp,
+                    Brush.linearGradient(
+                        listOf(entry.tint.copy(alpha = 0.34f), entry.tint.copy(alpha = 0.10f))
+                    ),
+                    RoundedCornerShape(22.dp)
+                )
+                .bounceClick(entry.onClick)
+                .animateContentSize(spring(dampingRatio = 0.82f, stiffness = Spring.StiffnessMediumLow))
+                .padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Box(
+                    Modifier
+                        .size(40.dp)
+                        .clip(RoundedCornerShape(14.dp))
+                        .background(entry.tint.copy(alpha = 0.16f)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(entry.icon, contentDescription = null, tint = entry.tint, modifier = Modifier.size(21.dp))
+                }
+                entry.status?.let {
+                    Text(
+                        it,
+                        modifier = Modifier
+                            .clip(CircleShape)
+                            .background(entry.tint.copy(alpha = 0.13f))
+                            .padding(horizontal = 8.dp, vertical = 5.dp),
+                        color = entry.tint,
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+            }
+            Text(
+                entry.title,
+                style = MaterialTheme.typography.titleSmall,
+                color = MaterialTheme.colorScheme.onSurface,
+                fontWeight = FontWeight.Bold,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis
+            )
+            Text(
+                entry.description,
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+    }
+}
+
+@Composable
+private fun GameModeCard(
+    hideIdleIsland: Boolean,
+    showNotifications: Boolean,
+    playSound: Boolean,
+    onHideIdleIslandChange: (Boolean) -> Unit,
+    onShowNotificationsChange: (Boolean) -> Unit,
+    onPlaySoundChange: (Boolean) -> Unit,
+    islandOverrides: Map<String, Boolean>,
+    soundOverrides: Map<String, Boolean>,
+    onIslandOverridesChange: (Map<String, Boolean>) -> Unit,
+    onSoundOverridesChange: (Map<String, Boolean>) -> Unit,
+    additionalGamePackages: Set<String>,
+    onAdditionalGamePackagesChange: (Set<String>) -> Unit,
+    refreshVersion: Int
+) {
+    var expanded by rememberSaveable { mutableStateOf(false) }
+    var manualPickerExpanded by rememberSaveable { mutableStateOf(false) }
+    var manualGameSearch by rememberSaveable { mutableStateOf("") }
+    val context = LocalContext.current
+    var installedApps by remember(context) { mutableStateOf<List<Pair<com.agupta07505.smartisland.data.LaunchableApp, Boolean>>>(emptyList()) }
+    LaunchedEffect(context, refreshVersion) {
+        installedApps = withContext(Dispatchers.IO) {
+            runCatching {
+                com.agupta07505.smartisland.data.AppShortcutProvider.installedApps(context, includeClones = true)
+                    .mapNotNull { app ->
+                        val pkg = com.agupta07505.smartisland.data.AppIdentity.parse(app.packageName).packageName
+                        val isSystemGame = runCatching {
+                            context.packageManager.getApplicationInfo(pkg, 0).category == android.content.pm.ApplicationInfo.CATEGORY_GAME
+                        }.getOrDefault(false)
+                        com.agupta07505.smartisland.data.LaunchableApp(pkg, app.label) to isSystemGame
+                    }
+                    .distinctBy { it.first.packageName }
+                    .sortedBy { it.first.label.lowercase() }
+            }.getOrDefault(emptyList())
+        }
+    }
+    Column(
         modifier = Modifier
             .fillMaxWidth()
+            .animateContentSize(spring(dampingRatio = 0.84f, stiffness = Spring.StiffnessMediumLow))
             .clip(RoundedCornerShape(22.dp))
             .background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.48f))
             .glassEdge(RoundedCornerShape(22.dp), glass = LocalLiquidGlass.current, dark = LocalGlassDark.current)
-            .padding(start = 16.dp, end = 12.dp, top = 14.dp, bottom = 14.dp),
-        verticalAlignment = Alignment.CenterVertically
+            .padding(14.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
-        Box(Modifier.size(44.dp).clip(RoundedCornerShape(14.dp)).background(MaterialTheme.colorScheme.primary), contentAlignment = Alignment.Center) {
-            Icon(Icons.Rounded.SportsEsports, contentDescription = null, tint = MaterialTheme.colorScheme.onPrimary)
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Box(Modifier.size(44.dp).clip(RoundedCornerShape(14.dp)).background(MaterialTheme.colorScheme.primary), contentAlignment = Alignment.Center) {
+                Icon(Icons.Rounded.SportsEsports, contentDescription = null, tint = MaterialTheme.colorScheme.onPrimary)
+            }
+            Column(Modifier.weight(1f).padding(horizontal = 12.dp)) {
+                Text(stringResource(R.string.game_mode_title), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+                Text(stringResource(R.string.game_mode_summary), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            Switch(checked = hideIdleIsland, onCheckedChange = onHideIdleIslandChange)
         }
-        Column(Modifier.weight(1f).padding(horizontal = 12.dp)) {
-            Text(stringResource(R.string.game_mode_title), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
-            Text(stringResource(R.string.game_mode_summary), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        TextButton(onClick = { expanded = !expanded }, modifier = Modifier.fillMaxWidth()) {
+            Text(stringResource(if (expanded) R.string.game_mode_less else R.string.game_mode_settings))
+            Icon(Icons.AutoMirrored.Rounded.KeyboardArrowRight, contentDescription = null)
         }
-        Switch(checked = enabled, onCheckedChange = onEnabledChange)
+        AnimatedVisibility(visible = expanded) {
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                GameModeOption(stringResource(R.string.game_mode_show_notifications), stringResource(R.string.game_mode_show_notifications_summary), showNotifications, onShowNotificationsChange)
+                GameModeOption(stringResource(R.string.game_mode_play_sound), stringResource(R.string.game_mode_play_sound_summary), playSound, onPlaySoundChange)
+                Text(
+                    stringResource(R.string.game_mode_installed_games),
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.padding(start = 4.dp, top = 8.dp, bottom = 2.dp)
+                )
+                val games = installedApps.filter { (app, isSystemGame) -> isSystemGame || app.packageName in additionalGamePackages }
+                if (games.isEmpty()) {
+                    Text(
+                        stringResource(R.string.game_mode_no_games),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(horizontal = 4.dp, vertical = 4.dp)
+                    )
+                } else {
+                    games.forEach { (game, isSystemGame) ->
+                        GameAppSettings(
+                            game = game,
+                            islandEnabled = islandOverrides[game.packageName] ?: showNotifications,
+                            soundEnabled = soundOverrides[game.packageName] ?: playSound,
+                            onIslandChange = { enabled -> onIslandOverridesChange(islandOverrides + (game.packageName to enabled)) },
+                            onSoundChange = { enabled -> onSoundOverridesChange(soundOverrides + (game.packageName to enabled)) },
+                            onReset = {
+                                onIslandOverridesChange(islandOverrides - game.packageName)
+                                onSoundOverridesChange(soundOverrides - game.packageName)
+                            },
+                            hasOverrides = game.packageName in islandOverrides || game.packageName in soundOverrides,
+                            manuallyAdded = !isSystemGame && game.packageName in additionalGamePackages,
+                            onRemoveManualGame = { onAdditionalGamePackagesChange(additionalGamePackages - game.packageName) }
+                        )
+                    }
+                }
+                TextButton(onClick = { manualPickerExpanded = !manualPickerExpanded }, modifier = Modifier.fillMaxWidth()) {
+                    Text(stringResource(if (manualPickerExpanded) R.string.game_mode_hide_manual_picker else R.string.game_mode_add_manual_games))
+                }
+                AnimatedVisibility(visible = manualPickerExpanded) {
+                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Text(stringResource(R.string.game_mode_manual_picker_help), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        androidx.compose.material3.OutlinedTextField(
+                            value = manualGameSearch,
+                            onValueChange = { manualGameSearch = it },
+                            modifier = Modifier.fillMaxWidth(),
+                            singleLine = true,
+                            label = { Text(stringResource(R.string.game_mode_search_apps)) }
+                        )
+                        val normalizedQuery = manualGameSearch.trim()
+                        val appCandidates = installedApps.filter { (app, isSystemGame) ->
+                            !isSystemGame && app.packageName !in additionalGamePackages &&
+                                normalizedQuery.length >= 2 &&
+                                (app.label.contains(normalizedQuery, ignoreCase = true) || app.packageName.contains(normalizedQuery, ignoreCase = true))
+                        }.take(30)
+                        if (normalizedQuery.length >= 2 && appCandidates.isEmpty()) {
+                            Text(stringResource(R.string.game_mode_no_matching_apps), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                        appCandidates.forEach { (app, _) ->
+                            Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                                GameAppIcon(packageName = app.packageName, label = app.label)
+                                Column(Modifier.weight(1f).padding(end = 8.dp)) {
+                                    Text(app.label, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+                                    Text(app.packageName, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                }
+                                TextButton(onClick = { onAdditionalGamePackagesChange(additionalGamePackages + app.packageName) }) {
+                                    Text(stringResource(R.string.game_mode_add_game))
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun GameAppSettings(
+    game: com.agupta07505.smartisland.data.LaunchableApp,
+    islandEnabled: Boolean,
+    soundEnabled: Boolean,
+    onIslandChange: (Boolean) -> Unit,
+    onSoundChange: (Boolean) -> Unit,
+    onReset: () -> Unit,
+    hasOverrides: Boolean,
+    manuallyAdded: Boolean,
+    onRemoveManualGame: () -> Unit
+) {
+    Column(
+        Modifier.fillMaxWidth().padding(vertical = 4.dp).clip(RoundedCornerShape(16.dp))
+            .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.42f)).padding(10.dp)
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            GameAppIcon(packageName = game.packageName, label = game.label)
+            Column(Modifier.weight(1f)) {
+                Text(game.label, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+                Text(game.packageName, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            if (hasOverrides) TextButton(onClick = onReset) { Text(stringResource(R.string.game_mode_reset)) }
+            if (manuallyAdded) TextButton(onClick = onRemoveManualGame) { Text(stringResource(R.string.game_mode_remove_game)) }
+        }
+        GameModeOption(stringResource(R.string.game_mode_per_game_island), stringResource(R.string.game_mode_per_game_island_summary), islandEnabled, onIslandChange)
+        GameModeOption(stringResource(R.string.game_mode_per_game_sound), stringResource(R.string.game_mode_per_game_sound_summary), soundEnabled, onSoundChange)
+    }
+}
+
+@Composable
+private fun GameAppIcon(packageName: String, label: String) {
+    val context = LocalContext.current
+    var icon by remember(packageName) { mutableStateOf<androidx.compose.ui.graphics.ImageBitmap?>(null) }
+    LaunchedEffect(packageName, context) {
+        icon = withContext(Dispatchers.IO) {
+            runCatching {
+                val drawable = com.agupta07505.smartisland.data.AppShortcutProvider.icon(context, packageName)
+                    ?: return@runCatching null
+                val width = drawable.intrinsicWidth.takeIf { it > 0 } ?: 96
+                val height = drawable.intrinsicHeight.takeIf { it > 0 } ?: 96
+                val bitmap = android.graphics.Bitmap.createBitmap(width, height, android.graphics.Bitmap.Config.ARGB_8888)
+                val canvas = android.graphics.Canvas(bitmap)
+                drawable.setBounds(0, 0, width, height)
+                drawable.draw(canvas)
+                bitmap.asImageBitmap()
+            }.getOrNull()
+        }
+    }
+    Box(
+        Modifier.padding(end = 10.dp).size(42.dp).clip(RoundedCornerShape(12.dp))
+            .background(MaterialTheme.colorScheme.surfaceVariant),
+        contentAlignment = Alignment.Center
+    ) {
+        if (icon != null) {
+            Image(bitmap = icon!!, contentDescription = label, modifier = Modifier.fillMaxSize())
+        } else {
+            Icon(Icons.Rounded.Apps, contentDescription = label, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    }
+}
+
+@Composable
+private fun GameModeOption(title: String, summary: String, checked: Boolean, onCheckedChange: (Boolean) -> Unit) {
+    Row(Modifier.fillMaxWidth().padding(start = 4.dp, top = 5.dp, bottom = 5.dp), verticalAlignment = Alignment.CenterVertically) {
+        Column(Modifier.weight(1f).padding(end = 10.dp)) {
+            Text(title, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+            Text(summary, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        Switch(checked = checked, onCheckedChange = onCheckedChange)
     }
 }
 
@@ -1446,19 +1893,40 @@ private fun SettingsCategoryGroup(
     Column(
         modifier = Modifier
             .fillMaxWidth()
+            .animateContentSize(spring(dampingRatio = 0.84f, stiffness = Spring.StiffnessMediumLow))
             .clip(RoundedCornerShape(22.dp))
-            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.32f))
+            .background(
+                Brush.linearGradient(
+                    listOf(
+                        MaterialTheme.colorScheme.primary.copy(alpha = 0.055f),
+                        MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.34f),
+                        MaterialTheme.colorScheme.surface.copy(alpha = 0.46f)
+                    )
+                )
+            )
+            .border(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.28f), RoundedCornerShape(22.dp))
             .padding(12.dp),
         verticalArrangement = Arrangement.spacedBy(9.dp)
     ) {
-        Text(
-            text = title.uppercase(),
-            style = MaterialTheme.typography.labelSmall,
-            fontWeight = FontWeight.Bold,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            letterSpacing = 0.8.sp,
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(9.dp),
             modifier = Modifier.padding(start = 3.dp, top = 2.dp, bottom = 2.dp)
-        )
+        ) {
+            Box(
+                Modifier
+                    .size(width = 4.dp, height = 15.dp)
+                    .clip(RoundedCornerShape(50))
+                    .background(MaterialTheme.colorScheme.primary)
+            )
+            Text(
+                text = title.uppercase(),
+                style = MaterialTheme.typography.labelSmall,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                letterSpacing = 0.8.sp
+            )
+        }
         content()
     }
 }
@@ -1681,21 +2149,62 @@ private fun DetailScreenHost(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(vertical = 4.dp),
+                .clip(RoundedCornerShape(24.dp))
+                .background(
+                    Brush.linearGradient(
+                        listOf(
+                            MaterialTheme.colorScheme.primary.copy(alpha = 0.13f),
+                            MaterialTheme.colorScheme.surface.copy(alpha = 0.96f),
+                            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.44f)
+                        )
+                    )
+                )
+                .border(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.34f), RoundedCornerShape(24.dp))
+                .padding(horizontal = 12.dp, vertical = 12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             IconButton(
                 onClick = onBack,
                 modifier = Modifier
-                    .size(40.dp)
-                    .clip(CircleShape)
-                    .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f))
+                    .size(42.dp)
+                    .clip(RoundedCornerShape(15.dp))
+                    .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.78f))
             ) {
                 Icon(
                     imageVector = Icons.AutoMirrored.Rounded.ArrowBack,
                     contentDescription = "Back",
-                    tint = MaterialTheme.colorScheme.onSurface
+                    tint = MaterialTheme.colorScheme.primary
                 )
+            }
+            Spacer(modifier = Modifier.width(12.dp))
+            val sectionIcon = when (section) {
+                FeatureDetailSection.NotificationRules -> Icons.Rounded.Notifications
+                FeatureDetailSection.AppShortcuts -> Icons.Rounded.Apps
+                FeatureDetailSection.NotificationHistory -> Icons.Rounded.History
+                FeatureDetailSection.ColorStudio -> Icons.Rounded.Palette
+                FeatureDetailSection.GesturesGuide -> Icons.Rounded.Gesture
+                FeatureDetailSection.PermissionsCenter -> Icons.Rounded.Shield
+                FeatureDetailSection.BackupRestore -> Icons.Rounded.SettingsBackupRestore
+                FeatureDetailSection.Diagnostics -> Icons.Rounded.BugReport
+                FeatureDetailSection.Timing -> Icons.Rounded.Timer
+                FeatureDetailSection.IdleWidgets -> Icons.Rounded.Widgets
+                FeatureDetailSection.About -> Icons.Rounded.Info
+                FeatureDetailSection.UpdatesAndDownloads -> Icons.Rounded.Download
+                FeatureDetailSection.SupportCommunity -> Icons.Rounded.People
+                FeatureDetailSection.DeveloperOptions -> Icons.Rounded.Code
+                FeatureDetailSection.FaceIdSettings -> Icons.Rounded.Shield
+                FeatureDetailSection.WeatherSettings -> Icons.Rounded.Science
+                FeatureDetailSection.NetSpeedSettings -> Icons.Rounded.FlashOn
+                FeatureDetailSection.CalendarSettings -> Icons.Rounded.History
+            }
+            Box(
+                modifier = Modifier
+                    .size(44.dp)
+                    .clip(RoundedCornerShape(15.dp))
+                    .background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.8f)),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(sectionIcon, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(22.dp))
             }
             Spacer(modifier = Modifier.width(12.dp))
             val title = when (section) {
@@ -1718,14 +2227,26 @@ private fun DetailScreenHost(
                 FeatureDetailSection.NetSpeedSettings -> stringResource(R.string.net_cfg_title)
                 FeatureDetailSection.CalendarSettings -> stringResource(R.string.cal_cfg_title)
             }
-            Text(
-                text = title,
-                style = MaterialTheme.typography.titleLarge,
-                color = MaterialTheme.colorScheme.onSurface,
-                fontWeight = FontWeight.Bold
-            )
+            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text(
+                    text = stringResource(R.string.tab_settings).uppercase(),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.primary,
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = 0.8.sp
+                )
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.titleLarge,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
         }
 
+        SettingsControlsTheme {
         when (section) {
             FeatureDetailSection.NotificationRules -> {
                 NotificationsAndPrivacySection(settings = settings, repository = repository)
@@ -1824,6 +2345,7 @@ private fun DetailScreenHost(
             FeatureDetailSection.CalendarSettings -> {
                 CalendarSettingsCard(modifier = Modifier.searchAnchor("idle.calendar"))
             }
+        }
         }
     }
 }

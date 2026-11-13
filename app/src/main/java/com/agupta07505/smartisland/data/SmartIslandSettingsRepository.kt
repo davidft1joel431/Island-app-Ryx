@@ -32,6 +32,21 @@ import kotlinx.coroutines.flow.onStart
 import com.agupta07505.smartisland.util.AnimationSpeed
 import com.agupta07505.smartisland.util.MergeStyle
 
+private fun parseBooleanOverrides(raw: String?, fallback: Map<String, Boolean>): Map<String, Boolean> {
+    val values = raw?.let { runCatching { JSONObject(it) }.getOrNull() } ?: return fallback
+    return buildMap {
+        val keys = values.keys()
+        while (keys.hasNext()) {
+            val pkg = keys.next().trim()
+            if (pkg.isNotBlank() && pkg.length <= 255) put(pkg, values.optBoolean(pkg))
+        }
+    }
+}
+
+private fun encodeBooleanOverrides(values: Map<String, Boolean>): String = JSONObject().also { json ->
+    values.filterKeys { it.isNotBlank() && it.length <= 255 }.forEach { (pkg, enabled) -> json.put(pkg, enabled) }
+}.toString()
+
 private val Context.smartIslandDataStore by preferencesDataStore(
     name = "smart_island_settings",
     corruptionHandler = ReplaceFileCorruptionHandler {
@@ -184,6 +199,11 @@ class SmartIslandSettingsRepository(private val context: Context) {
         val IslandExemptAppsLandscape = stringSetPreferencesKey("island_exempt_apps_landscape")
         val IslandExemptAppsStatic = stringSetPreferencesKey("island_exempt_apps_static")
         val HideIslandInGames = booleanPreferencesKey("hide_island_in_games")
+        val ShowNotificationIslandInGames = booleanPreferencesKey("show_notification_island_in_games")
+        val PlayNotificationSoundInGames = booleanPreferencesKey("play_notification_sound_in_games")
+        val GameIslandVisibilityOverrides = stringPreferencesKey("game_island_visibility_overrides")
+        val GameSoundOverrides = stringPreferencesKey("game_sound_overrides")
+        val AdditionalGamePackages = stringSetPreferencesKey("additional_game_packages")
         val ContentPillSameAsIdleLandscape = booleanPreferencesKey("content_pill_same_as_idle_landscape")
         val ContentPillWidthPercentLandscape = floatPreferencesKey("content_pill_width_percent_landscape")
         val IdleOffWhenStored = booleanPreferencesKey("idle_off_when_stored")
@@ -513,6 +533,13 @@ class SmartIslandSettingsRepository(private val context: Context) {
                 islandExemptAppsStatic = prefs[Keys.IslandExemptAppsStatic]
                     ?.filter { it.isNotBlank() && it.length <= MAX_PACKAGE_NAME_LENGTH }?.toSet() ?: defaults.islandExemptAppsStatic,
                 hideIslandInGames = prefs[Keys.HideIslandInGames] ?: defaults.hideIslandInGames,
+                showNotificationIslandInGames = prefs[Keys.ShowNotificationIslandInGames] ?: defaults.showNotificationIslandInGames,
+                playNotificationSoundInGames = prefs[Keys.PlayNotificationSoundInGames] ?: defaults.playNotificationSoundInGames,
+                gameIslandVisibilityOverrides = parseBooleanOverrides(prefs[Keys.GameIslandVisibilityOverrides], defaults.gameIslandVisibilityOverrides),
+                gameSoundOverrides = parseBooleanOverrides(prefs[Keys.GameSoundOverrides], defaults.gameSoundOverrides),
+                additionalGamePackages = prefs[Keys.AdditionalGamePackages]
+                    ?.filter { it.isNotBlank() && it.length <= MAX_PACKAGE_NAME_LENGTH }?.toSet()
+                    ?: defaults.additionalGamePackages,
                 contentPillSameAsIdleLandscape = prefs[Keys.ContentPillSameAsIdleLandscape] ?: defaults.contentPillSameAsIdleLandscape,
                 contentPillWidthPercentLandscape = (prefs[Keys.ContentPillWidthPercentLandscape] ?: defaults.contentPillWidthPercentLandscape).let {
                     if (it.isNaN()) defaults.contentPillWidthPercentLandscape
@@ -682,6 +709,17 @@ class SmartIslandSettingsRepository(private val context: Context) {
     suspend fun setDeviceType(value: String) = editSafely { it[Keys.DeviceType] = value }
     suspend fun setEnabled(value: Boolean) = editSafely { it[Keys.Enabled] = value }
     suspend fun setHideIslandInGames(value: Boolean) = editSafely { it[Keys.HideIslandInGames] = value }
+    suspend fun setShowNotificationIslandInGames(value: Boolean) = editSafely { it[Keys.ShowNotificationIslandInGames] = value }
+    suspend fun setPlayNotificationSoundInGames(value: Boolean) = editSafely { it[Keys.PlayNotificationSoundInGames] = value }
+    suspend fun setGameIslandVisibilityOverrides(value: Map<String, Boolean>) = editSafely {
+        it[Keys.GameIslandVisibilityOverrides] = encodeBooleanOverrides(value)
+    }
+    suspend fun setGameSoundOverrides(value: Map<String, Boolean>) = editSafely {
+        it[Keys.GameSoundOverrides] = encodeBooleanOverrides(value)
+    }
+    suspend fun setAdditionalGamePackages(value: Set<String>) = editSafely {
+        it[Keys.AdditionalGamePackages] = value.filter { pkg -> pkg.isNotBlank() && pkg.length <= MAX_PACKAGE_NAME_LENGTH }.toSet()
+    }
     suspend fun setEnableShadow(value: Boolean) = editSafely { it[Keys.EnableShadow] = value }
     suspend fun setExpandedBlurEnabled(value: Boolean) = editSafely { it[Keys.ExpandedBlurEnabled] = value }
     /** Picks Off or Card blur. */
@@ -1647,6 +1685,11 @@ class SmartIslandSettingsRepository(private val context: Context) {
         prefs[Keys.IslandExemptAppsStatic] = settings.islandExemptAppsStatic
             .filter { it.isNotBlank() && it.length <= MAX_PACKAGE_NAME_LENGTH }.toSet()
         prefs[Keys.HideIslandInGames] = settings.hideIslandInGames
+        prefs[Keys.ShowNotificationIslandInGames] = settings.showNotificationIslandInGames
+        prefs[Keys.PlayNotificationSoundInGames] = settings.playNotificationSoundInGames
+        prefs[Keys.GameIslandVisibilityOverrides] = encodeBooleanOverrides(settings.gameIslandVisibilityOverrides)
+        prefs[Keys.GameSoundOverrides] = encodeBooleanOverrides(settings.gameSoundOverrides)
+        prefs[Keys.AdditionalGamePackages] = settings.additionalGamePackages
         prefs[Keys.ContentPillSameAsIdleLandscape] = settings.contentPillSameAsIdleLandscape
         prefs[Keys.ContentPillWidthPercentLandscape] = settings.contentPillWidthPercentLandscape
         prefs[Keys.IdleOffWhenStoredLandscape] = settings.idleOffWhenStoredLandscape

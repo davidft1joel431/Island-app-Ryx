@@ -190,6 +190,15 @@ data class SmartIslandSettings(
     val islandExemptAppsStatic: Set<String> = emptySet(),
     /** Hide the island whenever Android identifies the foreground app as a game. */
     val hideIslandInGames: Boolean = false,
+    /** Allow notification cards to temporarily show the island while a game is in the foreground. */
+    val showNotificationIslandInGames: Boolean = true,
+    /** Allow Ryx Isla to play its configured sound for notifications received during games. */
+    val playNotificationSoundInGames: Boolean = true,
+    /** Per-game overrides; missing packages inherit the corresponding global game setting. */
+    val gameIslandVisibilityOverrides: Map<String, Boolean> = emptyMap(),
+    val gameSoundOverrides: Map<String, Boolean> = emptyMap(),
+    /** Apps Android does not classify as games but the user explicitly wants treated as games. */
+    val additionalGamePackages: Set<String> = emptySet(),
     val contentPillWidthPercentLandscape: Float = DEFAULT_CONTENT_PILL_PERCENT,
     // Legacy: kept so old backups still load.
     val landscapeShape: String = LANDSCAPE_SHAPE_PILL,
@@ -623,6 +632,15 @@ data class SmartIslandSettings(
         settingsObj.put("islandExemptAppsLandscape", JSONArray().also { a -> islandExemptAppsLandscape.forEach { a.put(it) } })
         settingsObj.put("islandExemptAppsStatic", JSONArray().also { a -> islandExemptAppsStatic.forEach { a.put(it) } })
         settingsObj.put("hideIslandInGames", hideIslandInGames)
+        settingsObj.put("showNotificationIslandInGames", showNotificationIslandInGames)
+        settingsObj.put("playNotificationSoundInGames", playNotificationSoundInGames)
+        settingsObj.put("gameIslandVisibilityOverrides", JSONObject().also { values ->
+            gameIslandVisibilityOverrides.forEach { (pkg, enabled) -> values.put(pkg, enabled) }
+        })
+        settingsObj.put("gameSoundOverrides", JSONObject().also { values ->
+            gameSoundOverrides.forEach { (pkg, enabled) -> values.put(pkg, enabled) }
+        })
+        settingsObj.put("additionalGamePackages", JSONArray().also { values -> additionalGamePackages.forEach(values::put) })
         settingsObj.put("contentPillSameAsIdleLandscape", contentPillSameAsIdleLandscape)
         settingsObj.put("contentPillWidthPercentLandscape", contentPillWidthPercentLandscape.toDouble())
         settingsObj.put("contentPillWidthPercent", contentPillWidthPercent.toDouble())
@@ -909,6 +927,17 @@ data class SmartIslandSettings(
                 return result
             }
 
+            fun safeBooleanMap(key: String, default: Map<String, Boolean>): Map<String, Boolean> {
+                val values = obj.optJSONObject(key) ?: return default
+                return buildMap {
+                    val keys = values.keys()
+                    while (keys.hasNext()) {
+                        val pkg = keys.next().trim()
+                        if (pkg.isNotBlank() && pkg.length <= 255) put(pkg, values.optBoolean(pkg))
+                    }
+                }
+            }
+
             return SmartIslandSettings(
                 enabled = obj.optBoolean("enabled", defaults.enabled),
                 width = safeFloat("width", defaults.width, MIN_WIDTH, MAX_WIDTH),
@@ -1111,6 +1140,11 @@ data class SmartIslandSettings(
                 islandExemptAppsLandscape = safeStringSet("islandExemptAppsLandscape", defaults.islandExemptAppsLandscape),
                 islandExemptAppsStatic = safeStringSet("islandExemptAppsStatic", defaults.islandExemptAppsStatic),
                 hideIslandInGames = obj.optBoolean("hideIslandInGames", defaults.hideIslandInGames),
+                showNotificationIslandInGames = obj.optBoolean("showNotificationIslandInGames", defaults.showNotificationIslandInGames),
+                playNotificationSoundInGames = obj.optBoolean("playNotificationSoundInGames", defaults.playNotificationSoundInGames),
+                gameIslandVisibilityOverrides = safeBooleanMap("gameIslandVisibilityOverrides", defaults.gameIslandVisibilityOverrides),
+                gameSoundOverrides = safeBooleanMap("gameSoundOverrides", defaults.gameSoundOverrides),
+                additionalGamePackages = safeStringSet("additionalGamePackages", defaults.additionalGamePackages),
                 contentPillSameAsIdleLandscape = obj.optBoolean("contentPillSameAsIdleLandscape", defaults.contentPillSameAsIdleLandscape),
                 contentPillWidthPercentLandscape = safeFloat(
                     "contentPillWidthPercentLandscape", defaults.contentPillWidthPercentLandscape,

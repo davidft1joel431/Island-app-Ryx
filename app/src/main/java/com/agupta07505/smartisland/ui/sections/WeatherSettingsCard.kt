@@ -55,7 +55,7 @@ import com.agupta07505.smartisland.model.WeatherConfig
 import com.agupta07505.smartisland.model.WeatherPill
 import com.agupta07505.smartisland.model.WeatherReadouts
 import com.agupta07505.smartisland.model.WeatherRules
-import com.agupta07505.smartisland.ui.glass.Card
+import com.agupta07505.smartisland.ui.components.SettingsCard as Card
 import com.agupta07505.smartisland.util.IdleWeather
 import kotlinx.coroutines.launch
 

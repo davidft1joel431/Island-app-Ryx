@@ -23,6 +23,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
 import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.Mic
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -46,7 +47,9 @@ import com.agupta07505.smartisland.ui.bounceClick
 internal fun SettingsSearchField(
     query: String,
     onQueryChange: (String) -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    placeholder: String? = null,
+    onVoiceSearch: (() -> Unit)? = null
 ) {
     val focusManager = LocalFocusManager.current
     OutlinedTextField(
@@ -55,17 +58,24 @@ internal fun SettingsSearchField(
         modifier = modifier.fillMaxWidth(),
         singleLine = true,
         shape = RoundedCornerShape(14.dp),
-        placeholder = { Text(stringResource(R.string.settings_search_hint)) },
+        placeholder = { Text(placeholder ?: stringResource(R.string.settings_search_hint)) },
         leadingIcon = {
             Icon(imageVector = Icons.Rounded.Search, contentDescription = null)
         },
         trailingIcon = {
-            if (query.isNotEmpty()) {
-                IconButton(onClick = { onQueryChange("") }) {
-                    Icon(
-                        imageVector = Icons.Rounded.Close,
-                        contentDescription = stringResource(R.string.settings_search_clear)
-                    )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                if (onVoiceSearch != null) {
+                    IconButton(onClick = onVoiceSearch) {
+                        Icon(Icons.Rounded.Mic, contentDescription = stringResource(R.string.search_voice))
+                    }
+                }
+                if (query.isNotEmpty()) {
+                    IconButton(onClick = { onQueryChange("") }) {
+                        Icon(
+                            imageVector = Icons.Rounded.Close,
+                            contentDescription = stringResource(R.string.settings_search_clear)
+                        )
+                    }
                 }
             }
         },

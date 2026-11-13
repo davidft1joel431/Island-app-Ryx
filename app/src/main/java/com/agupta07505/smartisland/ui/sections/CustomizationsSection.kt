@@ -43,7 +43,8 @@ import androidx.compose.material.icons.rounded.Palette
 import androidx.compose.material.icons.rounded.Videocam
 import androidx.compose.material.icons.rounded.WifiTethering
 import androidx.compose.material3.AlertDialog
-import com.agupta07505.smartisland.ui.glass.Card
+import com.agupta07505.smartisland.ui.components.SettingsCard as Card
+import com.agupta07505.smartisland.ui.components.SettingsControlDefaults
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -692,7 +693,8 @@ internal fun RgbColorPickerDialog(
                     } else null,
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(12.dp)
+                    shape = SettingsControlDefaults.fieldShape,
+                    colors = SettingsControlDefaults.fieldColors()
                 )
 
                 Row(

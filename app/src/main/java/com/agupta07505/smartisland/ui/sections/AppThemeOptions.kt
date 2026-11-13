@@ -42,8 +42,10 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.agupta07505.smartisland.R
 import com.agupta07505.smartisland.data.SmartIslandSettings
 import com.agupta07505.smartisland.ui.glass.Switch
 
@@ -94,16 +96,16 @@ fun AppThemeOptions(
     val usingDynamic = settings.materialYou && dynamicAvailable
     Column {
         ThemeToggleRow(
-            title = "Vibrant colors",
-            subtitle = "Translucent glass panels with a lit rim over a soft colour backdrop. Off gives the flat Material look.",
+            title = stringResource(R.string.app_theme_glass_title),
+            subtitle = stringResource(R.string.app_theme_glass_summary),
             checked = settings.liquidGlassTheme,
             onChange = onLiquidGlassChange
         )
         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
         if (dynamicAvailable) {
             ThemeToggleRow(
-                title = "Material You colours",
-                subtitle = "Take the colours from your wallpaper instead of the accent colour below.",
+                title = stringResource(R.string.app_theme_material_you_title),
+                subtitle = stringResource(R.string.app_theme_material_you_summary),
                 checked = settings.materialYou,
                 onChange = onMaterialYouChange
             )
@@ -118,13 +120,16 @@ fun AppThemeOptions(
         ) {
             Column {
                 Text(
-                    text = "Accent colour",
+                    text = stringResource(R.string.app_theme_accent_title),
                     style = MaterialTheme.typography.bodyLarge,
                     fontWeight = FontWeight.SemiBold,
                     color = MaterialTheme.colorScheme.onSurface
                 )
                 Text(
-                    text = if (usingDynamic) "Not used while Material You is on." else "Pick a Material colour. The whole app palette is built from it.",
+                    text = stringResource(
+                        if (usingDynamic) R.string.app_theme_accent_dynamic_summary
+                        else R.string.app_theme_accent_summary
+                    ),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -191,7 +196,7 @@ private fun CustomHueSlider(accent: Long, enabled: Boolean, onAccentChange: (Lon
     var hue by remember(accent) { mutableFloatStateOf(hueOf(accent)) }
     val rainbow = remember { (0..12).map { Color.hsv(it * 30f, 0.80f, 0.95f) } }
     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-        Text("Custom hue", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(stringResource(R.string.app_theme_custom_hue), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Box(modifier = Modifier.fillMaxWidth().height(36.dp), contentAlignment = Alignment.Center) {
             Box(
                 modifier = Modifier

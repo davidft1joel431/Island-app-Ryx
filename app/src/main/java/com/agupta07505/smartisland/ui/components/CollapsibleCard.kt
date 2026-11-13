@@ -8,6 +8,11 @@
 package com.agupta07505.smartisland.ui.components
 
 import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -30,9 +35,14 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -41,8 +51,6 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.agupta07505.smartisland.ui.search.LocalSearchFocus
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.setValue
 
 /**
  * A card whose header always shows (icon, title, short summary, optional trailing control such as a group switch) and
@@ -62,6 +70,11 @@ fun CollapsibleCard(
     content: @Composable () -> Unit
 ) {
     var expanded by rememberSaveable(stateKey) { mutableStateOf(initiallyExpanded) }
+    val chevronRotation by animateFloatAsState(
+        targetValue = if (expanded) 180f else 0f,
+        animationSpec = tween(durationMillis = 220),
+        label = "CollapsibleCardChevron"
+    )
 
     // A settings-search result inside this card opens it, so the row can be scrolled to.
     val searchFocus = LocalSearchFocus.current
@@ -76,7 +89,7 @@ fun CollapsibleCard(
         Column(
             modifier = modifier
                 .fillMaxWidth()
-                .animateContentSize(),
+                .animateContentSize(spring(dampingRatio = 0.84f, stiffness = 420f)),
             verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
             Row(
@@ -111,7 +124,11 @@ fun CollapsibleCard(
                         .rotate(if (expanded) 180f else 0f)
                 )
             }
-            if (expanded) content()
+                    AnimatedVisibility(
+                        visible = expanded,
+                        enter = expandVertically(tween(260)) + fadeIn(tween(180)),
+                        exit = shrinkVertically(tween(220)) + fadeOut(tween(140))
+                    ) { content() }
         }
         return
     }
@@ -119,7 +136,7 @@ fun CollapsibleCard(
     Card(
         modifier = modifier
             .fillMaxWidth()
-            .animateContentSize(),
+            .animateContentSize(spring(dampingRatio = 0.84f, stiffness = 420f)),
         shape = RoundedCornerShape(20.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)),
@@ -130,7 +147,7 @@ fun CollapsibleCard(
                 modifier = Modifier
                     .fillMaxWidth()
                     .clickable { expanded = !expanded }
-                    .padding(horizontal = 16.dp, vertical = 12.dp),
+                    .padding(horizontal = 16.dp, vertical = 14.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 if (icon != null) {
@@ -138,7 +155,7 @@ fun CollapsibleCard(
                         modifier = Modifier
                             .size(38.dp)
                             .clip(RoundedCornerShape(12.dp))
-                            .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)),
+                            .background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.72f)),
                         contentAlignment = Alignment.Center
                     ) {
                         Icon(
@@ -176,16 +193,23 @@ fun CollapsibleCard(
                     tint = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier
                         .size(22.dp)
-                        .rotate(if (expanded) 180f else 0f)
+                        .rotate(chevronRotation)
                 )
             }
-            if (expanded) {
+            AnimatedVisibility(
+                visible = expanded,
+                enter = expandVertically(tween(280)) + fadeIn(tween(200)),
+                exit = shrinkVertically(tween(220)) + fadeOut(tween(150))
+            ) {
                 HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f))
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 10.dp),
-                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                        .padding(horizontal = 12.dp, vertical = 10.dp)
+                        .clip(RoundedCornerShape(16.dp))
+                        .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.28f))
+                        .padding(horizontal = 12.dp, vertical = 12.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
                     content()
                 }

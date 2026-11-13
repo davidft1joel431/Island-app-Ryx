@@ -89,7 +89,7 @@ class SmartIslandNotificationListenerService : NotificationListenerService() {
     private val cooldownReleaseJobs = ConcurrentHashMap<String, Job>()
     @Volatile private var lastSoundPlayedTimeMs = 0L
     @Volatile private var activeNotificationRingtone: Ringtone? = null
-    @Volatile private var prioritySoundWakeLock: android.os.PowerManager.WakeLock? = null
+    @Volatile private var notificationSoundWakeLock: android.os.PowerManager.WakeLock? = null
     @Volatile private var lastAutoExpandTimeMs = 0L
 
     private val viewButtonReceiver = object : android.content.BroadcastReceiver() {
@@ -421,8 +421,8 @@ class SmartIslandNotificationListenerService : NotificationListenerService() {
         lastSoundPlayedTimeMs = 0L
         runCatching { activeNotificationRingtone?.stop() }
         activeNotificationRingtone = null
-        runCatching { prioritySoundWakeLock?.takeIf { it.isHeld }?.release() }
-        prioritySoundWakeLock = null
+        runCatching { notificationSoundWakeLock?.takeIf { it.isHeld }?.release() }
+        notificationSoundWakeLock = null
         lastAutoExpandTimeMs = 0L
         cooldownReleaseJobs.values.forEach { it.cancel() }
         cooldownReleaseJobs.clear()
@@ -560,7 +560,9 @@ class SmartIslandNotificationListenerService : NotificationListenerService() {
                     currentSettings.navigationEnabled,
                     currentSettings.deviceType
                 )
-                if (shouldHideFromShade(notification, modeQuick, sbn.packageName)) {
+                if (shouldHideFromShade(notification, modeQuick, sbn.packageName) &&
+                    !shouldLetAndroidHandleNotificationSound(sbn, modeQuick)
+                ) {
                     markSuppressed(sbn.key)
                     traceStage(sbn, "SHADE-CANCEL", "mode=$modeQuick (island-only, hidden from the system shade)")
                     runCatchingLogged(TAG, "Immediate cancel failed") { cancelNotification(sbn.key) }
@@ -1026,6 +1028,7 @@ class SmartIslandNotificationListenerService : NotificationListenerService() {
 
         val removedFromShade = settings.hideFromNotificationShade &&
             shouldIslandOnly &&
+            !shouldLetAndroidHandleNotificationSound(sbn, mode) &&
             shouldHideFromShade(notification, mode, sbn.packageName)
         if (removedFromShade) {
             // Ensure the shade copy is gone: after onNotificationPosted the sync cancel already ran and this starts the async retry loop;
@@ -1716,7 +1719,10 @@ class SmartIslandNotificationListenerService : NotificationListenerService() {
         val systemSoundUnavailable = isNotificationSoundUnavailable(sbn)
         val islandMustPlayConfiguredSound = systemSoundUnavailable &&
             (isPriorityConversation || hasSelectedCustomSound)
-        if (!isInitialSync && (removedFromShade || islandMustPlayConfiguredSound) &&
+        val gameSoundAllowed = foregroundGamePackage?.let { pkg ->
+            settings.gameSoundOverrides[pkg] ?: settings.playNotificationSoundInGames
+        } ?: true
+        if (!isInitialSync && gameSoundAllowed && (removedFromShade || islandMustPlayConfiguredSound) &&
             (isNewNotif || notificationContentChanged) && mayAlertAgain &&
             (mode == IslandMode.Notification || shouldIslandOnly) &&
             mode != IslandMode.DownloadUpload && !isRecordingEvent
@@ -2072,10 +2078,32 @@ class SmartIslandNotificationListenerService : NotificationListenerService() {
         return true
     }
 
+    /** Leave ordinary notifications posted while the display is off so Android can play their channel sound. */
+    private fun shouldLetAndroidHandleNotificationSound(
+        sbn: StatusBarNotification,
+        mode: IslandMode? = null
+    ): Boolean {
+        val settings = currentSettings
+        val notificationMode = mode ?: sbn.notification.toIslandMode(
+            sbn,
+            settings.liveActivitiesEnabled,
+            settings.navigationEnabled,
+            settings.deviceType
+        )
+        if (notificationMode != IslandMode.Notification) return false
+        val powerManager = getSystemService(android.content.Context.POWER_SERVICE) as? android.os.PowerManager
+            ?: return false
+        return !powerManager.isInteractive
+    }
+
     private fun suppressSystemNotification(key: String) {
         if (!currentSettings.enabled || !currentSettings.hideFromNotificationShade) return
         val activeSbn = runCatchingLogged(TAG, "Failed to get active notifications for key lookup") {
             activeNotifications.find { it.key == key }
+        }
+        if (activeSbn != null && shouldLetAndroidHandleNotificationSound(activeSbn)) {
+            android.util.Log.d(TAG, "Keeping notification in system shade for Android sound while display is off: $key")
+            return
         }
         if (activeSbn != null && activeSbn.packageName in currentSettings.disabledNotificationPackages) return
 
@@ -2102,10 +2130,15 @@ class SmartIslandNotificationListenerService : NotificationListenerService() {
                         return@runSuspendCatchingLogged
                     }
                     val stillActive = runCatchingLogged(TAG, "Failed checking stillActive") {
-                        activeNotifications?.any { it.key == key }
-                    } ?: false
-                    if (!stillActive) {
+                        activeNotifications?.firstOrNull { it.key == key }
+                    }
+                    if (stillActive == null) {
                         android.util.Log.d(TAG, "Successfully suppressed after ${attempt + 1} attempts: $key")
+                        return@runSuspendCatchingLogged
+                    }
+                    if (shouldLetAndroidHandleNotificationSound(stillActive)) {
+                        android.util.Log.d(TAG, "Leaving notification active for Android sound while display is off: $key")
+                        clearSuppressed(key)
                         return@runSuspendCatchingLogged
                     }
                     android.util.Log.d(TAG, "Still active after attempt ${attempt + 1}, retrying: $key")
@@ -2273,7 +2306,7 @@ class SmartIslandNotificationListenerService : NotificationListenerService() {
                 runCatching { activeNotificationRingtone?.stop() }
                 activeNotificationRingtone = ringtone
                 try {
-                    keepPrioritySoundCpuAwakeIfScreenOff(isPriorityConversation)
+                    keepNotificationSoundCpuAwakeIfScreenOff()
                     ringtone.play()
                 } catch (playError: Exception) {
                     android.util.Log.w(TAG, "Notification channel tone could not play; trying the system tone", playError)
@@ -2282,7 +2315,7 @@ class SmartIslandNotificationListenerService : NotificationListenerService() {
                     val fallback = RingtoneManager.getRingtone(applicationContext, fallbackUri) ?: throw playError
                     fallback.audioAttributes = attrs
                     activeNotificationRingtone = fallback
-                    keepPrioritySoundCpuAwakeIfScreenOff(isPriorityConversation)
+                    keepNotificationSoundCpuAwakeIfScreenOff()
                     fallback.play()
                 }
                 lastSoundPlayedTimeMs = SystemClock.elapsedRealtime()
@@ -2291,21 +2324,20 @@ class SmartIslandNotificationListenerService : NotificationListenerService() {
     }
 
     /** A bounded CPU wake lock lets the notification audio start reliably while the display is off. */
-    private fun keepPrioritySoundCpuAwakeIfScreenOff(isPriorityConversation: Boolean) {
-        if (!isPriorityConversation) return
+    private fun keepNotificationSoundCpuAwakeIfScreenOff() {
         val powerManager = getSystemService(android.content.Context.POWER_SERVICE) as? android.os.PowerManager ?: return
         if (powerManager.isInteractive) return
         runCatching {
-            prioritySoundWakeLock?.takeIf { it.isHeld }?.release()
-            prioritySoundWakeLock = powerManager.newWakeLock(
+            notificationSoundWakeLock?.takeIf { it.isHeld }?.release()
+            notificationSoundWakeLock = powerManager.newWakeLock(
                 android.os.PowerManager.PARTIAL_WAKE_LOCK,
-                "$packageName:priority-notification-audio"
+                "$packageName:notification-audio"
             ).apply {
                 setReferenceCounted(false)
-                acquire(PRIORITY_SOUND_WAKE_LOCK_TIMEOUT_MS)
+                acquire(NOTIFICATION_SOUND_WAKE_LOCK_TIMEOUT_MS)
             }
         }.onFailure { error ->
-            android.util.Log.w(TAG, "Could not keep CPU awake for prioritized notification audio", error)
+            android.util.Log.w(TAG, "Could not keep CPU awake for notification audio", error)
         }
     }
 
@@ -2548,6 +2580,8 @@ class SmartIslandNotificationListenerService : NotificationListenerService() {
         @Volatile
         var isSystemConnected: Boolean = false
             private set
+        @Volatile
+        var foregroundGamePackage: String? = null
 
         private const val TAG = "SmartIslandNotificationListener"
         private const val VOIP_CARD_KEY = "voip_call_audio"
@@ -2558,7 +2592,7 @@ class SmartIslandNotificationListenerService : NotificationListenerService() {
         private const val INITIAL_SUPPRESSION_WINDOW_MS = 1500L
         private const val REPLY_GRACE_MS = 6000L
         private const val SOUND_DEBOUNCE_MS = 1200L
-        private const val PRIORITY_SOUND_WAKE_LOCK_TIMEOUT_MS = 15_000L
+        private const val NOTIFICATION_SOUND_WAKE_LOCK_TIMEOUT_MS = 15_000L
         private const val AUTO_EXPAND_DEBOUNCE_MS = 1500L
 
         private val INITIAL_RESYNC_DELAYS_MS = longArrayOf(1_500L, 3_500L)

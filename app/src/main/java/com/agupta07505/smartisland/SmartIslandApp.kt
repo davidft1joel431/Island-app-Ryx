@@ -10,15 +10,31 @@ package com.agupta07505.smartisland
 import android.app.Application
 import android.os.Build
 import dagger.hilt.android.HiltAndroidApp
+import kotlinx.coroutines.CompletableDeferred
 
 @HiltAndroidApp
 class SmartIslandApp : Application() {
     override fun onCreate() {
         super.onCreate()
-        // A process the system restarted keeps recording from its first line, before settings load.
-        com.agupta07505.smartisland.util.AppLogRecorder.restore(this)
         installCrashLogger()
-        bypassHiddenApis()
+
+        // Reading the persisted diagnostic buffer and resolving hidden-API classes can be costly
+        // on a cold emulator. Neither is needed to draw the first Activity frame.
+        Thread({
+            try {
+                runCatching { com.agupta07505.smartisland.util.AppLogRecorder.restore(applicationContext) }
+                runCatching { bypassHiddenApis() }
+            } finally {
+                startupReady.complete(Unit)
+            }
+        }, "RyxStartupInit").apply {
+            isDaemon = true
+            start()
+        }
+    }
+
+    companion object {
+        internal val startupReady = CompletableDeferred<Unit>()
     }
 
     private fun installCrashLogger() {

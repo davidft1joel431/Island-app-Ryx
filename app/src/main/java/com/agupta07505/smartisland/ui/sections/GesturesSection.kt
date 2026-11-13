@@ -20,7 +20,7 @@ import androidx.compose.material.icons.automirrored.rounded.ArrowForward
 import androidx.compose.material.icons.automirrored.rounded.OpenInNew
 import androidx.compose.material.icons.rounded.*
 import androidx.compose.material3.*
-import com.agupta07505.smartisland.ui.glass.Card
+import com.agupta07505.smartisland.ui.components.SettingsCard as Card
 import com.agupta07505.smartisland.ui.glass.Switch
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable

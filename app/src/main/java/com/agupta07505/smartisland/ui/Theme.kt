@@ -126,15 +126,16 @@ internal fun accentColorScheme(seed: Color, dark: Boolean): ColorScheme {
  */
 internal fun ColorScheme.asGlass(dark: Boolean): ColorScheme = copy(
     background = Color.Transparent,
-    surface = surface.copy(alpha = if (dark) 0.58f else 0.62f),
-    surfaceVariant = surfaceVariant.copy(alpha = if (dark) 0.50f else 0.55f),
-    surfaceContainerLowest = surfaceContainerLowest.copy(alpha = 0.50f),
-    surfaceContainerLow = surfaceContainerLow.copy(alpha = 0.58f),
-    surfaceContainer = surfaceContainer.copy(alpha = if (dark) 0.72f else 0.78f),
-    surfaceContainerHigh = surfaceContainerHigh.copy(alpha = 0.95f),
-    surfaceContainerHighest = surfaceContainerHighest.copy(alpha = 0.96f),
-    outline = if (dark) Color.White.copy(alpha = 0.34f) else Color.Black.copy(alpha = 0.22f),
-    outlineVariant = if (dark) Color.White.copy(alpha = 0.16f) else Color.Black.copy(alpha = 0.10f)
+    // Keep the wallpaper visible while limiting how much it can wash out card text and controls.
+    surface = surface.copy(alpha = if (dark) 0.82f else 0.84f),
+    surfaceVariant = surfaceVariant.copy(alpha = if (dark) 0.76f else 0.78f),
+    surfaceContainerLowest = surfaceContainerLowest.copy(alpha = 0.68f),
+    surfaceContainerLow = surfaceContainerLow.copy(alpha = if (dark) 0.82f else 0.84f),
+    surfaceContainer = surfaceContainer.copy(alpha = if (dark) 0.88f else 0.90f),
+    surfaceContainerHigh = surfaceContainerHigh.copy(alpha = 0.96f),
+    surfaceContainerHighest = surfaceContainerHighest.copy(alpha = 0.98f),
+    outline = if (dark) Color.White.copy(alpha = 0.48f) else Color.Black.copy(alpha = 0.34f),
+    outlineVariant = if (dark) Color.White.copy(alpha = 0.30f) else Color.Black.copy(alpha = 0.22f)
 )
 
 @Composable

@@ -11,6 +11,7 @@ import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.agupta07505.smartisland.data.SmartIslandSettings
 import com.agupta07505.smartisland.data.INotificationRepository
@@ -20,6 +21,8 @@ import com.agupta07505.smartisland.ui.SmartIslandTheme
 import com.agupta07505.smartisland.util.SystemServiceRecovery
 import dagger.hilt.android.AndroidEntryPoint
 import javax.inject.Inject
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -34,8 +37,6 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         requestedSection = intent?.getStringExtra(com.agupta07505.smartisland.util.UtilityActions.EXTRA_OPEN_SECTION)
-        SystemServiceRecovery.requestRecovery(this)
-
         setContent {
             val themeSettings by settingsRepository.settings.collectAsStateWithLifecycle(
                 initialValue = SmartIslandSettings.Default
@@ -71,6 +72,9 @@ class MainActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
-        SystemServiceRecovery.requestRecovery(this)
+        lifecycleScope.launch(Dispatchers.IO) {
+            SmartIslandApp.startupReady.await()
+            SystemServiceRecovery.requestRecovery(applicationContext)
+        }
     }
 }
