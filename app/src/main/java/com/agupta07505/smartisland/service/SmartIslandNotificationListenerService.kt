@@ -375,7 +375,9 @@ class SmartIslandNotificationListenerService : NotificationListenerService() {
         if (recordingWatchdog?.isActive == true) return
         recordingWatchdog = serviceScope.launch {
             while (true) {
-                delay(500L)
+                // This is a fallback for missed notification callbacks, not the primary update
+                // path. Avoid polling NotificationManager twice per second while a recorder runs.
+                delay(RECORDING_WATCHDOG_INTERVAL_MS)
                 // Sample cards from the Demo tab have no notification behind them on purpose.
                 val cards = notificationRepository.notifications.value.filter {
                     (it.mode == IslandMode.ScreenRecording || it.mode == IslandMode.AudioRecording) &&
@@ -503,6 +505,79 @@ class SmartIslandNotificationListenerService : NotificationListenerService() {
         runCatching { packageManager.getApplicationLabel(packageManager.getApplicationInfo(pkg, 0)).toString() }.getOrDefault(pkg)
     }
 
+    /** Persist the raw notification event before island-only filters can discard silent or system notifications. */
+    private fun recordNotificationHistory(sbn: StatusBarNotification, rankingMap: RankingMap? = null) {
+        if (!currentSettings.enableNotificationHistory) return
+        serviceScope.launch {
+            runSuspendCatchingLogged(TAG, "Failed to record notification history") {
+                val settings = repository.settings.first()
+                if (!settings.enableNotificationHistory || sbn.packageName == packageName) return@runSuspendCatchingLogged
+
+                val notification = sbn.notification
+                val extras = notification.extras
+                val mode = notification.toIslandMode(
+                    sbn,
+                    settings.liveActivitiesEnabled,
+                    settings.navigationEnabled,
+                    settings.deviceType
+                )
+                val title = extras.getCharSequence(Notification.EXTRA_TITLE)?.toString()
+                    ?: extras.getCharSequence(Notification.EXTRA_TITLE_BIG)?.toString()
+                    ?: extras.getCharSequence(Notification.EXTRA_CONVERSATION_TITLE)?.toString()
+                    ?: CallStyleExtras.callerName(notification)
+                    ?: ""
+                val text = extras.getCharSequence(Notification.EXTRA_TEXT)?.toString()
+                    ?: extras.getCharSequence(Notification.EXTRA_BIG_TEXT)?.toString()
+                    ?: extras.getCharSequence(Notification.EXTRA_SUB_TEXT)?.toString()
+                    ?: extras.getCharSequence(Notification.EXTRA_INFO_TEXT)?.toString()
+                    ?: notification.tickerText?.toString()
+                    ?: extras.getCharSequenceArray(Notification.EXTRA_TEXT_LINES)?.lastOrNull()?.toString()
+                    ?: ""
+                historyRepository.saveEntry(
+                    NotificationHistoryEntry(
+                        notificationKey = sbn.key.take(512),
+                        packageName = sbn.packageName.take(255),
+                        appName = appLabelOf(sbn.packageName).take(512),
+                        title = title.take(8_192),
+                        text = text.take(32_768),
+                        subText = extras.getCharSequence(Notification.EXTRA_SUB_TEXT)?.toString()?.take(8_192),
+                        postTimeMillis = sbn.postTime.takeIf { it > 0L } ?: System.currentTimeMillis(),
+                        category = notification.category,
+                        channelId = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) notification.channelId else null,
+                        mode = mode.name,
+                        actionTitles = notification.actions.orEmpty().mapNotNull { it.title?.toString()?.take(256) }.take(20),
+                        wasSilent = isSilentNotification(sbn, rankingMap),
+                        hasVibration = notificationHasVibration(sbn, rankingMap)
+                    )
+                )
+                val now = System.currentTimeMillis()
+                if (now - lastHistoryCleanupTime > HISTORY_CLEANUP_INTERVAL_MS) {
+                    lastHistoryCleanupTime = now
+                    historyRepository.cleanupOldEntries(settings.notificationHistoryRetentionHours)
+                }
+            }
+        }
+    }
+
+    private fun notificationHasVibration(sbn: StatusBarNotification, rankingMap: RankingMap? = null): Boolean {
+        val notification = sbn.notification
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val channelVibrates = runCatching {
+                val ranking = Ranking()
+                val rankedChannel = (rankingMap ?: currentRanking)
+                    ?.takeIf { it.getRanking(sbn.key, ranking) }
+                    ?.let { ranking.channel }
+                rankedChannel?.shouldVibrate()
+                    ?: (getSystemService(android.content.Context.NOTIFICATION_SERVICE) as? NotificationManager)
+                        ?.getNotificationChannel(notification.channelId)?.shouldVibrate()
+            }.getOrNull()
+            if (channelVibrates != null) return channelVibrates
+        }
+        @Suppress("DEPRECATION")
+        return (notification.defaults and Notification.DEFAULT_VIBRATE) != 0 ||
+            notification.vibrate?.any { it > 0L } == true
+    }
+
     override fun onNotificationPosted(sbn: StatusBarNotification) {
         onNotificationPosted(sbn, null)
     }
@@ -510,6 +585,7 @@ class SmartIslandNotificationListenerService : NotificationListenerService() {
     override fun onNotificationPosted(sbn: StatusBarNotification, rankingMap: RankingMap?) {
         runCatchingLogged(TAG, "onNotificationPosted callback failed") {
         if (sbn.packageName == packageName) return@runCatchingLogged
+        recordNotificationHistory(sbn, rankingMap)
         scheduleCountRefresh()
 
         val notification = sbn.notification
@@ -992,6 +1068,7 @@ class SmartIslandNotificationListenerService : NotificationListenerService() {
         isInitialSync: Boolean = false
     ) {
         if (sbn.packageName == packageName) return
+        if (isInitialSync) recordNotificationHistory(sbn)
         val notification = sbn.notification
         val handleReason = suppressionReasonFor(sbn)
         if (handleReason != null) {
@@ -1563,6 +1640,27 @@ class SmartIslandNotificationListenerService : NotificationListenerService() {
         if (repostOfShownPost) {
             traceStage(sbn, "NO-AUTO-EXPAND", "stage=repost-of-shown-post mode=$mode postTime=${sbn.postTime} (already shown once, no second auto-expand)")
         }
+        val notificationContentChanged = existingNotif == null ||
+            existingNotif.title != notifTitle || existingNotif.text != notifText
+        val isHyperOsMessagingNotification = settings.hyperOsIslandStyle && mode == IslandMode.Notification &&
+            (conversation != null || notification.category == Notification.CATEGORY_MESSAGE ||
+                sbn.packageName in com.agupta07505.smartisland.model.NotificationCounts.KNOWN_CHAT_PACKAGES)
+        val hasOtherPendingNotification = notificationRepository.notifications.value.any {
+            it.key != sbn.key && it.mode == IslandMode.Notification
+        }
+        val hyperOsMessageShouldExpand = isHyperOsMessagingNotification && !isInitialSync && !repostOfShownPost &&
+            (isNewNotif || notificationContentChanged) &&
+            (settings.hyperOsMessagingExpansion == "regular" || hasOtherPendingNotification) &&
+            AppEventRules.mayAutoExpand(
+                globalAutoExpand = settings.autoExpandOnNotification,
+                noAutoExpandPackages = settings.noAutoExpandPackages,
+                autoExpandPackages = settings.autoExpandPackages,
+                noExpandPackages = settings.noExpandPackages,
+                packageName = sbn.packageName,
+                mode = mode,
+                isLoud = !(mode == IslandMode.Notification && isSilentNotification(sbn)) ||
+                    (conversation?.key?.let { it in settings.priorityNotificationConversations } == true)
+            )
         noteShown(sbn)
         notificationRepository.postNotification(
             IslandNotification(
@@ -1578,6 +1676,7 @@ class SmartIslandNotificationListenerService : NotificationListenerService() {
                 largeIcon = mediaInfo?.artwork ?: notification.loadLargeIconBitmap(),
                 actionIntents = actions,
                 category = notification.category,
+                isMessaging = conversation != null,
                 progress = textPercent ?: barProgress,
                 progressMax = if (textPercent != null) 100 else barProgressMax,
                 mediaPositionMs = mediaInfo?.positionMs,
@@ -1632,10 +1731,14 @@ class SmartIslandNotificationListenerService : NotificationListenerService() {
             autoExpand = if (isMiuiRom) {
                 when {
                     isInitialSync -> false
+                    hyperOsMessageShouldExpand -> {
+                        lastAutoExpandTimeMs = SystemClock.elapsedRealtime()
+                        true
+                    }
                     mode == IslandMode.Timer || mode == IslandMode.Stopwatch -> true
                     shouldIslandOnly && settings.autoExpandOnNotification -> {
                         val now = SystemClock.elapsedRealtime()
-                        if (now - lastAutoExpandTimeMs >= AUTO_EXPAND_DEBOUNCE_MS) {
+                        if (isNewNotif || now - lastAutoExpandTimeMs >= AUTO_EXPAND_DEBOUNCE_MS) {
                             lastAutoExpandTimeMs = now
                             true
                         } else {
@@ -1645,7 +1748,10 @@ class SmartIslandNotificationListenerService : NotificationListenerService() {
                     else -> false
                 }
             } else {
-                if (!isInitialSync && !repostOfShownPost && shouldIslandOnly && AppEventRules.mayAutoExpand(
+                if (hyperOsMessageShouldExpand) {
+                    lastAutoExpandTimeMs = SystemClock.elapsedRealtime()
+                    true
+                } else if (!isInitialSync && !repostOfShownPost && shouldIslandOnly && AppEventRules.mayAutoExpand(
                         globalAutoExpand = settings.autoExpandOnNotification,
                         noAutoExpandPackages = settings.noAutoExpandPackages,
                         autoExpandPackages = settings.autoExpandPackages,
@@ -1657,7 +1763,7 @@ class SmartIslandNotificationListenerService : NotificationListenerService() {
                     )
                 ) {
                     val now = SystemClock.elapsedRealtime()
-                    if (now - lastAutoExpandTimeMs >= AUTO_EXPAND_DEBOUNCE_MS) {
+                    if (isNewNotif || now - lastAutoExpandTimeMs >= AUTO_EXPAND_DEBOUNCE_MS) {
                         lastAutoExpandTimeMs = now
                         true
                     } else {
@@ -1673,39 +1779,10 @@ class SmartIslandNotificationListenerService : NotificationListenerService() {
             scheduleLatePicture(sbn, notification, notifText)
         }
 
-        if (settings.enableNotificationHistory && mode != IslandMode.Music) {
-            serviceScope.launch {
-                runSuspendCatchingLogged(TAG, "Failed to record notification history") {
-                    historyRepository.saveEntry(
-                        NotificationHistoryEntry(
-                            notificationKey = sbn.key,
-                            packageName = sbn.packageName,
-                            appName = appName,
-                            title = notifTitle,
-                            text = notifText,
-                            subText = extras.getCharSequence(Notification.EXTRA_SUB_TEXT)?.toString(),
-                            postTimeMillis = computedTimeMillis,
-                            category = notification.category,
-                            channelId = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) notification.channelId else null,
-                            mode = mode.name,
-                            actionTitles = actions.map { it.title }
-                        )
-                    )
-                    val now = System.currentTimeMillis()
-                    if (now - lastHistoryCleanupTime > 15 * 60 * 1000L) {
-                        lastHistoryCleanupTime = now
-                        historyRepository.cleanupOldEntries(settings.notificationHistoryRetentionHours)
-                    }
-                }
-            }
-        }
-
         // The island only makes a sound when it replaces the system notification. While the shade copy stays, the
         // system plays its own sound and a second one would double it.
         val isRecordingEvent = mode == IslandMode.ScreenRecording || mode == IslandMode.AudioRecording ||
             isRecordingNotification(sbn, notification)
-        val notificationContentChanged = existingNotif == null ||
-            existingNotif.title != notifTitle || existingNotif.text != notifText
         val mayAlertAgain = (notification.flags and Notification.FLAG_ONLY_ALERT_ONCE) == 0
         val isPriorityConversation = conversation?.key?.let { it in settings.priorityNotificationConversations } == true
         val selectedSoundUri = if (isPriorityConversation) {
@@ -2575,6 +2652,8 @@ class SmartIslandNotificationListenerService : NotificationListenerService() {
     }
 
     companion object {
+        private const val HISTORY_CLEANUP_INTERVAL_MS = 15 * 60 * 1000L
+        private const val RECORDING_WATCHDOG_INTERVAL_MS = 2_000L
         private const val SHOWN_POSTS_MAX = 400
         private const val COUNT_REFRESH_DEBOUNCE_MS = 150L
         @Volatile

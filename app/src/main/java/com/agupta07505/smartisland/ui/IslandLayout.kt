@@ -10,6 +10,7 @@ package com.agupta07505.smartisland.ui
 import android.content.res.Configuration
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animateDp
+import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
@@ -33,6 +34,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.agupta07505.smartisland.data.SmartIslandSettings
 import com.agupta07505.smartisland.model.ExpandOrigin
+import com.agupta07505.smartisland.model.IslandEvent
 import com.agupta07505.smartisland.model.IslandMode
 import com.agupta07505.smartisland.model.IslandNotification
 import com.agupta07505.smartisland.model.hasSecondaryCutout
@@ -47,6 +49,7 @@ internal class IslandLayout(
     val compactGap: Dp,
     val compactShapes: List<CompactNotificationShape>,
     val hasCompanion: Boolean,
+    val hyperOsStyle: Boolean,
     val isCircleLeft: Boolean,
     val collapsedMainLeft: Dp,
     val mainCenter: Dp,
@@ -131,7 +134,8 @@ internal fun CollapsedContentLayer(
     val maxSlidePx = with(density) { pillContentMaxSlideDp(settings.width).dp.toPx() }
     // With no card on the island the cutout can show the idle widgets (null when they are off or not due).
     val shownMode = fade.notification?.mode ?: activeMode
-    val idleFrame = rememberIdleWidgetFrame(settings, noCard = shownMode == IslandMode.Empty, ui = ui, suppressed = idleSuppressed)
+    val hyperOsIdleCircle = layout.hyperOsStyle && shownMode == IslandMode.Empty
+    val idleFrame = if (hyperOsIdleCircle) null else rememberIdleWidgetFrame(settings, noCard = shownMode == IslandMode.Empty, ui = ui, suppressed = idleSuppressed)
     // A different card is now in the pill. If a swipe asked for it, bring it in from the far side.
     val shownKey = fade.notification?.key ?: idleFrame?.kind?.id
     // The pill's tap handling and the widget island read the frame from here (no second copy of the widget data and rotation).
@@ -315,28 +319,50 @@ internal fun rememberIslandLayout(
     val circleSize = com.agupta07505.smartisland.data.collapsedCompanionSizeDp(settings).dp
     val cutoutCards = com.agupta07505.smartisland.model.cutoutCardCount(notifications, expanded, safeIndex)
     val compactShapes = compactNotificationShapes(cutoutCards, expanded)
+    val hyperOsStyle = settings.hyperOsIslandStyle
+    val collapsedMode = notifications.getOrNull(safeIndex)?.mode ?: IslandMode.Empty
+    val collapsedCard = notifications.getOrNull(safeIndex)
+    // Every Demo > Activities event uses the expanded island capsule in HyperOS. Connectivity
+    // events live in their own Demo group and retain the brief capsule, with Hotspot kept as the
+    // requested persistent system activity.
+    val hyperOsActivityCapsule = collapsedCard?.let {
+        IslandEvent.forNotification(it)?.group == "Activities" || it.mode == IslandMode.Hotspot
+    } == true
+    val hyperOsMessagingCapsule = hyperOsStyle && collapsedCard?.mode == IslandMode.Notification &&
+        settings.hyperOsMessagingExpansion == "capsule" &&
+        (collapsedCard.isMessaging || collapsedCard.category == "msg" ||
+            collapsedCard.packageName in com.agupta07505.smartisland.model.NotificationCounts.KNOWN_CHAT_PACKAGES)
+    val hyperOsIdleCircleWidth = settings.height.dp
+    val hyperOsEventCapsuleWidth = maxOf(settings.width.dp, 164.dp).coerceAtMost((screenWidth - 24.dp).coerceAtLeast(hyperOsIdleCircleWidth))
+    val hyperOsMessageCapsuleWidth = maxOf(settings.width.dp, 220.dp).coerceAtMost((screenWidth - 24.dp).coerceAtLeast(hyperOsIdleCircleWidth))
+    val collapsedWidthTarget = if (!hyperOsStyle) settings.width.dp else when {
+        collapsedMode == IslandMode.Empty -> hyperOsIdleCircleWidth
+        hyperOsMessagingCapsule -> hyperOsMessageCapsuleWidth
+        hyperOsActivityCapsule -> hyperOsEventCapsuleWidth
+        else -> settings.width.dp
+    }
     val hasCompanion = hasSecondaryCutout(cutoutCards, settings.enableNotchMode)
     val isCircleLeft = settings.circlePosition == SmartIslandSettings.CIRCLE_POSITION_LEFT
-    val collapsedGroupWidth = settings.width.dp + if (hasCompanion) compactGap + circleSize else 0.dp
+    val collapsedGroupWidth = collapsedWidthTarget + if (hasCompanion) compactGap + circleSize else 0.dp
 
-    val desiredMainLeft = screenCenter + settings.xOffset.dp - settings.width.dp / 2f
+    val desiredMainLeft = screenCenter + settings.xOffset.dp - collapsedWidthTarget / 2f
     // Landscape: the cutout may touch the screen edge (the camera sits right at it); elsewhere keep a margin.
     val edgeMargin = if (isLandscape && !settings.enableNotchMode) 0.dp else compactGap
     val (minMainLeft, maxMainLeft) = when {
-        !hasCompanion -> edgeMargin to (screenWidth - edgeMargin - settings.width.dp).coerceAtLeast(edgeMargin)
-        isCircleLeft -> (edgeMargin + circleSize + compactGap) to (screenWidth - edgeMargin - settings.width.dp).coerceAtLeast(edgeMargin + circleSize + compactGap)
+        !hasCompanion -> edgeMargin to (screenWidth - edgeMargin - collapsedWidthTarget).coerceAtLeast(edgeMargin)
+        isCircleLeft -> (edgeMargin + circleSize + compactGap) to (screenWidth - edgeMargin - collapsedWidthTarget).coerceAtLeast(edgeMargin + circleSize + compactGap)
         else -> edgeMargin to (screenWidth - edgeMargin - collapsedGroupWidth).coerceAtLeast(edgeMargin)
     }
     val collapsedMainLeft = desiredMainLeft.coerceIn(minMainLeft, maxMainLeft)
-    val mainCenter = collapsedMainLeft + settings.width.dp / 2f
+    val mainCenter = collapsedMainLeft + collapsedWidthTarget / 2f
     val circleLeft = if (isCircleLeft) {
         collapsedMainLeft - compactGap - circleSize
     } else {
-        collapsedMainLeft + settings.width.dp + compactGap
+        collapsedMainLeft + collapsedWidthTarget + compactGap
     }
     val circleCenter = circleLeft + circleSize / 2f
     val groupStart = if (isCircleLeft && hasCompanion) circleLeft else collapsedMainLeft
-    val groupEnd = if (!isCircleLeft && hasCompanion) circleLeft + circleSize else collapsedMainLeft + settings.width.dp
+    val groupEnd = if (!isCircleLeft && hasCompanion) circleLeft + circleSize else collapsedMainLeft + collapsedWidthTarget
     val groupCenter = (groupStart + groupEnd) / 2f
 
     val collapsedMainOffset = if (settings.enableNotchMode) {
@@ -405,7 +431,12 @@ internal fun rememberIslandLayout(
         ),
         label = "hidingAlpha"
     )
-    val pillBackgroundColor = Color(settings.pillColor)
+    val pillBackgroundColor = if (hyperOsStyle) {
+        when (settings.hyperOsIslandDesign) {
+            "accent" -> Color(settings.hyperOsIslandColor)
+            else -> Color(0xFF111318)
+        }
+    } else Color(settings.pillColor)
     // 0 while the two separate islands draw their own surfaces, 1 for the single island.
     val singleSurfaceAlphaState = animateFloatAsState(
         targetValue = if (surfaceTwoIslands) 0f else 1f,
@@ -466,8 +497,20 @@ internal fun rememberIslandLayout(
             dampingRatio = PILL_STRETCH_DAMPING,
             stiffness = animSpeed.stiffness(PILL_STRETCH_STIFFNESS)
         )
-    val widthState = transition.animateDp(transitionSpec = { if (initialState == targetState) stretchSpec else if (!targetState && collapseOnPill) collapseWidthSpec else sizeSpec }, label = "islandWidth") {
-        if (it) expandedWidth else settings.width.dp
+    val widthState: State<Dp> = if (hyperOsStyle) {
+        animateDpAsState(
+            targetValue = if (expanded) expandedWidth else collapsedWidthTarget,
+            animationSpec = spring(
+                // HyperOS capsules open with a quick, damped stretch and return without a visible bounce.
+                dampingRatio = 0.9f,
+                stiffness = animSpeed.stiffness(if (isLandscape) 420f else 520f)
+            ),
+            label = "hyperOsIslandWidth"
+        )
+    } else {
+        transition.animateDp(transitionSpec = { if (initialState == targetState) stretchSpec else if (!targetState && collapseOnPill) collapseWidthSpec else sizeSpec }, label = "islandWidth") {
+            if (it) expandedWidth else settings.width.dp
+        }
     }
     // The height of an island that STAYS expanded (another card is swiped in, a text opens, a step finishes).
     val heightFollowSpec = spring<androidx.compose.ui.unit.Dp>(
@@ -639,6 +682,7 @@ internal fun rememberIslandLayout(
         compactGap = compactGap,
         compactShapes = compactShapes,
         hasCompanion = hasCompanion,
+        hyperOsStyle = hyperOsStyle,
         isCircleLeft = isCircleLeft,
         collapsedMainLeft = collapsedMainLeft,
         mainCenter = mainCenter,

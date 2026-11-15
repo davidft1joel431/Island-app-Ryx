@@ -72,6 +72,17 @@ object NotificationCounts {
         "com.android.email", "com.oneplus.email", "com.fastmail.mobile", "com.apple.android.mail"
     )
 
+    /** Chat and SMS apps only (mail clients are excluded for the HyperOS message capsule). */
+    val KNOWN_CHAT_PACKAGES: Set<String> = setOf(
+        "com.whatsapp", "com.whatsapp.w4b", "org.telegram.messenger", "org.telegram.messenger.web",
+        "org.thunderdog.challegram", "org.thoughtcrime.securesms", "com.facebook.orca", "com.facebook.mlite",
+        "com.discord", "com.Slack", "com.microsoft.teams", "com.google.android.apps.dynamite", "com.viber.voip",
+        "jp.naver.line.android", "com.tencent.mm", "com.skype.raider", "com.instagram.android", "com.snapchat.android",
+        "im.vector.app", "com.beeper.android", "app.threema.messenger", "ch.threema.app",
+        "com.google.android.apps.messaging", "com.samsung.android.messaging", "com.android.mms", "com.oneplus.mms",
+        "com.miui.mms", "com.coloros.mms", "com.android.messaging"
+    )
+
     /**
      * Whether [entry] is a message or mail waiting to be read: not ongoing, not a group summary, and a message by
      * category, style or app.

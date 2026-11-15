@@ -560,7 +560,7 @@ internal fun ColorPresetRow(
         horizontalArrangement = Arrangement.spacedBy(6.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        swatches.take(4).forEach { (colorValue, _) ->
+        swatches.forEach { (colorValue, _) ->
             val isSelected = selectedColor == colorValue
             Box(
                 modifier = Modifier
@@ -586,7 +586,7 @@ internal fun ColorPresetRow(
             }
         }
 
-        val isCustom = swatches.take(4).none { it.first == selectedColor }
+        val isCustom = swatches.none { it.first == selectedColor }
         val rainbowBrush = remember {
             Brush.linearGradient(
                 listOf(Color.Red, Color.Yellow, Color.Green, Color.Cyan, Color.Blue, Color.Magenta)

@@ -78,6 +78,7 @@ class SmartIslandOverlayService : AccessibilityService() {
     private lateinit var viewModel: IslandViewModel
     private var isLockScreenActive: Boolean = false
     private var systemEventReceiverRegistered = false
+    private var hotspotStateReceiverRegistered = false
     private var screenStateReceiverRegistered = false
     private var torchCallbackRegistered = false
     private var foregroundStarted = false
@@ -301,6 +302,12 @@ class SmartIslandOverlayService : AccessibilityService() {
                     }
                 }
             }
+        }
+    }
+
+    private val hotspotStateReceiver = object : android.content.BroadcastReceiver() {
+        override fun onReceive(context: Context, intent: Intent) {
+            if (::systemEventReceiver.isInitialized) systemEventReceiver.onReceive(context, intent)
         }
     }
 
@@ -794,6 +801,26 @@ class SmartIslandOverlayService : AccessibilityService() {
             systemEventReceiverRegistered = true
         }
 
+        runCatchingLogged(TAG, "register hotspot state receiver failed") {
+            val hotspotFilter = IntentFilter(SystemEventReceiver.WIFI_AP_STATE_CHANGED)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                // Wi-Fi may send this protected system event from its privileged service UID rather than
+                // system_server; exported registration is needed for those implementations. The signature
+                // permission prevents ordinary apps from spoofing hotspot transitions.
+                registerReceiver(
+                    hotspotStateReceiver,
+                    hotspotFilter,
+                    "android.permission.NETWORK_SETTINGS",
+                    null,
+                    Context.RECEIVER_EXPORTED
+                )
+            } else {
+                @Suppress("UnspecifiedRegisterReceiverFlag")
+                registerReceiver(hotspotStateReceiver, hotspotFilter)
+            }
+            hotspotStateReceiverRegistered = true
+        }
+
         val keyguardManager = getSystemService(Context.KEYGUARD_SERVICE) as? KeyguardManager
         isLockScreenActive = keyguardManager?.isKeyguardLocked == true
 
@@ -1128,6 +1155,12 @@ class SmartIslandOverlayService : AccessibilityService() {
                 unregisterReceiver(systemEventReceiver)
             }
             systemEventReceiverRegistered = false
+        }
+        if (hotspotStateReceiverRegistered) {
+            runCatchingLogged(TAG, "unregister hotspot state receiver failed") {
+                unregisterReceiver(hotspotStateReceiver)
+            }
+            hotspotStateReceiverRegistered = false
         }
         if (screenStateReceiverRegistered) {
             runCatchingLogged(TAG, "unregisterReceiver screenStateReceiver failed") {

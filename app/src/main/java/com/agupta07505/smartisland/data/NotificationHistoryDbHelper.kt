@@ -14,6 +14,9 @@ import android.database.sqlite.SQLiteDatabase
 import android.database.sqlite.SQLiteOpenHelper
 import com.agupta07505.smartisland.util.runCatchingLogged
 import org.json.JSONArray
+import java.io.File
+import java.io.InputStream
+import java.io.OutputStream
 
 class NotificationHistoryDbHelper(context: Context) : SQLiteOpenHelper(
     context,
@@ -21,10 +24,15 @@ class NotificationHistoryDbHelper(context: Context) : SQLiteOpenHelper(
     null,
     DATABASE_VERSION
 ) {
+    private val appContext = context.applicationContext
+
     companion object {
         private const val TAG = "NotificationHistoryDb"
         private const val DATABASE_NAME = "smart_island_notification_history.db"
-        private const val DATABASE_VERSION = 1
+        private const val DATABASE_VERSION = 3
+        private const val BACKUP_TABLE = "ryx_backup_metadata"
+        private const val BACKUP_FORMAT = "ryx-isla-notification-history-sqlite"
+        private const val BACKUP_VERSION = 2
 
         const val TABLE_HISTORY = "notification_history"
         const val COL_ID = "_id"
@@ -41,9 +49,15 @@ class NotificationHistoryDbHelper(context: Context) : SQLiteOpenHelper(
         const val COL_ACTIONS_JSON = "actions_json"
         const val COL_WAS_OPENED = "was_opened"
         const val COL_WAS_DISMISSED = "was_dismissed"
+        const val COL_WAS_SILENT = "was_silent"
+        const val COL_HAS_VIBRATION = "has_vibration"
     }
 
     override fun onCreate(db: SQLiteDatabase) {
+        createHistorySchema(db)
+    }
+
+    private fun createHistorySchema(db: SQLiteDatabase) {
         db.execSQL(
             """
             CREATE TABLE $TABLE_HISTORY (
@@ -60,21 +74,136 @@ class NotificationHistoryDbHelper(context: Context) : SQLiteOpenHelper(
                 $COL_MODE TEXT NOT NULL,
                 $COL_ACTIONS_JSON TEXT,
                 $COL_WAS_OPENED INTEGER DEFAULT 0,
-                $COL_WAS_DISMISSED INTEGER DEFAULT 0
+                $COL_WAS_DISMISSED INTEGER DEFAULT 0,
+                $COL_WAS_SILENT INTEGER DEFAULT 0,
+                $COL_HAS_VIBRATION INTEGER DEFAULT 0
             )
             """.trimIndent()
         )
         db.execSQL("CREATE INDEX idx_notif_post_time ON $TABLE_HISTORY ($COL_POST_TIME DESC)")
         db.execSQL("CREATE INDEX idx_notif_pkg ON $TABLE_HISTORY ($COL_PACKAGE)")
+        db.execSQL("CREATE UNIQUE INDEX idx_notif_key_post_time ON $TABLE_HISTORY ($COL_NOTIF_KEY, $COL_POST_TIME)")
     }
 
     override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
+        if (oldVersion < 2) {
+            db.execSQL("ALTER TABLE $TABLE_HISTORY ADD COLUMN $COL_WAS_SILENT INTEGER NOT NULL DEFAULT 0")
+            db.execSQL("ALTER TABLE $TABLE_HISTORY ADD COLUMN $COL_HAS_VIBRATION INTEGER NOT NULL DEFAULT 0")
+        }
+        if (oldVersion < 3) {
+            // The listener may receive the same active notification through both callbacks.
+            // Keep the newest saved copy before enforcing one history row per posted instance.
+            db.execSQL("DELETE FROM $TABLE_HISTORY WHERE $COL_ID NOT IN (SELECT MAX($COL_ID) FROM $TABLE_HISTORY GROUP BY $COL_NOTIF_KEY, $COL_POST_TIME)")
+            db.execSQL("CREATE UNIQUE INDEX idx_notif_key_post_time ON $TABLE_HISTORY ($COL_NOTIF_KEY, $COL_POST_TIME)")
+        }
     }
 
     fun insertEntry(entry: NotificationHistoryEntry): Long {
         return runCatchingLogged(TAG, "Failed to insert notification history entry") {
-            writableDatabase.insert(TABLE_HISTORY, null, contentValues(entry))
+            writableDatabase.insertWithOnConflict(TABLE_HISTORY, null, contentValues(entry), SQLiteDatabase.CONFLICT_IGNORE)
         } ?: -1L
+    }
+
+    fun exportSqliteBackup(output: OutputStream, limit: Int): Int {
+        val file = File.createTempFile("ryx-history-", ".db", appContext.cacheDir)
+        try {
+            val backup = SQLiteDatabase.openOrCreateDatabase(file, null)
+            val count: Int
+            try {
+                createHistorySchema(backup)
+                backup.execSQL("CREATE TABLE $BACKUP_TABLE (name TEXT PRIMARY KEY, value TEXT NOT NULL)")
+                backup.execSQL("INSERT INTO $BACKUP_TABLE (name, value) VALUES ('format', ?)", arrayOf(BACKUP_FORMAT))
+                backup.execSQL("INSERT INTO $BACKUP_TABLE (name, value) VALUES ('version', ?)", arrayOf(BACKUP_VERSION.toString()))
+                val source = readableDatabase.query(
+                    TABLE_HISTORY, null, null, null, null, null,
+                    "$COL_POST_TIME DESC, $COL_ID DESC", limit.toString()
+                )
+                backup.beginTransaction()
+                try {
+                    source.use { cursor ->
+                        while (cursor.moveToNext()) {
+                            val entry = cursorToEntry(cursor)
+                            backup.insertOrThrow(TABLE_HISTORY, null, contentValues(entry).apply {
+                                if (entry.id > 0L) put(COL_ID, entry.id)
+                            })
+                        }
+                    }
+                    backup.setTransactionSuccessful()
+                } finally {
+                    backup.endTransaction()
+                }
+                count = backup.rawQuery("SELECT COUNT(*) FROM $TABLE_HISTORY", null).use {
+                    if (it.moveToFirst()) it.getInt(0) else 0
+                }
+                backup.execSQL("INSERT INTO $BACKUP_TABLE (name, value) VALUES ('count', ?)", arrayOf(count.toString()))
+            } finally {
+                backup.close()
+            }
+            file.inputStream().buffered().use { it.copyTo(output) }
+            return count
+        } finally {
+            file.delete()
+        }
+    }
+
+    /** Validates a standalone SQLite history backup and optionally replaces this database atomically. */
+    fun inspectSqliteBackup(input: InputStream, restore: Boolean): Int? {
+        val file = File.createTempFile("ryx-history-import-", ".db", appContext.cacheDir)
+        try {
+            file.outputStream().buffered().use { output -> input.copyTo(output) }
+            val backup = try {
+                SQLiteDatabase.openDatabase(file.absolutePath, null, SQLiteDatabase.OPEN_READONLY)
+            } catch (_: Exception) {
+                return null
+            }
+            val count = try {
+                val format = backup.rawQuery("SELECT value FROM $BACKUP_TABLE WHERE name='format'", null).use {
+                    if (it.moveToFirst()) it.getString(0) else null
+                }
+                val version = backup.rawQuery("SELECT value FROM $BACKUP_TABLE WHERE name='version'", null).use {
+                    if (it.moveToFirst()) it.getString(0)?.toIntOrNull() else null
+                }
+                val rows = backup.rawQuery("SELECT COUNT(*) FROM $TABLE_HISTORY", null).use {
+                    if (it.moveToFirst()) it.getLong(0) else -1L
+                }
+                if (format != BACKUP_FORMAT || version != BACKUP_VERSION ||
+                    rows !in 0..com.agupta07505.smartisland.data.INotificationHistoryRepository.MAX_SQLITE_BACKUP_ENTRIES.toLong()
+                ) return null
+                rows.toInt()
+            } catch (_: Exception) {
+                return null
+            } finally {
+                backup.close()
+            }
+            if (!restore) return count
+
+            val db = writableDatabase
+            db.execSQL("ATTACH DATABASE ? AS history_backup", arrayOf(file.absolutePath))
+            try {
+                db.beginTransaction()
+                try {
+                    db.delete(TABLE_HISTORY, null, null)
+                    db.execSQL(
+                        """INSERT INTO $TABLE_HISTORY (
+                            $COL_ID, $COL_NOTIF_KEY, $COL_PACKAGE, $COL_APP_NAME, $COL_TITLE, $COL_TEXT,
+                            $COL_SUB_TEXT, $COL_POST_TIME, $COL_CATEGORY, $COL_CHANNEL_ID, $COL_MODE,
+                            $COL_ACTIONS_JSON, $COL_WAS_OPENED, $COL_WAS_DISMISSED, $COL_WAS_SILENT, $COL_HAS_VIBRATION
+                        ) SELECT $COL_ID, $COL_NOTIF_KEY, $COL_PACKAGE, $COL_APP_NAME, $COL_TITLE, $COL_TEXT,
+                            $COL_SUB_TEXT, $COL_POST_TIME, $COL_CATEGORY, $COL_CHANNEL_ID, $COL_MODE,
+                            $COL_ACTIONS_JSON, $COL_WAS_OPENED, $COL_WAS_DISMISSED, $COL_WAS_SILENT, $COL_HAS_VIBRATION
+                        FROM history_backup.$TABLE_HISTORY""".trimIndent()
+                    )
+                    db.setTransactionSuccessful()
+                } finally {
+                    db.endTransaction()
+                }
+            } finally {
+                db.execSQL("DETACH DATABASE history_backup")
+            }
+            return count
+        } finally {
+            file.delete()
+        }
     }
 
     fun replaceAll(entries: List<NotificationHistoryEntry>): Boolean = runCatchingLogged(
@@ -108,9 +237,11 @@ class NotificationHistoryDbHelper(context: Context) : SQLiteOpenHelper(
         put(COL_ACTIONS_JSON, JSONArray(entry.actionTitles).toString())
         put(COL_WAS_OPENED, if (entry.wasOpened) 1 else 0)
         put(COL_WAS_DISMISSED, if (entry.wasDismissed) 1 else 0)
+        put(COL_WAS_SILENT, if (entry.wasSilent) 1 else 0)
+        put(COL_HAS_VIBRATION, if (entry.hasVibration) 1 else 0)
     }
 
-    fun getAllEntries(limit: Int = 1000): List<NotificationHistoryEntry> {
+    fun getAllEntries(limit: Int = INotificationHistoryRepository.MAX_VISIBLE_ENTRIES): List<NotificationHistoryEntry> {
         return runCatchingLogged(TAG, "Failed to fetch notification history") {
             val list = mutableListOf<NotificationHistoryEntry>()
             val cursor = readableDatabase.query(
@@ -211,7 +342,9 @@ class NotificationHistoryDbHelper(context: Context) : SQLiteOpenHelper(
             mode = cursor.getString(cursor.getColumnIndexOrThrow(COL_MODE)) ?: "Notification",
             actionTitles = actionsList,
             wasOpened = cursor.getInt(cursor.getColumnIndexOrThrow(COL_WAS_OPENED)) == 1,
-            wasDismissed = cursor.getInt(cursor.getColumnIndexOrThrow(COL_WAS_DISMISSED)) == 1
+            wasDismissed = cursor.getInt(cursor.getColumnIndexOrThrow(COL_WAS_DISMISSED)) == 1,
+            wasSilent = cursor.getInt(cursor.getColumnIndexOrThrow(COL_WAS_SILENT)) == 1,
+            hasVibration = cursor.getInt(cursor.getColumnIndexOrThrow(COL_HAS_VIBRATION)) == 1
         )
     }
 }

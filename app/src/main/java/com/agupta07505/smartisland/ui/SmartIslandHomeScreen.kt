@@ -27,6 +27,7 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
@@ -35,6 +36,7 @@ import androidx.compose.animation.togetherWith
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
@@ -69,6 +71,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
+import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowLeft
 import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
 import androidx.compose.material.icons.rounded.Apps
 import androidx.compose.material.icons.rounded.ArrowDownward
@@ -111,6 +114,7 @@ import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Surface
 import com.agupta07505.smartisland.ui.glass.LocalGlassDark
 import com.agupta07505.smartisland.ui.glass.LocalLiquidGlass
 import com.agupta07505.smartisland.ui.glass.ThemedBackdrop
@@ -127,12 +131,14 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.zIndex
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -240,11 +246,12 @@ internal enum class FeatureDetailSection {
     CalendarSettings
 }
 
-private val IDLE_SETTINGS_PAGES = setOf(
+private val IDLE_SETTINGS_PAGE_ORDER = listOf(
     FeatureDetailSection.WeatherSettings,
     FeatureDetailSection.NetSpeedSettings,
     FeatureDetailSection.CalendarSettings
 )
+private val IDLE_SETTINGS_PAGES = IDLE_SETTINGS_PAGE_ORDER.toSet()
 
 @SuppressLint("BatteryLife")
 @Composable
@@ -367,6 +374,7 @@ fun SmartIslandHomeScreen(
     var selectedTab by rememberSaveable { mutableStateOf(StudioTab.Studio) }
     var orientationTab by rememberSaveable { mutableStateOf(OrientationTab.Portrait) }
     var activeDesignMenu by rememberSaveable { mutableStateOf<String?>(null) }
+    var activeDemoGroup by rememberSaveable { mutableStateOf<String?>(null) }
     var activeDetailSection by rememberSaveable { mutableStateOf<FeatureDetailSection?>(null) }
     var transitionDirection by rememberSaveable { mutableIntStateOf(1) }
 
@@ -454,12 +462,20 @@ fun SmartIslandHomeScreen(
 
     val canEnable = overlayGranted && notificationGranted
     val swipeThresholdPx = with(LocalDensity.current) { 72.dp.toPx() }
-    val pullRefreshThresholdPx = with(LocalDensity.current) { 86.dp.toPx() }
+    val pullRefreshThresholdPx = with(LocalDensity.current) { 250.dp.toPx() }
     var pullDistance by remember { mutableStateOf(0f) }
+    var pullStartedAtMs by remember { mutableLongStateOf(0L) }
     var isRefreshing by remember { mutableStateOf(false) }
+    var refreshHoldOffsetPx by remember { mutableStateOf(0f) }
     var refreshVersion by remember { mutableIntStateOf(0) }
+    val refreshContentOffset by animateFloatAsState(
+        targetValue = if (isRefreshing) refreshHoldOffsetPx else (pullDistance * 0.82f).coerceAtMost(pullRefreshThresholdPx * 0.9f),
+        animationSpec = spring(dampingRatio = 0.78f, stiffness = 420f),
+        label = "pullRefreshContentOffset"
+    )
     val runPullRefresh by rememberUpdatedState(newValue = {
         if (!isRefreshing) {
+            refreshHoldOffsetPx = (pullDistance * 0.82f).coerceAtMost(pullRefreshThresholdPx * 0.9f)
             isRefreshing = true
             pullDistance = 0f
             refreshVersion++
@@ -475,16 +491,21 @@ fun SmartIslandHomeScreen(
         object : NestedScrollConnection {
             override fun onPostScroll(consumed: Offset, available: Offset, source: androidx.compose.ui.input.nestedscroll.NestedScrollSource): Offset {
                 if (available.y > 0f && !isRefreshing) {
+                    if (pullDistance == 0f) pullStartedAtMs = android.os.SystemClock.uptimeMillis()
                     pullDistance = (pullDistance + available.y).coerceAtMost(pullRefreshThresholdPx * 1.4f)
-                    if (pullDistance >= pullRefreshThresholdPx) runPullRefresh()
                 } else if (available.y < 0f) {
                     pullDistance = 0f
+                    pullStartedAtMs = 0L
                 }
                 return Offset.Zero
             }
 
-            override suspend fun onPreFling(available: Velocity): Velocity {
+            override suspend fun onPostFling(consumed: Velocity, available: Velocity): Velocity {
+                val heldLongEnough = pullStartedAtMs > 0L &&
+                    android.os.SystemClock.uptimeMillis() - pullStartedAtMs >= 750L
+                if (pullDistance >= pullRefreshThresholdPx && heldLongEnough) runPullRefresh()
                 pullDistance = 0f
+                pullStartedAtMs = 0L
                 return Velocity.Zero
             }
         }
@@ -520,12 +541,14 @@ fun SmartIslandHomeScreen(
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
         bottomBar = {
             if (activeDetailSection == null) {
-                StudioBottomNavigationBar(
-                    selectedTab = selectedTab,
-                    onTabSelected = { tab ->
-                        selectStudioTab(tab)
-                    }
-                )
+                Box(Modifier.graphicsLayer { translationY = refreshContentOffset }) {
+                    StudioBottomNavigationBar(
+                        selectedTab = selectedTab,
+                        onTabSelected = { tab ->
+                            selectStudioTab(tab)
+                        }
+                    )
+                }
             }
         }
     ) { scaffoldPadding ->
@@ -544,44 +567,43 @@ fun SmartIslandHomeScreen(
             label = "ScreenTransition"
         ) { detailSection ->
             Box(Modifier.fillMaxSize().nestedScroll(pullRefreshConnection)) {
-            ThemedBackdrop()
-            if (pullDistance > 0f || isRefreshing) {
-                Row(
-                    modifier = Modifier.align(Alignment.TopCenter)
-                        .padding(top = WindowInsets.statusBars.asPaddingValues().calculateTopPadding() + 4.dp)
-                        .clip(RoundedCornerShape(20.dp))
-                        .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.94f))
-                        .zIndex(1f)
-                        .padding(horizontal = 14.dp, vertical = 9.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    if (isRefreshing) CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp)
-                    else Icon(Icons.Rounded.ArrowDownward, contentDescription = null, modifier = Modifier.size(16.dp))
-                    Text(stringResource(if (isRefreshing) R.string.pull_to_refresh_running else R.string.pull_to_refresh_hint), style = MaterialTheme.typography.labelMedium)
-                }
-            }
+            Box(
+                Modifier.fillMaxSize().graphicsLayer { translationY = refreshContentOffset }
+            ) {
+                ThemedBackdrop()
             if (detailSection == null) {
-                val screenWidthDp = LocalConfiguration.current.screenWidthDp
-                val horizontalPad = contentSidePadding(screenWidthDp)
+                val configuration = LocalConfiguration.current
+                val screenWidthDp = configuration.screenWidthDp
+                val maxWidthDp = if (screenWidthDp > configuration.screenHeightDp) {
+                    MAX_LANDSCAPE_CONTENT_WIDTH_DP
+                } else {
+                    MAX_CONTENT_WIDTH_DP
+                }
+                val horizontalPad = contentSidePadding(screenWidthDp, maxWidthDp)
                 Column(
                     modifier = Modifier
                         .fillMaxSize()
                         .background(MaterialTheme.colorScheme.background)
                         .verticalScroll(rememberScrollState())
-                    .pointerInput(selectedTab) {
+                    .pointerInput(selectedTab, activeDesignMenu, activeDemoGroup) {
                         var dragDistance = 0f
                         detectHorizontalDragGestures(
                             onDragStart = { dragDistance = 0f },
                             onHorizontalDrag = { _, amount -> dragDistance += amount },
                             onDragEnd = {
                                 if (abs(dragDistance) >= swipeThresholdPx) {
-                                    if (selectedTab == StudioTab.Demo) {
-                                        // Demo owns its internal category gestures; keep them from changing root tabs.
+                                    if (selectedTab == StudioTab.Demo && activeDemoGroup != null) {
+                                        // Demo owns gestures while one of its categories is open.
                                     } else if (selectedTab == StudioTab.Position && activeDesignMenu != null) {
                                         val menus = listOf("position", "animation", "merge", "widgets", "events")
-                                        val next = menus.indexOf(activeDesignMenu) + if (dragDistance < 0) 1 else -1
-                                        activeDesignMenu = menus.getOrNull(next)
+                                        val currentIndex = menus.indexOf(activeDesignMenu)
+                                        val previousIndex = currentIndex - 1
+                                        val nextIndex = currentIndex + 1
+                                        activeDesignMenu = if (dragDistance > 0) {
+                                            menus.getOrNull(previousIndex)
+                                        } else {
+                                            menus.getOrNull(nextIndex) ?: activeDesignMenu
+                                        }
                                     } else {
                                         val nextIndex = (selectedTab.ordinal + if (dragDistance < 0) 1 else -1)
                                             .coerceIn(StudioTab.entries.indices)
@@ -617,7 +639,9 @@ fun SmartIslandHomeScreen(
                     if (homeSearchQuery.isNotBlank()) {
                         SettingsSearchResults(query = homeSearchQuery, results = homeSearchResults, onPick = onSearchPick)
                     } else {
-                    if (!(selectedTab == StudioTab.Position && activeDesignMenu != null)) {
+                    if (!(selectedTab == StudioTab.Position && activeDesignMenu != null) &&
+                        !(selectedTab == StudioTab.Demo && activeDemoGroup != null)
+                    ) {
                         StudioPageControls(
                             selectedTab = selectedTab,
                             onPrevious = { selectStudioTab(StudioTab.entries[(selectedTab.ordinal - 1).coerceAtLeast(0)]) },
@@ -672,23 +696,23 @@ fun SmartIslandHomeScreen(
                         }
 
                         StudioTab.Position -> {
-                            OrientationTabs(
-                                selected = orientationTab,
-                                onSelected = { orientationTab = it }
-                            )
                             AnimatedContent(
-                                targetState = activeDesignMenu,
-                                transitionSpec = {
-                                    if (targetState != null) {
-                                        (slideInHorizontally(tween(320)) { it / 5 } + fadeIn(tween(220)) + scaleIn(tween(320), initialScale = 0.98f))
-                                            .togetherWith(slideOutHorizontally(tween(220)) { -it / 12 } + fadeOut(tween(180)))
-                                    } else {
-                                        (slideInHorizontally(tween(320)) { -it / 5 } + fadeIn(tween(220)) + scaleIn(tween(320), initialScale = 0.98f))
-                                            .togetherWith(slideOutHorizontally(tween(220)) { it / 12 } + fadeOut(tween(180)))
-                                    }
-                                },
-                                label = "DesignSubmenuTransition"
+                                    targetState = activeDesignMenu,
+                                    transitionSpec = {
+                                        if (targetState != null) {
+                                            (slideInHorizontally(tween(320)) { it / 5 } + fadeIn(tween(220)) + scaleIn(tween(320), initialScale = 0.98f))
+                                                .togetherWith(slideOutHorizontally(tween(220)) { -it / 12 } + fadeOut(tween(180)))
+                                        } else {
+                                            (slideInHorizontally(tween(320)) { -it / 5 } + fadeIn(tween(220)) + scaleIn(tween(320), initialScale = 0.98f))
+                                                .togetherWith(slideOutHorizontally(tween(220)) { it / 12 } + fadeOut(tween(180)))
+                                        }
+                                    },
+                                    label = "DesignSubmenuTransition"
                             ) { designMenu ->
+                                Column(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                                ) {
                             if (designMenu == null) {
                                 Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                                     Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -715,12 +739,48 @@ fun SmartIslandHomeScreen(
                                     "widgets" -> stringResource(R.string.idle_widgets_title)
                                     else -> stringResource(R.string.design_events_title)
                                 }
-                                OutlinedButton(onClick = { activeDesignMenu = null }, modifier = Modifier.fillMaxWidth()) {
-                                    Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = null, modifier = Modifier.size(18.dp))
-                                    Spacer(Modifier.width(8.dp))
-                                    Text(stringResource(R.string.design_back))
+                                val designPages = listOf("position", "animation", "merge", "widgets", "events")
+                                val designPageIndex = designPages.indexOf(designMenu)
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    IconButton(
+                                        onClick = { activeDesignMenu = designPages.getOrNull(designPageIndex - 1) },
+                                        modifier = Modifier.size(44.dp)
+                                    ) {
+                                        Icon(
+                                            if (designPageIndex == 0) Icons.AutoMirrored.Rounded.ArrowBack else Icons.AutoMirrored.Rounded.KeyboardArrowLeft,
+                                            contentDescription = stringResource(if (designPageIndex == 0) R.string.design_back else R.string.design_previous_page),
+                                            tint = MaterialTheme.colorScheme.primary
+                                        )
+                                    }
+                                    Text(
+                                        pageTitle,
+                                        modifier = Modifier.weight(1f),
+                                        style = MaterialTheme.typography.titleLarge,
+                                        fontWeight = FontWeight.Bold,
+                                        textAlign = TextAlign.Center
+                                    )
+                                    IconButton(
+                                        onClick = { activeDesignMenu = designPages.getOrNull(designPageIndex + 1) ?: designMenu },
+                                        enabled = designPageIndex < designPages.lastIndex,
+                                        modifier = Modifier.size(44.dp)
+                                    ) {
+                                        Icon(
+                                            Icons.AutoMirrored.Rounded.KeyboardArrowRight,
+                                            contentDescription = stringResource(R.string.design_next_page),
+                                            tint = MaterialTheme.colorScheme.primary
+                                        )
+                                    }
                                 }
-                                Text(pageTitle, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                                if (designMenu == "position") {
+                                    OrientationTabs(
+                                        selected = orientationTab,
+                                        onSelected = { orientationTab = it }
+                                    )
+                                }
                                 when (designMenu) {
                                     "position" -> if (orientationTab == OrientationTab.Landscape) {
                                         LandscapeSection(settings = settings, repository = resolvedRepository)
@@ -753,12 +813,15 @@ fun SmartIslandHomeScreen(
                                 }
                             }
                             }
+                            }
                         }
 
                         StudioTab.Demo -> {
                             DemoSection(
                                 settings = settings,
-                                notificationRepository = resolvedNotificationRepository
+                                notificationRepository = resolvedNotificationRepository,
+                                selectedGroup = activeDemoGroup,
+                                onSelectedGroupChange = { activeDemoGroup = it }
                             )
                         }
 
@@ -839,20 +902,84 @@ fun SmartIslandHomeScreen(
                 )
             }
             }
+            AnimatedVisibility(
+                visible = pullDistance > 0f || isRefreshing,
+                modifier = Modifier.align(Alignment.TopCenter).zIndex(1f),
+                enter = fadeIn(tween(150)) + slideInVertically(tween(220)) { -it },
+                exit = fadeOut(tween(140)) + slideOutVertically(tween(220)) { -it }
+            ) {
+                val refreshLogo = remember(context) {
+                    runCatchingLogged("PullRefresh", "Failed to load app icon for refresh indicator") {
+                        val drawable = context.packageManager.getApplicationIcon(context.packageName)
+                        val width = drawable.intrinsicWidth.takeIf { it > 0 } ?: 144
+                        val height = drawable.intrinsicHeight.takeIf { it > 0 } ?: 144
+                        android.graphics.Bitmap.createBitmap(width, height, android.graphics.Bitmap.Config.ARGB_8888).also { bitmap ->
+                            drawable.setBounds(0, 0, width, height)
+                            drawable.draw(android.graphics.Canvas(bitmap))
+                        }.asImageBitmap()
+                    }
+                }
+                Surface(
+                    modifier = Modifier.padding(
+                        top = WindowInsets.statusBars.asPaddingValues().calculateTopPadding() + 8.dp
+                    ),
+                    shape = RoundedCornerShape(24.dp),
+                    color = MaterialTheme.colorScheme.surface.copy(alpha = 0.96f),
+                    tonalElevation = 6.dp
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            if (isRefreshing) {
+                                CircularProgressIndicator(Modifier.size(44.dp), strokeWidth = 2.dp)
+                            }
+                            if (refreshLogo != null) {
+                                Image(
+                                    bitmap = refreshLogo,
+                                    contentDescription = stringResource(R.string.app_name),
+                                    modifier = Modifier.size(34.dp).clip(CircleShape)
+                                )
+                            }
+                        }
+                        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                            Text(
+                                text = stringResource(if (isRefreshing) R.string.pull_to_refresh_running else R.string.pull_to_refresh_hint),
+                                style = MaterialTheme.typography.labelLarge,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                            if (!isRefreshing) {
+                                Text(
+                                    text = stringResource(R.string.pull_to_refresh_distance_hint),
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                    }
+                }
+            }
         }
+    }
     }
     }
 }
 
 private const val MAX_CONTENT_WIDTH_DP = 640
+private const val MAX_LANDSCAPE_CONTENT_WIDTH_DP = 900
 
-private fun contentSidePadding(screenWidthDp: Int): androidx.compose.ui.unit.Dp {
+private fun contentSidePadding(
+    screenWidthDp: Int,
+    maxContentWidthDp: Int = MAX_CONTENT_WIDTH_DP
+): androidx.compose.ui.unit.Dp {
     val base = when {
         screenWidthDp < 360 -> 14
         screenWidthDp > 600 -> 28
         else -> 20
     }
-    val centred = (screenWidthDp - MAX_CONTENT_WIDTH_DP) / 2
+    val centred = (screenWidthDp - maxContentWidthDp) / 2
     return maxOf(base, centred).dp
 }
 
@@ -2122,6 +2249,9 @@ private fun DetailScreenHost(
     val screenWidthDp = LocalConfiguration.current.screenWidthDp
     val horizontalPad = contentSidePadding(screenWidthDp)
     val detailSwipeThresholdPx = with(LocalDensity.current) { 72.dp.toPx() }
+    val nestedPageIndex = IDLE_SETTINGS_PAGE_ORDER.indexOf(section)
+    val previousNestedPage = IDLE_SETTINGS_PAGE_ORDER.getOrNull(nestedPageIndex - 1)
+    val nextNestedPage = IDLE_SETTINGS_PAGE_ORDER.getOrNull(nestedPageIndex + 1)
 
     Column(
         modifier = Modifier
@@ -2134,7 +2264,14 @@ private fun DetailScreenHost(
                     onDragStart = { dragDistance = 0f },
                     onHorizontalDrag = { _, amount -> dragDistance += amount },
                     onDragEnd = {
-                        if (dragDistance >= detailSwipeThresholdPx) onBack()
+                        if (abs(dragDistance) >= detailSwipeThresholdPx) {
+                            if (nestedPageIndex >= 0) {
+                                if (dragDistance < 0) nextNestedPage?.let(onNavigateTo)
+                                else if (previousNestedPage != null) onNavigateTo(previousNestedPage) else onBack()
+                            } else if (dragDistance > 0) {
+                                onBack()
+                            }
+                        }
                     }
                 )
             }
@@ -2164,15 +2301,17 @@ private fun DetailScreenHost(
             verticalAlignment = Alignment.CenterVertically
         ) {
             IconButton(
-                onClick = onBack,
+                onClick = {
+                    if (previousNestedPage != null) onNavigateTo(previousNestedPage) else onBack()
+                },
                 modifier = Modifier
                     .size(42.dp)
                     .clip(RoundedCornerShape(15.dp))
                     .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.78f))
             ) {
                 Icon(
-                    imageVector = Icons.AutoMirrored.Rounded.ArrowBack,
-                    contentDescription = "Back",
+                    imageVector = if (previousNestedPage == null) Icons.AutoMirrored.Rounded.ArrowBack else Icons.AutoMirrored.Rounded.KeyboardArrowLeft,
+                    contentDescription = stringResource(if (previousNestedPage == null) R.string.design_back else R.string.design_previous_page),
                     tint = MaterialTheme.colorScheme.primary
                 )
             }
@@ -2245,6 +2384,19 @@ private fun DetailScreenHost(
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis
                 )
+            }
+            if (nestedPageIndex >= 0) {
+                IconButton(
+                    onClick = { nextNestedPage?.let(onNavigateTo) },
+                    enabled = nextNestedPage != null,
+                    modifier = Modifier.size(42.dp)
+                ) {
+                    Icon(
+                        Icons.AutoMirrored.Rounded.KeyboardArrowRight,
+                        contentDescription = stringResource(R.string.design_next_page),
+                        tint = MaterialTheme.colorScheme.primary
+                    )
+                }
             }
         }
 

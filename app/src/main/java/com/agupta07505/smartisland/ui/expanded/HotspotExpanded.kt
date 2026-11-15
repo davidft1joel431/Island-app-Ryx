@@ -54,9 +54,10 @@ fun HotspotExpanded(
     val accentColor = Color(settings.hotspotColor)
     val badgeBg = Color(settings.hotspotColor).copy(alpha = 0.2f)
 
-    val deviceCountText = remember(notification.text, notification.title) {
+    val deviceCountText = remember(notification.text, notification.title, context) {
         val count = HotspotUtil.parseDeviceCount(notification.title, notification.text)
-        "$count connected"
+        if (count == 1) context.getString(com.agupta07505.smartisland.R.string.expanded_hotspot_device)
+        else context.getString(com.agupta07505.smartisland.R.string.expanded_hotspot_devices, count)
     }
 
     // Strip "Active . 2 device" string from subtitle so it displays clean description

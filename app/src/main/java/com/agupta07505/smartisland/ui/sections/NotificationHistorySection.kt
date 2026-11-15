@@ -160,6 +160,12 @@ data class AppNotificationSummary(
     val count: Int
 )
 
+private data class PendingHistoryRestore(
+    val entryCount: Int,
+    val entries: List<NotificationHistoryEntry>? = null,
+    val sqliteFile: java.io.File? = null
+)
+
 private val AppSummarySaver: Saver<AppNotificationSummary?, Any> = listSaver(
     save = { summary ->
         if (summary == null) emptyList<Any>() else listOf(summary.packageName, summary.appName, summary.count)
@@ -201,27 +207,18 @@ fun NotificationHistorySection(
     var selectedEntryIdForDetails by rememberSaveable { mutableStateOf<Long?>(null) }
     val selectedEntryForDetails = selectedEntryIdForDetails?.let { id -> historyEntries.firstOrNull { it.id == id } }
     var retentionMenuExpanded by rememberSaveable { mutableStateOf(false) }
-    var pendingHistoryRestore by remember { mutableStateOf<List<NotificationHistoryEntry>?>(null) }
+    var pendingHistoryRestore by remember { mutableStateOf<PendingHistoryRestore?>(null) }
 
     val historyExportLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.CreateDocument("application/json")
+        contract = ActivityResultContracts.CreateDocument("application/vnd.sqlite3")
     ) { uri: Uri? ->
         if (uri != null) {
             scope.launch {
                 try {
                     val entryCount = withContext(Dispatchers.IO) {
-                        val entries = resolvedHistoryRepo.getBackupEntries()
-                        val backup = JSONObject()
-                            .put("format", NOTIFICATION_HISTORY_BACKUP_FORMAT)
-                            .put("version", NOTIFICATION_HISTORY_BACKUP_VERSION)
-                            .put("exportedAt", System.currentTimeMillis())
-                            .put("notificationHistory", JSONArray().apply {
-                                entries.forEach { put(it.toBackupJson()) }
-                            })
                         val output = context.contentResolver.openOutputStream(uri)
                             ?: throw java.io.IOException("Could not open the backup destination")
-                        output.use { it.write(backup.toString(2).toByteArray(Charsets.UTF_8)) }
-                        entries.size
+                        output.use { resolvedHistoryRepo.exportSqliteBackup(it) }
                     }
                     Toast.makeText(
                         context,
@@ -240,40 +237,66 @@ fun NotificationHistorySection(
     ) { uri: Uri? ->
         if (uri != null) {
             scope.launch {
-                val restoredEntries = try {
+                val pending = try {
                     withContext(Dispatchers.IO) {
-                        context.contentResolver.openInputStream(uri)?.bufferedReader(Charsets.UTF_8)?.use {
-                            parseNotificationHistoryBackupFile(it.readText())
+                        val tempFile = java.io.File.createTempFile("ryx-history-restore-", ".backup", context.cacheDir)
+                        try {
+                            context.contentResolver.openInputStream(uri)?.use { input ->
+                                tempFile.outputStream().buffered().use { output -> input.copyTo(output) }
+                            } ?: throw java.io.IOException("Could not open the history backup")
+                            val isSqlite = tempFile.inputStream().use { input ->
+                                val header = ByteArray(16)
+                                input.read(header) == header.size && header.contentEquals("SQLite format 3\u0000".toByteArray(Charsets.US_ASCII))
+                            }
+                            if (isSqlite) {
+                                val count = tempFile.inputStream().use { resolvedHistoryRepo.inspectSqliteBackup(it) }
+                                if (count == null) null else PendingHistoryRestore(count, sqliteFile = tempFile)
+                            } else {
+                                val entries = tempFile.readText(Charsets.UTF_8).let(::parseNotificationHistoryBackupFile)
+                                tempFile.delete()
+                                entries?.let { PendingHistoryRestore(it.size, entries = it) }
+                            }
+                        } catch (error: Exception) {
+                            tempFile.delete()
+                            throw error
                         }
                     }
                 } catch (_: Exception) {
                     null
                 }
-                if (restoredEntries == null) {
+                if (pending == null) {
                     Toast.makeText(context, context.getString(R.string.history_backup_invalid), Toast.LENGTH_LONG).show()
                 } else {
-                    pendingHistoryRestore = restoredEntries
+                    pendingHistoryRestore = pending
                 }
             }
         }
     }
 
-    pendingHistoryRestore?.let { entries ->
+    pendingHistoryRestore?.let { restore ->
         AlertDialog(
-            onDismissRequest = { pendingHistoryRestore = null },
+            onDismissRequest = {
+                restore.sqliteFile?.delete()
+                pendingHistoryRestore = null
+            },
             title = { Text(stringResource(R.string.history_backup_restore_title)) },
-            text = { Text(stringResource(R.string.history_backup_restore_desc, entries.size)) },
+            text = { Text(stringResource(R.string.history_backup_restore_desc, restore.entryCount)) },
             confirmButton = {
                 Button(
                     onClick = {
                         scope.launch {
-                            val restored = withContext(Dispatchers.IO) {
-                                resolvedHistoryRepo.replaceAll(entries)
+                            val restoredCount = withContext(Dispatchers.IO) {
+                                restore.sqliteFile?.let { file ->
+                                    file.inputStream().use { resolvedHistoryRepo.restoreSqliteBackup(it) }
+                                } ?: restore.entries?.let { entries ->
+                                    if (resolvedHistoryRepo.replaceAll(entries)) entries.size else null
+                                }
                             }
+                            restore.sqliteFile?.delete()
                             Toast.makeText(
                                 context,
-                                if (restored) {
-                                    context.getString(R.string.history_backup_restore_success, entries.size)
+                                if (restoredCount != null) {
+                                    context.getString(R.string.history_backup_restore_success, restoredCount)
                                 } else {
                                     context.getString(R.string.history_backup_import_failed)
                                 },
@@ -287,7 +310,10 @@ fun NotificationHistorySection(
                 }
             },
             dismissButton = {
-                TextButton(onClick = { pendingHistoryRestore = null }) {
+                TextButton(onClick = {
+                    restore.sqliteFile?.delete()
+                    pendingHistoryRestore = null
+                }) {
                     Text(stringResource(R.string.btn_cancel))
                 }
             }
@@ -573,7 +599,7 @@ fun NotificationHistorySection(
                         OutlinedButton(
                             modifier = Modifier.weight(1f),
                             onClick = {
-                                val name = "ryxisla_historial_${SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date())}.json"
+                                val name = "ryxisla_historial_${SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date())}.db"
                                 historyExportLauncher.launch(name)
                             },
                             shape = RoundedCornerShape(10.dp),
@@ -585,7 +611,7 @@ fun NotificationHistorySection(
                         }
                         Button(
                             modifier = Modifier.weight(1f),
-                            onClick = { historyImportLauncher.launch(arrayOf("application/json", "application/*", "text/*")) },
+                            onClick = { historyImportLauncher.launch(arrayOf("application/vnd.sqlite3", "application/x-sqlite3", "application/json", "application/*", "text/*")) },
                             shape = RoundedCornerShape(10.dp),
                             contentPadding = PaddingValues(horizontal = 8.dp, vertical = 8.dp)
                         ) {
@@ -682,6 +708,7 @@ fun NotificationHistorySection(
                                     72 to R.string.retention_72h,
                                     168 to R.string.retention_7d,
                                     720 to R.string.retention_30d,
+                                    8760 to R.string.retention_365d,
                                     -1 to R.string.retention_forever
                                 )
 
@@ -703,6 +730,7 @@ fun NotificationHistorySection(
                                             72 -> "3 Days"
                                             168 -> "7 Days"
                                             720 -> "30 Days"
+                                            8760 -> "1 Year"
                                             -1 -> "Forever"
                                             else -> "3 Days"
                                         },

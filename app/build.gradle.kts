@@ -31,8 +31,8 @@ android {
         applicationId = "com.dav.isla"
         minSdk = 26
         targetSdk = 36
-        versionCode = 540 // v5.4.0
-        versionName = "5.4.0"
+        versionCode = 601 // v6.0.1
+        versionName = "6.0.1"
     }
 
     buildFeatures {

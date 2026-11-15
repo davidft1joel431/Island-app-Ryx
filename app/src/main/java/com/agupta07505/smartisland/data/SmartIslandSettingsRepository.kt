@@ -283,6 +283,13 @@ class SmartIslandSettingsRepository(private val context: Context) {
         val HideOnLockScreenPackages = stringSetPreferencesKey("hide_on_lock_screen_packages")
         /** Set once the landscape shape was moved to the top-middle pill. */
         val LandscapePillMigrated = booleanPreferencesKey("landscape_pill_migrated_l2")
+        val NotificationHistoryExpandedMigrated = booleanPreferencesKey("notification_history_expanded_migrated")
+        val NotificationHistoryForeverMigrated = booleanPreferencesKey("notification_history_forever_migrated")
+        val HyperOsIslandStyle = booleanPreferencesKey("hyperos_island_style")
+        val HyperOsMessagingExpansion = stringPreferencesKey("hyperos_messaging_expansion")
+        val HyperOsIslandDesign = stringPreferencesKey("hyperos_island_design")
+        val HyperOsIslandColor = longPreferencesKey("hyperos_island_color")
+        val HyperOsMessagingExpansionMigrated = booleanPreferencesKey("hyperos_messaging_expansion_migrated")
     }
 
     private suspend fun migrateLandscapeShapeOnce() {
@@ -295,8 +302,51 @@ class SmartIslandSettingsRepository(private val context: Context) {
         }
     }
 
+    private suspend fun migrateNotificationHistoryOnce() {
+        val prefs = runCatching { context.smartIslandDataStore.data.first() }.getOrNull() ?: return
+        if (prefs[Keys.NotificationHistoryExpandedMigrated] == true) return
+        editSafely {
+            if (it[Keys.NotificationHistoryExpandedMigrated] == true) return@editSafely
+            // The user requested complete notification logging; enable the existing opt-out switch
+            // for this upgrade and extend short/default retention to one year. Preserve Forever.
+            it[Keys.EnableNotificationHistory] = true
+            val retention = it[Keys.NotificationHistoryRetentionHours]
+            if (retention == null || retention in 1..72) it[Keys.NotificationHistoryRetentionHours] = 8760
+            it[Keys.NotificationHistoryExpandedMigrated] = true
+        }
+    }
+
+    private suspend fun migrateHistoryForeverOnce() {
+        val prefs = runCatching { context.smartIslandDataStore.data.first() }.getOrNull() ?: return
+        if (prefs[Keys.NotificationHistoryForeverMigrated] == true) return
+        editSafely {
+            if (it[Keys.NotificationHistoryForeverMigrated] == true) return@editSafely
+            // 8760 hours was the old default; move it to indefinite retention for this upgrade.
+            if (it[Keys.NotificationHistoryRetentionHours] == null || it[Keys.NotificationHistoryRetentionHours] == 8760) {
+                it[Keys.NotificationHistoryRetentionHours] = -1
+            }
+            it[Keys.NotificationHistoryForeverMigrated] = true
+        }
+    }
+
+    private suspend fun migrateHyperOsMessagingExpansionOnce() {
+        val prefs = runCatching { context.smartIslandDataStore.data.first() }.getOrNull() ?: return
+        if (prefs[Keys.HyperOsMessagingExpansionMigrated] == true) return
+        editSafely {
+            if (it[Keys.HyperOsMessagingExpansionMigrated] == true) return@editSafely
+            // The previous default kept every chat notification in a capsule; the new default expands recent cards.
+            it[Keys.HyperOsMessagingExpansion] = "capsule"
+            it[Keys.HyperOsMessagingExpansionMigrated] = true
+        }
+    }
+
     val settings: Flow<SmartIslandSettings> = context.smartIslandDataStore.data
-        .onStart { migrateLandscapeShapeOnce() }
+        .onStart {
+            migrateLandscapeShapeOnce()
+            migrateNotificationHistoryOnce()
+            migrateHistoryForeverOnce()
+            migrateHyperOsMessagingExpansionOnce()
+        }
         .catch { error ->
             if (error is IOException) {
                 Log.e(TAG, "Unable to read settings; using safe defaults", error)
@@ -469,6 +519,10 @@ class SmartIslandSettingsRepository(private val context: Context) {
                 expandedTheme = prefs[Keys.ExpandedTheme]?.takeIf { it in SmartIslandSettings.VALID_EXPANDED_THEMES } ?: defaults.expandedTheme,
                 islandFont = prefs[Keys.IslandFont]?.takeIf { SmartIslandSettings.isValidFont(it) } ?: defaults.islandFont,
                 enableNotchMode = prefs[Keys.EnableNotchMode] ?: defaults.enableNotchMode,
+                hyperOsIslandStyle = prefs[Keys.HyperOsIslandStyle] ?: com.agupta07505.smartisland.util.OemDeviceRules.isMiuiOrHyperOs(prefs[Keys.DeviceType]),
+                hyperOsMessagingExpansion = "capsule",
+                hyperOsIslandDesign = prefs[Keys.HyperOsIslandDesign]?.takeIf { it == "dark" || it == "accent" } ?: defaults.hyperOsIslandDesign,
+                hyperOsIslandColor = validColor(prefs[Keys.HyperOsIslandColor], defaults.hyperOsIslandColor),
                 cameraCutoutManual = prefs[Keys.CameraCutoutManual] ?: defaults.cameraCutoutManual,
                 cameraCutoutX = validDimension(prefs[Keys.CameraCutoutX], defaults.cameraCutoutX, SmartIslandSettings.MIN_X_OFFSET, SmartIslandSettings.MAX_X_OFFSET),
                 cameraCutoutY = validDimension(prefs[Keys.CameraCutoutY], defaults.cameraCutoutY, SmartIslandSettings.MIN_Y_OFFSET, SmartIslandSettings.MAX_Y_OFFSET),
@@ -1365,6 +1419,18 @@ class SmartIslandSettingsRepository(private val context: Context) {
     suspend fun setEnableNotchMode(value: Boolean) = editSafely {
         it[Keys.EnableNotchMode] = value
     }
+    suspend fun setHyperOsIslandStyle(value: Boolean) = editSafely {
+        it[Keys.HyperOsIslandStyle] = value
+    }
+    suspend fun setHyperOsMessagingExpansion(value: String) = editSafely {
+        it[Keys.HyperOsMessagingExpansion] = if (value == "regular") "regular" else "capsule"
+    }
+    suspend fun setHyperOsIslandDesign(value: String) = editSafely {
+        it[Keys.HyperOsIslandDesign] = if (value == "accent") "accent" else "dark"
+    }
+    suspend fun setHyperOsIslandColor(value: Long) = editSafely {
+        it[Keys.HyperOsIslandColor] = validColor(value, SmartIslandSettings.Default.hyperOsIslandColor)
+    }
     suspend fun setCameraCutoutManual(value: Boolean) = editSafely {
         it[Keys.CameraCutoutManual] = value
     }
@@ -1616,6 +1682,10 @@ class SmartIslandSettingsRepository(private val context: Context) {
         prefs[Keys.ExpandedTheme] = if (settings.expandedTheme in SmartIslandSettings.VALID_EXPANDED_THEMES) settings.expandedTheme else SmartIslandSettings.Default.expandedTheme
         prefs[Keys.IslandFont] = settings.islandFont
         prefs[Keys.EnableNotchMode] = settings.enableNotchMode
+        prefs[Keys.HyperOsIslandStyle] = settings.hyperOsIslandStyle
+        prefs[Keys.HyperOsMessagingExpansion] = settings.hyperOsMessagingExpansion
+        prefs[Keys.HyperOsIslandDesign] = settings.hyperOsIslandDesign
+        prefs[Keys.HyperOsIslandColor] = validColor(settings.hyperOsIslandColor, SmartIslandSettings.Default.hyperOsIslandColor)
         prefs[Keys.CameraCutoutManual] = settings.cameraCutoutManual
         prefs[Keys.CameraCutoutX] = validDimension(settings.cameraCutoutX, SmartIslandSettings.Default.cameraCutoutX, SmartIslandSettings.MIN_X_OFFSET, SmartIslandSettings.MAX_X_OFFSET)
         prefs[Keys.CameraCutoutY] = validDimension(settings.cameraCutoutY, SmartIslandSettings.Default.cameraCutoutY, SmartIslandSettings.MIN_Y_OFFSET, SmartIslandSettings.MAX_Y_OFFSET)

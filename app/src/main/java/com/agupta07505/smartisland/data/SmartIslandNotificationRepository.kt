@@ -32,11 +32,16 @@ class SmartIslandNotificationRepository : INotificationRepository {
 
     override fun postNotification(notification: IslandNotification, autoExpand: Boolean) {
         var isNewNotification = false
+        var isFreshMessagingUpdate = false
         _notifications.update { existingNotifications ->
             val updated = existingNotifications.toMutableList()
             val index = updated.indexOfFirst { it.key == notification.key }
             if (index >= 0) {
                 val existing = updated[index]
+                val isMessagingCard = notification.isMessaging || notification.category == "msg" ||
+                    notification.packageName in com.agupta07505.smartisland.model.NotificationCounts.KNOWN_CHAT_PACKAGES
+                isFreshMessagingUpdate = notification.mode == IslandMode.Notification && isMessagingCard &&
+                    (existing.title != notification.title || existing.text != notification.text)
                 updated[index] = notification.copy(
                     icon = notification.icon ?: existing.icon,
                     largeIcon = notification.largeIcon ?: existing.largeIcon
@@ -47,9 +52,13 @@ class SmartIslandNotificationRepository : INotificationRepository {
             }
             updated.takeLast(MAX_STORED_NOTIFICATIONS)
         }
-        if (autoExpand && isNewNotification) {
+        if (autoExpand && (isNewNotification || isFreshMessagingUpdate)) {
             _autoExpandEvent.tryEmit(notification.key)
         }
+    }
+
+    override fun requestAutoExpand(key: String) {
+        if (_notifications.value.any { it.key == key }) _autoExpandEvent.tryEmit(key)
     }
 
     override fun updateNotification(key: String, transform: (IslandNotification) -> IslandNotification) {

@@ -129,35 +129,35 @@ fun LandscapeSection(
         }
 
         CollapsibleCard(
-            title = "Idle cutout",
+            title = stringResource(R.string.land_idle_cutout_title),
             stateKey = "land_idle",
-            summary = "The small circle shown when nothing is on the island",
+            summary = stringResource(R.string.land_idle_cutout_summary),
             initiallyExpanded = false
         ) {
-            GroupLabel("Position")
+            GroupLabel(stringResource(R.string.land_position))
             ChoiceRow(
                 options = listOf(
-                    SmartIslandSettings.LANDSCAPE_POSITION_AUTO to "Camera",
-                    SmartIslandSettings.LANDSCAPE_POSITION_LEFT to "Left",
-                    SmartIslandSettings.LANDSCAPE_POSITION_MIDDLE to "Middle",
-                    SmartIslandSettings.LANDSCAPE_POSITION_RIGHT to "Right"
+                    SmartIslandSettings.LANDSCAPE_POSITION_AUTO to stringResource(R.string.land_camera),
+                    SmartIslandSettings.LANDSCAPE_POSITION_LEFT to stringResource(R.string.land_left),
+                    SmartIslandSettings.LANDSCAPE_POSITION_MIDDLE to stringResource(R.string.land_center),
+                    SmartIslandSettings.LANDSCAPE_POSITION_RIGHT to stringResource(R.string.land_right)
                 ),
                 selected = settings.landscapeCirclePosition,
                 onSelect = { scope.launch { repository.setLandscapeCirclePosition(it) } }
             )
-            HintText("Camera sits on the camera cutout, or the top corner on the camera's side if none is reported.")
+            HintText(stringResource(R.string.land_idle_position_hint))
 
             GroupDivider()
-            GroupLabel("Size and look")
+            GroupLabel(stringResource(R.string.land_size_and_look))
             SliderSettingItem(
-                label = "Size",
+                label = stringResource(R.string.land_size),
                 value = circleSize,
                 range = SmartIslandSettings.MIN_CIRCLE_SIZE..SmartIslandSettings.MAX_CIRCLE_SIZE,
                 onValueChange = { circleSize = it },
                 onValueChangeFinished = { scope.launch { repository.setLandscapeCircleSize(circleSize) } }
             )
             SliderSettingItem(
-                label = "Opacity",
+                label = stringResource(R.string.land_opacity),
                 value = circleOpacity * 100f,
                 range = (SmartIslandSettings.MIN_CIRCLE_OPACITY * 100f)..(SmartIslandSettings.MAX_OPACITY * 100f),
                 suffix = "%",
@@ -169,9 +169,9 @@ fun LandscapeSection(
             )
 
             GroupDivider()
-            GroupLabel("Fine tuning")
+            GroupLabel(stringResource(R.string.land_fine_tuning))
             SliderSettingItem(
-                label = "Horizontal offset",
+                label = stringResource(R.string.land_horizontal_offset),
                 value = circleXAdjust.coerceIn(-landscapeHalfWidthDp, landscapeHalfWidthDp),
                 range = -landscapeHalfWidthDp..landscapeHalfWidthDp,
                 onValueChange = { circleXAdjust = it },
@@ -180,7 +180,7 @@ fun LandscapeSection(
             if (settings.landscapeCirclePosition == SmartIslandSettings.LANDSCAPE_POSITION_AUTO) {
                 // On the camera the height comes from the cutout itself; this only nudges it.
                 SliderSettingItem(
-                    label = "Vertical fine-tune (from camera)",
+                    label = stringResource(R.string.land_vertical_from_camera),
                     value = circleYAdjust,
                     range = -VERTICAL_TUNE_RANGE_DP..VERTICAL_TUNE_RANGE_DP,
                     onValueChange = { circleYAdjust = it },
@@ -188,7 +188,7 @@ fun LandscapeSection(
                 )
             } else {
                 SliderSettingItem(
-                    label = "Vertical offset",
+                    label = stringResource(R.string.land_vertical_offset),
                     value = circleY,
                     range = SmartIslandSettings.MIN_Y_OFFSET..SmartIslandSettings.MAX_LANDSCAPE_Y_OFFSET,
                     onValueChange = { circleY = it },
@@ -202,22 +202,22 @@ fun LandscapeSection(
                     circleY = (landscapeHeightDp / 2f - circleSize / 2f)
                         .coerceIn(SmartIslandSettings.MIN_Y_OFFSET, SmartIslandSettings.MAX_LANDSCAPE_Y_OFFSET)
                     scope.launch { repository.setLandscapeCircleYOffset(circleY) }
-                }) { Text("Centre on the side edge") }
+                }) { Text(stringResource(R.string.land_center_on_side_edge)) }
             }
         }
 
         CollapsibleCard(
-            title = "Cutout with content",
+            title = stringResource(R.string.land_content_cutout_title),
             stateKey = "land_content",
-            summary = "The bar shown while a notification or event is on the island",
+            summary = stringResource(R.string.land_content_cutout_summary),
             initiallyExpanded = false
         ) {
-            GroupLabel("Position")
+            GroupLabel(stringResource(R.string.land_position))
             ChoiceRow(
                 options = listOf(
-                    SmartIslandSettings.LANDSCAPE_POSITION_LEFT to "Left",
-                    SmartIslandSettings.LANDSCAPE_POSITION_MIDDLE to "Top middle",
-                    SmartIslandSettings.LANDSCAPE_POSITION_RIGHT to "Right"
+                    SmartIslandSettings.LANDSCAPE_POSITION_LEFT to stringResource(R.string.land_left),
+                    SmartIslandSettings.LANDSCAPE_POSITION_MIDDLE to stringResource(R.string.land_top_center),
+                    SmartIslandSettings.LANDSCAPE_POSITION_RIGHT to stringResource(R.string.land_right)
                 ),
                 // An older "camera" choice behaves as top middle.
                 selected = settings.landscapePillPosition.takeIf {
@@ -225,19 +225,19 @@ fun LandscapeSection(
                 } ?: SmartIslandSettings.LANDSCAPE_POSITION_MIDDLE,
                 onSelect = { scope.launch { repository.setLandscapePillPosition(it) } }
             )
-            HintText("In a corner the opened card moves up near the screen edge; in the middle it drops just below the bar.")
+            HintText(stringResource(R.string.land_content_position_hint))
 
             GroupDivider()
-            GroupLabel("Size")
+            GroupLabel(stringResource(R.string.land_size))
             SliderSettingItem(
-                label = "Width",
+                label = stringResource(R.string.land_width),
                 value = pillWidth,
                 range = SmartIslandSettings.MIN_WIDTH..SmartIslandSettings.MAX_WIDTH,
                 onValueChange = { pillWidth = it },
                 onValueChangeFinished = { scope.launch { repository.setLandscapePillGeometry(pillWidth, settings.landscapeHeight, settings.landscapeXOffset, settings.landscapeYOffset) } }
             )
             SliderSettingItem(
-                label = "Height",
+                label = stringResource(R.string.land_height),
                 value = pillHeight,
                 range = SmartIslandSettings.MIN_HEIGHT..SmartIslandSettings.MAX_HEIGHT,
                 onValueChange = { pillHeight = it },
@@ -245,14 +245,14 @@ fun LandscapeSection(
             )
 
             GroupDivider()
-            GroupLabel("Size with a card")
-            HintText("The pill that only carries the idle widgets has the width above. With a card on it, it can stretch wider and shrinks back when the card is put away.")
+            GroupLabel(stringResource(R.string.land_size_with_card))
+            HintText(stringResource(R.string.land_size_with_card_hint))
             Row(
                 modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                Text("Same size as idle cutout", modifier = Modifier.weight(1f), fontWeight = FontWeight.SemiBold)
+                Text(stringResource(R.string.land_same_idle_size), modifier = Modifier.weight(1f), fontWeight = FontWeight.SemiBold)
                 Switch(
                     checked = settings.contentPillSameAsIdleLandscape,
                     onCheckedChange = { scope.launch { repository.setContentPillSameAsIdle(true, it) } }
@@ -260,7 +260,7 @@ fun LandscapeSection(
             }
             if (!settings.contentPillSameAsIdleLandscape) {
                 SliderSettingItem(
-                    label = "Cutout width with content",
+                    label = stringResource(R.string.land_content_width),
                     value = contentPercent,
                     range = SmartIslandSettings.MIN_CONTENT_PILL_PERCENT..SmartIslandSettings.MAX_CONTENT_PILL_PERCENT,
                     suffix = "%",
@@ -271,16 +271,16 @@ fun LandscapeSection(
             }
 
             GroupDivider()
-            GroupLabel("Fine tuning")
+            GroupLabel(stringResource(R.string.land_fine_tuning))
             SliderSettingItem(
-                label = "Horizontal offset",
+                label = stringResource(R.string.land_horizontal_offset),
                 value = pillX.coerceIn(-landscapeHalfWidthDp, landscapeHalfWidthDp),
                 range = -landscapeHalfWidthDp..landscapeHalfWidthDp,
                 onValueChange = { pillX = it },
                 onValueChangeFinished = { scope.launch { repository.setLandscapePillGeometry(settings.landscapeWidth, settings.landscapeHeight, pillX, settings.landscapeYOffset) } }
             )
             SliderSettingItem(
-                label = "Vertical offset",
+                label = stringResource(R.string.land_vertical_offset),
                 value = pillY,
                 range = SmartIslandSettings.MIN_Y_OFFSET..SmartIslandSettings.MAX_LANDSCAPE_Y_OFFSET,
                 onValueChange = { pillY = it },
@@ -293,13 +293,13 @@ fun LandscapeSection(
                     pillY = (landscapeHeightDp / 2f - settings.landscapeHeight / 2f)
                         .coerceIn(SmartIslandSettings.MIN_Y_OFFSET, SmartIslandSettings.MAX_LANDSCAPE_Y_OFFSET)
                     scope.launch { repository.setLandscapePillGeometry(settings.landscapeWidth, settings.landscapeHeight, settings.landscapeXOffset, pillY) }
-                }) { Text("Centre on the side edge") }
+                }) { Text(stringResource(R.string.land_center_on_side_edge)) }
             }
 
             GroupDivider()
-            GroupLabel("Look")
+            GroupLabel(stringResource(R.string.land_look))
             SliderSettingItem(
-                label = "Opacity",
+                label = stringResource(R.string.land_opacity),
                 value = pillOpacity * 100f,
                 range = (SmartIslandSettings.MIN_OPACITY * 100f)..(SmartIslandSettings.MAX_OPACITY * 100f),
                 suffix = "%",
@@ -312,9 +312,9 @@ fun LandscapeSection(
         }
 
         CollapsibleCard(
-            title = "Exempt apps",
+            title = stringResource(R.string.land_exempt_apps_title),
             stateKey = "land_exempt_apps",
-            summary = "Apps that switch the island totally off in landscape",
+            summary = stringResource(R.string.land_exempt_apps_summary),
             initiallyExpanded = false
         ) {
             ExemptAppsCard(settings = settings, repository = repository, landscape = true)

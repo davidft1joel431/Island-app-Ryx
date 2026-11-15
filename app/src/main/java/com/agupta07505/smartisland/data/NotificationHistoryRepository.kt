@@ -17,7 +17,11 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import java.io.InputStream
+import java.io.OutputStream
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -31,6 +35,7 @@ class NotificationHistoryRepository @Inject constructor(
         android.util.Log.e("NotificationHistoryRepo", "Unhandled repository coroutine failure", throwable)
     }
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO + exceptionHandler)
+    private val writeMutex = Mutex()
     private val _history = MutableStateFlow<List<NotificationHistoryEntry>>(emptyList())
     override val history: StateFlow<List<NotificationHistoryEntry>> = _history.asStateFlow()
 
@@ -49,12 +54,29 @@ class NotificationHistoryRepository @Inject constructor(
         dbHelper.getAllEntries(limit = INotificationHistoryRepository.MAX_BACKUP_ENTRIES)
     }
 
+    override suspend fun exportSqliteBackup(output: OutputStream): Int = withContext(Dispatchers.IO) {
+        dbHelper.exportSqliteBackup(output, INotificationHistoryRepository.MAX_SQLITE_BACKUP_ENTRIES)
+    }
+
+    override suspend fun inspectSqliteBackup(input: InputStream): Int? = withContext(Dispatchers.IO) {
+        dbHelper.inspectSqliteBackup(input, restore = false)
+    }
+
+    override suspend fun restoreSqliteBackup(input: InputStream): Int? = withContext(Dispatchers.IO) {
+        val count = dbHelper.inspectSqliteBackup(input, restore = true) ?: return@withContext null
+        reload()
+        count
+    }
+
     override suspend fun saveEntry(entry: NotificationHistoryEntry) = withContext(Dispatchers.IO) {
-        val id = dbHelper.insertEntry(entry)
-        val savedEntry = if (id > 0) entry.copy(id = id) else entry
-        val current = _history.value
-        // Prepend new entry and cap at 1000 items in memory without doing a full table scan
-        _history.value = (listOf(savedEntry) + current).take(1000)
+        writeMutex.withLock {
+            val id = dbHelper.insertEntry(entry)
+            if (id > 0) {
+                val savedEntry = entry.copy(id = id)
+                // Keep enough recent rows for the history screen; older rows remain in SQLite and backups.
+                _history.value = (listOf(savedEntry) + _history.value).take(INotificationHistoryRepository.MAX_VISIBLE_ENTRIES)
+            }
+        }
     }
 
     override suspend fun replaceAll(entries: List<NotificationHistoryEntry>): Boolean = withContext(Dispatchers.IO) {

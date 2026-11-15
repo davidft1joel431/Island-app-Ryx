@@ -101,8 +101,8 @@ data class SmartIslandSettings(
     val allowNetworkChecks: Boolean = true,
     /** Show an estimated transfer card from device-wide network speed when no app notification exists. */
     val detectTransfersBySpeed: Boolean = true,
-    val enableNotificationHistory: Boolean = false,
-    val notificationHistoryRetentionHours: Int = 72,
+    val enableNotificationHistory: Boolean = true,
+    val notificationHistoryRetentionHours: Int = -1,
     val showBluetoothBattery: Boolean = true,
     val enableBatteryMode: Boolean = true,
     val enableNotificationCooldown: Boolean = false,
@@ -147,6 +147,13 @@ data class SmartIslandSettings(
     /** Font for bold and heavier text; empty = the island font. */
     val fontMixMedium: String = "",
     val enableNotchMode: Boolean = false,
+    /** Xiaomi HyperOS-inspired centered camera island for compact system events. */
+    val hyperOsIslandStyle: Boolean = false,
+    /** `capsule` keeps chats compact; `regular` follows the existing full-card expansion rules. */
+    val hyperOsMessagingExpansion: String = "capsule",
+    /** `dark` matches HyperOS; `accent` uses the app's accent color. */
+    val hyperOsIslandDesign: String = "dark",
+    val hyperOsIslandColor: Long = 0xFF6750A4L,
     /** Manual camera cutout area, for phones where the hardware detection fails. Used by the expanded island's close target. */
     val cameraCutoutManual: Boolean = false,
     /** Manual cutout centre, dp from the screen centre. */
@@ -575,6 +582,10 @@ data class SmartIslandSettings(
         settingsObj.put("expandedTheme", expandedTheme)
         settingsObj.put("islandFont", islandFont)
         settingsObj.put("enableNotchMode", enableNotchMode)
+        settingsObj.put("hyperOsIslandStyle", hyperOsIslandStyle)
+        settingsObj.put("hyperOsMessagingExpansion", hyperOsMessagingExpansion)
+        settingsObj.put("hyperOsIslandDesign", hyperOsIslandDesign)
+        settingsObj.put("hyperOsIslandColor", hyperOsIslandColor)
         settingsObj.put("cameraCutoutManual", cameraCutoutManual)
         settingsObj.put("cameraCutoutX", cameraCutoutX.toDouble())
         settingsObj.put("cameraCutoutY", cameraCutoutY.toDouble())
@@ -1049,7 +1060,8 @@ data class SmartIslandSettings(
                 allowNetworkChecks = obj.optBoolean("allowNetworkChecks", defaults.allowNetworkChecks),
                 detectTransfersBySpeed = obj.optBoolean("detectTransfersBySpeed", defaults.detectTransfersBySpeed),
                 enableNotificationHistory = obj.optBoolean("enableNotificationHistory", defaults.enableNotificationHistory),
-                notificationHistoryRetentionHours = obj.optInt("notificationHistoryRetentionHours", defaults.notificationHistoryRetentionHours).coerceIn(1, 720),
+                notificationHistoryRetentionHours = obj.optInt("notificationHistoryRetentionHours", defaults.notificationHistoryRetentionHours)
+                    .let { if (it == -1) -1 else it.coerceIn(1, 8760) },
                 showBluetoothBattery = obj.optBoolean("showBluetoothBattery", defaults.showBluetoothBattery),
                 enableBatteryMode = obj.optBoolean("enableBatteryMode", defaults.enableBatteryMode),
                 enableNotificationCooldown = obj.optBoolean("enableNotificationCooldown", defaults.enableNotificationCooldown),
@@ -1071,6 +1083,10 @@ data class SmartIslandSettings(
                 expandedTheme = obj.optString("expandedTheme", defaults.expandedTheme).takeIf { it in VALID_EXPANDED_THEMES } ?: defaults.expandedTheme,
                 islandFont = obj.optString("islandFont", defaults.islandFont).takeIf { isValidFont(it) } ?: defaults.islandFont,
                 enableNotchMode = obj.optBoolean("enableNotchMode", defaults.enableNotchMode),
+                hyperOsIslandStyle = obj.optBoolean("hyperOsIslandStyle", defaults.hyperOsIslandStyle),
+                hyperOsMessagingExpansion = obj.optString("hyperOsMessagingExpansion", defaults.hyperOsMessagingExpansion).takeIf { it in setOf("capsule", "regular") } ?: defaults.hyperOsMessagingExpansion,
+                hyperOsIslandDesign = obj.optString("hyperOsIslandDesign", defaults.hyperOsIslandDesign).takeIf { it in setOf("dark", "accent") } ?: defaults.hyperOsIslandDesign,
+                hyperOsIslandColor = safeColor("hyperOsIslandColor", defaults.hyperOsIslandColor),
                 cameraCutoutManual = obj.optBoolean("cameraCutoutManual", defaults.cameraCutoutManual),
                 cameraCutoutX = safeFloat("cameraCutoutX", defaults.cameraCutoutX, MIN_X_OFFSET, MAX_X_OFFSET),
                 cameraCutoutY = safeFloat("cameraCutoutY", defaults.cameraCutoutY, MIN_Y_OFFSET, MAX_Y_OFFSET),

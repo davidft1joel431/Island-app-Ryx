@@ -533,6 +533,8 @@ class IslandViewModel(
     )
 
     val expanded = MutableStateFlow(false)
+    // Collectors launched in init read this flow, so it must be initialized before the init block.
+    val appsLauncherOpen = MutableStateFlow(false)
     /**
      * The semi-expanded idle widget island is open (a tap on the idle widget's glyph). The overlay draws it; the
      * service gives the window the whole frame while it is open, so a tap outside can close it.
@@ -920,11 +922,13 @@ class IslandViewModel(
                         val arrivingNow = notifications.value.firstOrNull { it.key == key }
                         if (!(arrivingNow?.mode == IslandMode.IncomingCall && arrivingNow.isCallRinging)) return@collect
                     }
-                    // An island that is already open is never interrupted: the card on screen stays, whatever
-                    // arrives. Only a ringing call takes it over.
+                    // A fresh notification should become visible even when unread cards already exist.
+                    // Keep non-notification activities from interrupting the open card; ringing calls still take over.
                     if (expanded.value) {
                         val arriving = notifications.value.firstOrNull { it.key == key }
-                        if (!(arriving?.mode == IslandMode.IncomingCall && arriving.isCallRinging)) return@collect
+                        val ringingCall = arriving?.mode == IslandMode.IncomingCall && arriving.isCallRinging
+                        val freshNotification = arriving?.mode == IslandMode.Notification && !isInputActive.value
+                        if (!ringingCall && !freshNotification) return@collect
                     }
                     // Look the card up in the list the UI actually shows. The raw list contains cards hidden by event
                     // switches or the foreground app, which would pick the wrong index or open an empty island.
@@ -950,7 +954,16 @@ class IslandViewModel(
                         val cfg = settings.value
                         val event = IslandEvent.forNotification(card)
                         val eventMayAutoExpand = event == null || !event.canSwitchAutoExpand || cfg.isEventAutoExpand(event.id)
-                        if (eventMayAutoExpand &&
+                        val pendingNotificationCount = visible.count { it.mode == IslandMode.Notification }
+                        val hyperOsCompactEvent = cfg.hyperOsIslandStyle &&
+                            (card.mode == IslandMode.Battery || card.mode == IslandMode.Bluetooth ||
+                                card.mode == IslandMode.Flashlight)
+                        val hyperOsCompactMessage = cfg.hyperOsIslandStyle &&
+                            cfg.hyperOsMessagingExpansion == "capsule" && card.mode == IslandMode.Notification &&
+                            pendingNotificationCount <= 1 &&
+                            (card.isMessaging || card.category == "msg" ||
+                                card.packageName in com.agupta07505.smartisland.model.NotificationCounts.KNOWN_CHAT_PACKAGES)
+                        if (!hyperOsCompactEvent && !hyperOsCompactMessage && eventMayAutoExpand &&
                             AppEventRules.mayAutoExpand(
                                 globalAutoExpand = cfg.autoExpandOnNotification,
                                 noAutoExpandPackages = cfg.noAutoExpandPackages,
@@ -971,7 +984,7 @@ class IslandViewModel(
                         }
                         // The island did not open for this card (its event or app may not auto-expand, the shade is
                         // open, ...): the collapsed primary cutout keeps showing the top-priority card.
-                        if (!expanded.value) {
+                        if (!expanded.value && !hyperOsCompactEvent && !hyperOsCompactMessage) {
                             pendingSelectKey = null
                             selectedIndex.value = 0
                         }
@@ -1194,9 +1207,6 @@ class IslandViewModel(
     }
 
     private enum class ResumeState { NONE, GONE, WAIT, READY }
-
-    /** True while the expanded island shows the quick-launch apps grid instead of its cards (the Open Apps shortcut). */
-    val appsLauncherOpen = MutableStateFlow(false)
 
     /** Open Apps shortcut (long press on the collapsed cutout, portrait): expands the island onto the quick-launch grid. */
     fun openAppsLauncher() {
@@ -1473,6 +1483,15 @@ class IslandViewModel(
 
     private fun liveMayTimeOut(n: IslandNotification) =
         !IslandPriority.canIdleOut(n) && n.mode != IslandMode.IncomingCall &&
+            !(settings.value.hyperOsIslandStyle && n.mode in setOf(
+                IslandMode.Hotspot,
+                IslandMode.Battery,
+                IslandMode.Flashlight,
+                IslandMode.ScreenRecording,
+                IslandMode.AudioRecording,
+                IslandMode.Timer,
+                IslandMode.Stopwatch
+            )) &&
             // Navigation stays until the trip ends or the user puts it away; it never times out by itself.
             n.mode != IslandMode.Navigation &&
             // Portrait: a live activity stays until it ends or the user puts it away (tap on the idle cutout).

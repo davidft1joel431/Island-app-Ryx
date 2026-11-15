@@ -18,6 +18,7 @@ interface INotificationRepository {
     val commands: SharedFlow<SmartIslandCommand>
 
     fun postNotification(notification: IslandNotification, autoExpand: Boolean = false)
+    fun requestAutoExpand(key: String) {}
 
     /**
      * Changes one stored card in place (never adds one, never auto-expands). Used for live fields that change faster

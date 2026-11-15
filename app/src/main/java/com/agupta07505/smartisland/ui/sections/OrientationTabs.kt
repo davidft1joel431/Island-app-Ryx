@@ -24,14 +24,16 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.res.stringResource
+import com.agupta07505.smartisland.R
 
 /** Which orientation profile the Home and Position tabs are editing. */
-enum class OrientationTab(val label: String) {
-    Portrait("Portrait"),
-    Landscape("Landscape")
+enum class OrientationTab {
+    Portrait,
+    Landscape
 }
 
-/** Segmented Portrait / Landscape switch shown at the top of the Home and Position tabs. */
+/** Segmented orientation selector used inside Design > Positions. */
 @Composable
 fun OrientationTabs(
     selected: OrientationTab,
@@ -58,7 +60,10 @@ fun OrientationTabs(
                 contentAlignment = Alignment.Center
             ) {
                 Text(
-                    text = tab.label,
+                    text = stringResource(
+                        if (tab == OrientationTab.Portrait) R.string.orientation_portrait
+                        else R.string.orientation_landscape
+                    ),
                     style = MaterialTheme.typography.labelLarge,
                     fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
                     color = if (isSelected) MaterialTheme.colorScheme.onSurface

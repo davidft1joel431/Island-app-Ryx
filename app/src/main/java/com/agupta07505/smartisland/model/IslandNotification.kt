@@ -21,6 +21,8 @@ data class IslandNotification(
     val largeIcon: Bitmap? = null,
     val actionIntents: List<IslandNotificationAction> = emptyList(),
     val category: String? = null,
+    /** Android identified this card as a messaging conversation (including MessagingStyle without category). */
+    val isMessaging: Boolean = false,
     val progress: Int = 0,
     val progressMax: Int = 0,
     val mediaPositionMs: Long? = null,

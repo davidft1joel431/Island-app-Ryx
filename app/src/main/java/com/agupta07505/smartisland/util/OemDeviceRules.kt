@@ -209,7 +209,8 @@ object OemDeviceRules {
 
     private val HOTSPOT_KEYWORDS = listOf(
         "hotspot", "tethering", "portable hotspot", "mobile hotspot",
-        "wifi hotspot", "usb tethering", "bluetooth tethering"
+        "wifi hotspot", "usb tethering", "bluetooth tethering", "zona wi-fi", "zona wifi",
+        "punto de acceso", "compartir internet", "anclaje a red", "anclaje de red"
     )
 
     fun detectCurrentDevice(): OemDeviceType {

@@ -34,14 +34,18 @@ import androidx.compose.material.icons.rounded.FitScreen
 import androidx.compose.material.icons.rounded.Smartphone
 import com.agupta07505.smartisland.ui.glass.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import com.agupta07505.smartisland.ui.glass.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
@@ -198,10 +202,94 @@ fun PositionsSection(
             }
         }
 
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(14.dp))
+                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f))
+                .padding(horizontal = 14.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                Text(stringResource(R.string.hyperos_island_style_title), style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+                Text(stringResource(R.string.hyperos_island_style_desc), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            Switch(
+                checked = settings.hyperOsIslandStyle,
+                onCheckedChange = { enabled -> scope.launch { repository.setHyperOsIslandStyle(enabled) } }
+            )
+        }
+
+        if (settings.hyperOsIslandStyle) {
+            var designMenuExpanded by remember { mutableStateOf(false) }
+            var showHyperOsColorPicker by remember { mutableStateOf(false) }
+            CollapsibleCard(
+                title = stringResource(R.string.hyperos_options_title),
+                stateKey = "hyperos_expansion_design",
+                summary = stringResource(R.string.hyperos_options_summary),
+                initiallyExpanded = false,
+                framed = false
+            ) {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text(stringResource(R.string.hyperos_messaging_expansion_title), style = MaterialTheme.typography.labelLarge)
+                    Text(stringResource(R.string.hyperos_messaging_expansion_capsule), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(stringResource(R.string.hyperos_design_title), style = MaterialTheme.typography.labelLarge)
+                    Box {
+                        OutlinedButton(onClick = { designMenuExpanded = true }) {
+                            Text(stringResource(if (settings.hyperOsIslandDesign == "accent") R.string.hyperos_design_accent else R.string.hyperos_design_dark))
+                        }
+                        DropdownMenu(expanded = designMenuExpanded, onDismissRequest = { designMenuExpanded = false }) {
+                            DropdownMenuItem(
+                                text = { Text(stringResource(R.string.hyperos_design_dark)) },
+                                onClick = {
+                                    designMenuExpanded = false
+                                    scope.launch { repository.setHyperOsIslandDesign("dark") }
+                                }
+                            )
+                            DropdownMenuItem(
+                                text = { Text(stringResource(R.string.hyperos_design_accent)) },
+                                onClick = {
+                                    designMenuExpanded = false
+                                    scope.launch { repository.setHyperOsIslandDesign("accent") }
+                                }
+                            )
+                        }
+                    }
+                    Text(stringResource(R.string.hyperos_color_title), style = MaterialTheme.typography.labelLarge)
+                    ColorPresetRow(
+                        selectedColor = settings.hyperOsIslandColor,
+                        swatches = listOf(
+                            0xFF6750A4L to "Violet", 0xFF1687FFL to "Blue", 0xFF00A884L to "Green",
+                            0xFFFF7A18L to "Orange", 0xFFE83E8CL to "Pink", 0xFF00BCD4L to "Cyan",
+                            0xFFE53935L to "Red", 0xFFFFD54FL to "Yellow"
+                        ),
+                        onColorSelected = { color -> scope.launch {
+                            repository.setHyperOsIslandColor(color)
+                            repository.setHyperOsIslandDesign("accent")
+                        } },
+                        onCustomClicked = { showHyperOsColorPicker = true }
+                    )
+                }
+            }
+            if (showHyperOsColorPicker) RgbColorPickerDialog(
+                title = stringResource(R.string.hyperos_color_title),
+                initialColor = settings.hyperOsIslandColor,
+                onDismiss = { showHyperOsColorPicker = false },
+                onSave = { color ->
+                    showHyperOsColorPicker = false
+                    scope.launch {
+                        repository.setHyperOsIslandColor(color)
+                        repository.setHyperOsIslandDesign("accent")
+                    }
+                }
+            )
+        }
+
         CollapsibleCard(
-            title = "Quick presets",
+            title = stringResource(R.string.position_quick_presets),
             stateKey = "pos_presets_${if (settings.enableNotchMode) "notch" else "pill"}",
-            summary = "One-tap layouts for common camera cutouts",
+            summary = stringResource(R.string.position_quick_presets_desc),
             initiallyExpanded = false,
             framed = false
         ) {
@@ -402,18 +490,18 @@ fun PositionsSection(
         }
 
         CollapsibleCard(
-            title = "Exempt apps",
+            title = stringResource(R.string.position_exempt_apps),
             stateKey = "pos_exempt_apps",
-            summary = "Apps that switch the island totally off in portrait",
+            summary = stringResource(R.string.position_exempt_apps_desc),
             initiallyExpanded = false
         ) {
             ExemptAppsCard(settings = settings, repository = repository, landscape = false)
         }
 
         CollapsibleCard(
-            title = "Size and position",
+            title = stringResource(R.string.precision_tuning_title),
             stateKey = "pos_tuning_${if (settings.enableNotchMode) "notch" else "pill"}",
-            summary = "Width, height, offsets and corner radius",
+            summary = stringResource(R.string.precision_tuning_desc),
             initiallyExpanded = false,
             framed = false
         ) {
@@ -641,9 +729,9 @@ fun PositionsSection(
         }
 
         CollapsibleCard(
-            title = "Shadow",
+            title = stringResource(R.string.slider_shadow_elevation),
             stateKey = "pos_look_${if (settings.enableNotchMode) "notch" else "pill"}",
-            summary = "Drop shadow under the island (opacity and colour are in Colors)",
+            summary = stringResource(R.string.position_shadow_desc),
             initiallyExpanded = false,
             framed = false
         ) {

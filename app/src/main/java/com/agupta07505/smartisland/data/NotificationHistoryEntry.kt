@@ -24,7 +24,9 @@ data class NotificationHistoryEntry(
     val mode: String = "Notification",
     val actionTitles: List<String> = emptyList(),
     val wasOpened: Boolean = false,
-    val wasDismissed: Boolean = false
+    val wasDismissed: Boolean = false,
+    val wasSilent: Boolean = false,
+    val hasVibration: Boolean = false
 ) {
     fun toBackupJson(): JSONObject = JSONObject().apply {
         put("notificationKey", notificationKey)
@@ -40,6 +42,8 @@ data class NotificationHistoryEntry(
         put("actionTitles", JSONArray(actionTitles))
         put("wasOpened", wasOpened)
         put("wasDismissed", wasDismissed)
+        put("wasSilent", wasSilent)
+        put("hasVibration", hasVibration)
     }
 
     companion object {
@@ -64,7 +68,9 @@ data class NotificationHistoryEntry(
                 mode = json.optString("mode", "Notification").take(128),
                 actionTitles = actions,
                 wasOpened = json.optBoolean("wasOpened", false),
-                wasDismissed = json.optBoolean("wasDismissed", false)
+                wasDismissed = json.optBoolean("wasDismissed", false),
+                wasSilent = json.optBoolean("wasSilent", false),
+                hasVibration = json.optBoolean("hasVibration", false)
             )
         }
     }

@@ -75,34 +75,39 @@ import androidx.compose.runtime.setValue
 @Composable
 fun DemoSection(
     settings: SmartIslandSettings,
-    notificationRepository: INotificationRepository?
+    notificationRepository: INotificationRepository?,
+    selectedGroup: String?,
+    onSelectedGroupChange: (String?) -> Unit
 ) {
     val context = LocalContext.current
     var openExpanded by rememberSaveable { mutableStateOf(true) }
-    var selectedGroup by rememberSaveable { mutableStateOf<String?>(null) }
     val noCards = remember { MutableStateFlow<List<IslandNotification>>(emptyList()) }
     val cards by (notificationRepository?.notifications ?: noCards).collectAsState()
     val showingKeys = cards.filter { DemoEvents.isDemoKey(it.key) }.map { it.key }.toSet()
     val swipeThreshold = with(LocalDensity.current) { 72.dp.toPx() }
     val groupNames = remember { DemoEvents.available.map { it.group }.distinct() }
-    BackHandler(enabled = selectedGroup != null) { selectedGroup = null }
+    BackHandler(enabled = selectedGroup != null) { onSelectedGroupChange(null) }
 
     Column(
         modifier = Modifier.pointerInput(selectedGroup) {
-            var drag = 0f
-            detectHorizontalDragGestures(
-                onDragStart = { drag = 0f },
-                onHorizontalDrag = { _, delta -> drag += delta },
-                onDragEnd = {
-                    if (abs(drag) >= swipeThreshold) {
-                        if (drag > 0f) selectedGroup = null
-                        else if (selectedGroup != null) {
-                            val next = groupNames.indexOf(selectedGroup) + 1
-                            selectedGroup = groupNames.getOrNull(next)
+            // Let the root pager handle swipes on the category grid. This child only
+            // owns horizontal gestures while a category page is actually open.
+            if (selectedGroup != null) {
+                var drag = 0f
+                detectHorizontalDragGestures(
+                    onDragStart = { drag = 0f },
+                    onHorizontalDrag = { _, delta -> drag += delta },
+                    onDragEnd = {
+                        if (abs(drag) >= swipeThreshold) {
+                            if (drag > 0f) onSelectedGroupChange(null)
+                            else {
+                                val next = groupNames.indexOf(selectedGroup) + 1
+                                groupNames.getOrNull(next)?.let(onSelectedGroupChange)
+                            }
                         }
                     }
-                }
-            )
+                )
+            }
         },
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
@@ -177,7 +182,7 @@ fun DemoSection(
                                 "Connectivity" -> Color(0xFF0EA5E9)
                                 else -> Color(0xFF8B5CF6)
                             },
-                            onClick = { selectedGroup = group }
+                            onClick = { onSelectedGroupChange(group) }
                         )
                     }
                     if (rowGroups.size == 1) Spacer(Modifier.weight(1f))
@@ -202,7 +207,7 @@ fun DemoSection(
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    IconButton(onClick = { selectedGroup = null }) {
+                    IconButton(onClick = { onSelectedGroupChange(null) }) {
                         Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = stringResource(R.string.design_back), tint = MaterialTheme.colorScheme.primary)
                     }
                     Column(Modifier.weight(1f)) {

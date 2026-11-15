@@ -41,6 +41,8 @@ class SystemEventReceiver(
     private var activeBluetoothAddress: String? = null
     private var lastBluetoothAddress: String? = null
     private var lastBluetoothConnectedTime: Long = 0L
+    private var hotspotStateKnown = false
+    private var hotspotWasActive = false
 
     private fun mayExpand(event: IslandEvent, wantsExpand: Boolean): Boolean =
         wantsExpand && !NotificationCooldownManager.shouldThrottleSystemEvent(event.id, settingsProvider())
@@ -58,6 +60,12 @@ class SystemEventReceiver(
     }
 
     companion object {
+        const val WIFI_AP_STATE_CHANGED = "android.net.wifi.WIFI_AP_STATE_CHANGED"
+        private const val WIFI_AP_STATE_EXTRA = "wifi_state"
+        private const val WIFI_AP_STATE_DISABLED = 11
+        private const val WIFI_AP_STATE_ENABLED = 13
+        private const val WIFI_AP_STATE_FAILED = 14
+        private const val SYSTEM_HOTSPOT_KEY = "system_hotspot_state"
         private const val BLUETOOTH_DEBOUNCE_MS = 30_000L
         private const val EXPANDED_RECHECK_MS = 500L
         private const val UNPLUGGED_DISPLAY_MS = com.agupta07505.smartisland.util.IslandTimings.UNPLUGGED_CARD_MS
@@ -67,6 +75,39 @@ class SystemEventReceiver(
     override fun onReceive(context: Context, intent: Intent) {
         runCatchingLogged("SystemEventReceiver", "Broadcast callback failed") {
             when (intent.action) {
+                WIFI_AP_STATE_CHANGED -> {
+                    val hotspotState = intent.getIntExtra(WIFI_AP_STATE_EXTRA, WIFI_AP_STATE_FAILED)
+                    android.util.Log.i("SystemEventReceiver", "Hotspot system state broadcast: $hotspotState")
+                    when (hotspotState) {
+                        WIFI_AP_STATE_ENABLED -> {
+                            val becameActive = !hotspotStateKnown || !hotspotWasActive
+                            hotspotStateKnown = true
+                            hotspotWasActive = true
+                            val existing = notificationRepository.notifications.value.lastOrNull { it.mode == IslandMode.Hotspot }
+                            if (existing != null) {
+                                if (becameActive) notificationRepository.requestAutoExpand(existing.key)
+                            } else {
+                                notificationRepository.postNotification(
+                                    IslandNotification(
+                                        key = SYSTEM_HOTSPOT_KEY,
+                                        packageName = "android",
+                                        appName = "Android",
+                                        title = "Mobile hotspot",
+                                        text = "Hotspot active",
+                                        mode = IslandMode.Hotspot,
+                                        timeMillis = System.currentTimeMillis()
+                                    ),
+                                    autoExpand = mayExpand(IslandEvent.HOTSPOT, becameActive)
+                                )
+                            }
+                        }
+                        WIFI_AP_STATE_DISABLED, WIFI_AP_STATE_FAILED -> {
+                            hotspotStateKnown = true
+                            hotspotWasActive = false
+                            notificationRepository.removeNotification(SYSTEM_HOTSPOT_KEY)
+                        }
+                    }
+                }
                 BluetoothDevice.ACTION_ACL_CONNECTED -> {
                     val device = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                         intent.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE, BluetoothDevice::class.java)

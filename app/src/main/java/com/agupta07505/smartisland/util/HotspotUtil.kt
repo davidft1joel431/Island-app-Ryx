@@ -30,11 +30,13 @@ object HotspotUtil {
             val wifi = context.applicationContext.getSystemService(Context.WIFI_SERVICE) as android.net.wifi.WifiManager
             android.net.wifi.WifiManager::class.java.getMethod("isWifiApEnabled").invoke(wifi) as Boolean
         }.getOrNull()
-        if (byFlag != null) return byFlag
-        return runCatching {
+        val notificationSaysOn = runCatching {
             com.agupta07505.smartisland.di.SmartIslandRepositories.notificationRepository(context).notifications.value
                 .any { it.mode == com.agupta07505.smartisland.model.IslandMode.Hotspot }
         }.getOrDefault(false)
+        // isWifiApEnabled is hidden and can return a stale false on OEM builds. Keep a recognized
+        // active tethering notification as a fallback when that happens.
+        return byFlag == true || notificationSaysOn
     }
 
     /** Blocking: call it off the main thread. */
@@ -45,22 +47,21 @@ object HotspotUtil {
 
     fun parseDeviceCount(title: String?, text: String?): Int {
         val fullText = "${title.orEmpty()} ${text.orEmpty()}"
-        val lower = fullText.lowercase()
 
-        if (lower.contains("no device") || lower.contains("0 device") || lower.contains("no connected") || lower.contains("0 connected")) {
+        if (Regex("(?i)\\b(no|0|ning[uú]n|ninguna|aucun|keine|nessun|nenhum)\\b.*\\b(device|dispositiv|client|connected|conectad|verbund|conness)\\w*\\b").containsMatchIn(fullText)) {
             return 0
         }
 
-        // Pattern 1: "1 device", "2 devices", "1 connected", "2 clients"
-        val pattern1 = Regex("""\b(\d+)\s*(?:device|connected|client)s?\b""", RegexOption.IGNORE_CASE)
+        // Hotspot notifications are localized by each system image, including Xiaomi's Spanish ROMs.
+        val pattern1 = Regex("""(?i)\b(\d+)\s*(?:devices?|dispositivos?|dispositif(?:s)?|ger[aä]te|clients?|clientes?|conectados?)\b""")
         pattern1.find(fullText)?.groupValues?.get(1)?.toIntOrNull()?.let { return it }
 
         // Pattern 2: "devices: 1", "connected: 2", "clients: 0"
-        val pattern2 = Regex("""\b(?:devices?|connected|clients?)\s*[:=]?\s*(\d+)\b""", RegexOption.IGNORE_CASE)
+        val pattern2 = Regex("""(?i)\b(?:devices?|dispositivos?|dispositif(?:s)?|ger[aä]te|clients?|clientes?|connected|conectados?)\s*[:=]?\s*(\d+)\b""")
         pattern2.find(fullText)?.groupValues?.get(1)?.toIntOrNull()?.let { return it }
 
         // Pattern 3: "1 connected device"
-        val pattern3 = Regex("""\b(\d+)\s+connected\s+devices?\b""", RegexOption.IGNORE_CASE)
+        val pattern3 = Regex("""(?i)\b(\d+)\s+(?:connected\s+)?(?:devices?|dispositivos?|dispositif(?:s)?|ger[aä]te|clients?|clientes?)\b""")
         pattern3.find(fullText)?.groupValues?.get(1)?.toIntOrNull()?.let { return it }
 
         return 0
