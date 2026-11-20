@@ -526,6 +526,7 @@ class IslandViewModel(
     ) { raw, state, cards, widgetPill ->
         // The landscape widget pill keeps the collapsed pill's geometry while no card is on the island.
         raw.forOrientation(state, hasContent = pillOnIsland(cards.isNotEmpty(), widgetPill), hasCards = cards.isNotEmpty())
+            .copy(enabled = raw.enabled && !raw.historyOnlyMode)
     }.stateIn(
         scope = viewModelScope,
         started = SharingStarted.Eagerly,
@@ -963,7 +964,11 @@ class IslandViewModel(
                             pendingNotificationCount <= 1 &&
                             (card.isMessaging || card.category == "msg" ||
                                 card.packageName in com.agupta07505.smartisland.model.NotificationCounts.KNOWN_CHAT_PACKAGES)
-                        if (!hyperOsCompactEvent && !hyperOsCompactMessage && eventMayAutoExpand &&
+                        // HyperOS expands the island capsule for Activity and Power events. Keep the
+                        // card itself collapsed; Hotspot is the one Connectivity event with this behavior.
+                        val hyperOsIslandActivity = cfg.hyperOsIslandStyle &&
+                            (event?.group == "Activities" || event?.group == "Power" || card.mode == IslandMode.Hotspot)
+                        if (!hyperOsIslandActivity && !hyperOsCompactEvent && !hyperOsCompactMessage && eventMayAutoExpand &&
                             AppEventRules.mayAutoExpand(
                                 globalAutoExpand = cfg.autoExpandOnNotification,
                                 noAutoExpandPackages = cfg.noAutoExpandPackages,
@@ -984,7 +989,7 @@ class IslandViewModel(
                         }
                         // The island did not open for this card (its event or app may not auto-expand, the shade is
                         // open, ...): the collapsed primary cutout keeps showing the top-priority card.
-                        if (!expanded.value && !hyperOsCompactEvent && !hyperOsCompactMessage) {
+                        if (!expanded.value && !hyperOsIslandActivity && !hyperOsCompactEvent && !hyperOsCompactMessage) {
                             pendingSelectKey = null
                             selectedIndex.value = 0
                         }
@@ -1483,15 +1488,8 @@ class IslandViewModel(
 
     private fun liveMayTimeOut(n: IslandNotification) =
         !IslandPriority.canIdleOut(n) && n.mode != IslandMode.IncomingCall &&
-            !(settings.value.hyperOsIslandStyle && n.mode in setOf(
-                IslandMode.Hotspot,
-                IslandMode.Battery,
-                IslandMode.Flashlight,
-                IslandMode.ScreenRecording,
-                IslandMode.AudioRecording,
-                IslandMode.Timer,
-                IslandMode.Stopwatch
-            )) &&
+            !(settings.value.hyperOsIslandStyle &&
+                (IslandEvent.forNotification(n)?.group in setOf("Activities", "Power") || n.mode == IslandMode.Hotspot)) &&
             // Navigation stays until the trip ends or the user puts it away; it never times out by itself.
             n.mode != IslandMode.Navigation &&
             // Portrait: a live activity stays until it ends or the user puts it away (tap on the idle cutout).

@@ -46,6 +46,7 @@ import android.service.notification.StatusBarNotification
 import androidx.core.graphics.drawable.toBitmap
 import com.agupta07505.smartisland.data.INotificationHistoryRepository
 import com.agupta07505.smartisland.data.INotificationRepository
+import com.agupta07505.smartisland.data.NotificationCaptureStatus
 import com.agupta07505.smartisland.data.NotificationHistoryEntry
 import com.agupta07505.smartisland.data.SmartIslandCommand
 import com.agupta07505.smartisland.data.SmartIslandSettings
@@ -113,6 +114,7 @@ class SmartIslandNotificationListenerService : NotificationListenerService() {
         serviceScope.launch {
             runSuspendCatchingLogged(TAG, "Settings collector failed") {
                 var wasEnabled: Boolean? = null
+                var wasHistoryOnly: Boolean? = null
                 repository.settings.collect { settings ->
                     currentSettings = settings
                     // The island was switched on while the listener is already connected (it connects as soon as access is granted,
@@ -125,9 +127,15 @@ class SmartIslandNotificationListenerService : NotificationListenerService() {
                         }
                     }
                     wasEnabled = settings.enabled
+                    if (settings.historyOnlyMode && wasHistoryOnly != true && settings.enableNotificationHistory) {
+                        serviceScope.launch {
+                            activeNotifications.orEmpty().forEach { recordNotificationHistory(it, currentRanking) }
+                        }
+                    }
+                    wasHistoryOnly = settings.historyOnlyMode
                     com.agupta07505.smartisland.util.AppLogRecorder.applySetting(applicationContext, settings.recordLogs)
                     logRelevantSettings(settings)
-                    if (!settings.enabled || !settings.hideFromNotificationShade) {
+                    if (!settings.enabled || settings.historyOnlyMode || !settings.hideFromNotificationShade) {
                         suppressedKeys.clear()
                     } else {
                         cleanupSuppressedKeys()
@@ -405,6 +413,7 @@ class SmartIslandNotificationListenerService : NotificationListenerService() {
 
     override fun onDestroy() {
         com.agupta07505.smartisland.util.AppLogRecorder.w("ListenerLifecycle", "onDestroy: notification listener service destroyed (pid=${android.os.Process.myPid()})")
+        NotificationCaptureStatus.onListenerDisconnected()
         runCatching { unregisterReceiver(viewButtonReceiver) }
         com.agupta07505.smartisland.util.NotificationViewInspector.forgetAll()
         recordingWatchdog?.cancel()
@@ -507,11 +516,12 @@ class SmartIslandNotificationListenerService : NotificationListenerService() {
 
     /** Persist the raw notification event before island-only filters can discard silent or system notifications. */
     private fun recordNotificationHistory(sbn: StatusBarNotification, rankingMap: RankingMap? = null) {
-        if (!currentSettings.enableNotificationHistory) return
+        if (sbn.packageName == packageName) return
         serviceScope.launch {
             runSuspendCatchingLogged(TAG, "Failed to record notification history") {
                 val settings = repository.settings.first()
                 if (!settings.enableNotificationHistory || sbn.packageName == packageName) return@runSuspendCatchingLogged
+                NotificationCaptureStatus.onNotificationObserved(applicationContext)
 
                 val notification = sbn.notification
                 val extras = notification.extras
@@ -597,7 +607,7 @@ class SmartIslandNotificationListenerService : NotificationListenerService() {
             !com.agupta07505.smartisland.util.NotificationFilter.isCallNotification(notification)
         if (isGroupSummary) {
             if (currentSettings.enabled &&
-                currentSettings.hideFromNotificationShade &&
+                !currentSettings.historyOnlyMode && currentSettings.hideFromNotificationShade &&
                 sbn.packageName !in currentSettings.disabledNotificationPackages &&
                 com.agupta07505.smartisland.util.NotificationFilter.isThirdPartyApp(
                     sbn.packageName,
@@ -627,7 +637,7 @@ class SmartIslandNotificationListenerService : NotificationListenerService() {
         // there.
         try {
             if (currentSettings.enabled &&
-                currentSettings.hideFromNotificationShade &&
+                !currentSettings.historyOnlyMode && currentSettings.hideFromNotificationShade &&
                 !shouldSuppressFromIsland(sbn, rankingMap)
             ) {
                 val modeQuick = notification.toIslandMode(
@@ -665,7 +675,7 @@ class SmartIslandNotificationListenerService : NotificationListenerService() {
 
                 val settings = repository.settings.first()
                 currentSettings = settings
-                if (!settings.enabled) {
+                if (!settings.enabled || settings.historyOnlyMode) {
                     traceStage(sbn, "DROPPED", "stage=async-settings reason=island-disabled")
                     return@runSuspendCatchingLogged
                 }
@@ -796,6 +806,7 @@ class SmartIslandNotificationListenerService : NotificationListenerService() {
     override fun onListenerConnected() {
         super.onListenerConnected()
         isSystemConnected = true
+        NotificationCaptureStatus.onListenerConnected(applicationContext)
         scheduleCountRefresh()
         com.agupta07505.smartisland.util.AppLogRecorder.i(
             "ListenerLifecycle",
@@ -819,8 +830,26 @@ class SmartIslandNotificationListenerService : NotificationListenerService() {
     private suspend fun initialShadeSync(trigger: String, onlyMissing: Boolean) {
         val settings = repository.settings.first()
         currentSettings = settings
-        if (!settings.enabled) {
+        val activeSnapshot = runCatchingLogged(TAG, "Failed to get active notifications for history sync") {
+            activeNotifications?.toList()
+        }.orEmpty()
+        if (settings.enableNotificationHistory) {
+            // Reconcile every active notification before applying island filters. This backfills
+            // silent and vibrating notices that arrived while Android had unbound the listener.
+            activeSnapshot
+                .filter { it.packageName != packageName }
+                .forEach { recordNotificationHistory(it, currentRanking) }
+        }
+        if (!settings.enabled && !settings.historyOnlyMode) {
             com.agupta07505.smartisland.util.AppLogRecorder.i("ListenerLifecycle", "initial sync ($trigger) skipped: the island is switched off")
+            return
+        }
+
+        if (settings.historyOnlyMode) {
+            com.agupta07505.smartisland.util.AppLogRecorder.i(
+                "ListenerLifecycle",
+                "history-only sync ($trigger): reconciled ${activeSnapshot.size} active notifications; system shade left untouched"
+            )
             return
         }
 
@@ -830,12 +859,11 @@ class SmartIslandNotificationListenerService : NotificationListenerService() {
             "initial sync ($trigger): overlayReady=$overlayReady (accessibilityService=${isAccessibilityServiceEnabled()}, canDrawOverlays=${Settings.canDrawOverlays(this@SmartIslandNotificationListenerService)})" +
                 " shadeCount=${runCatching { activeNotifications?.size }.getOrNull()}"
         )
-        val active = runCatchingLogged(TAG, "Failed to get active notifications") {
-            activeNotifications?.toList()
-        }?.filter { it.packageName != packageName }
-            ?.filterNot { shouldSuppressFromIsland(it) }
-            ?.filter { !onlyMissing || it.key !in notificationRepository.notifications.value.mapTo(HashSet()) { n -> n.key } }
-            ?.sortedBy { it.postTime }
+        val active = activeSnapshot
+            .filter { it.packageName != packageName }
+            .filterNot { shouldSuppressFromIsland(it) }
+            .filter { !onlyMissing || it.key !in notificationRepository.notifications.value.mapTo(HashSet()) { n -> n.key } }
+            .sortedBy { it.postTime }
             .orEmpty()
 
         android.util.Log.d(TAG, "initial sync ($trigger): ${active.size} active, overlayReady=$overlayReady")
@@ -853,7 +881,7 @@ class SmartIslandNotificationListenerService : NotificationListenerService() {
             if (!isPersistentIslandMode(mode) && !isLoudNotification) {
                 return@forEach
             }
-            if (settings.hideFromNotificationShade &&
+            if (!settings.historyOnlyMode && settings.hideFromNotificationShade &&
                 shouldHideFromShade(sbn.notification, mode, sbn.packageName)
             ) {
                 suppressSystemNotification(sbn.key)
@@ -912,6 +940,7 @@ class SmartIslandNotificationListenerService : NotificationListenerService() {
 
     override fun onListenerDisconnected() {
         isSystemConnected = false
+        NotificationCaptureStatus.onListenerDisconnected()
         com.agupta07505.smartisland.util.NotificationCountTracker.clear()
         mediaWatcher?.stop()
         mediaWatcher = null
@@ -1103,7 +1132,7 @@ class SmartIslandNotificationListenerService : NotificationListenerService() {
 
         val shouldIslandOnly = shouldBeIslandOnly(notification, mode)
 
-        val removedFromShade = settings.hideFromNotificationShade &&
+        val removedFromShade = !settings.historyOnlyMode && settings.hideFromNotificationShade &&
             shouldIslandOnly &&
             !shouldLetAndroidHandleNotificationSound(sbn, mode) &&
             shouldHideFromShade(notification, mode, sbn.packageName)
@@ -1971,12 +2000,27 @@ class SmartIslandNotificationListenerService : NotificationListenerService() {
      */
     internal fun isSilentNotification(sbn: StatusBarNotification, rankingMap: RankingMap? = null): Boolean {
         val rMap = rankingMap ?: runCatchingLogged(TAG, "Failed to get current ranking") { currentRanking }
-            ?: return false
         val ranking = Ranking()
-        if (!rMap.getRanking(sbn.key, ranking)) return false
-        val importance = ranking.importance
-        return importance != NotificationManager.IMPORTANCE_UNSPECIFIED &&
-            importance < NotificationManager.IMPORTANCE_DEFAULT
+        if (rMap?.getRanking(sbn.key, ranking) == true &&
+            ranking.importance != NotificationManager.IMPORTANCE_UNSPECIFIED
+        ) {
+            return ranking.importance < NotificationManager.IMPORTANCE_DEFAULT
+        }
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val channel = runCatching {
+                (getSystemService(android.content.Context.NOTIFICATION_SERVICE) as? NotificationManager)
+                    ?.getNotificationChannel(sbn.notification.channelId)
+            }.getOrNull()
+            if (channel != null) {
+                return channel.importance < NotificationManager.IMPORTANCE_DEFAULT ||
+                    channel.sound == null || channel.sound == Uri.EMPTY
+            }
+        }
+
+        @Suppress("DEPRECATION")
+        return sbn.notification.priority < Notification.PRIORITY_DEFAULT ||
+            isNotificationSoundUnavailable(sbn)
     }
 
     private fun isNotificationSoundUnavailable(sbn: StatusBarNotification): Boolean {
@@ -2174,7 +2218,7 @@ class SmartIslandNotificationListenerService : NotificationListenerService() {
     }
 
     private fun suppressSystemNotification(key: String) {
-        if (!currentSettings.enabled || !currentSettings.hideFromNotificationShade) return
+        if (!currentSettings.enabled || currentSettings.historyOnlyMode || !currentSettings.hideFromNotificationShade) return
         val activeSbn = runCatchingLogged(TAG, "Failed to get active notifications for key lookup") {
             activeNotifications.find { it.key == key }
         }
@@ -2200,7 +2244,7 @@ class SmartIslandNotificationListenerService : NotificationListenerService() {
             runSuspendCatchingLogged(TAG, "Notification suppression retries failed") {
                 repeat(3) { attempt ->
                     delay(100L * (attempt + 1)) // 100, 200, 300ms
-                    if (!currentSettings.enabled ||
+                    if (!currentSettings.enabled || currentSettings.historyOnlyMode ||
                         !currentSettings.hideFromNotificationShade
                     ) {
                         clearSuppressed(key)

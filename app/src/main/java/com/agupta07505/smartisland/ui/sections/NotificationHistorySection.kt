@@ -106,12 +106,15 @@ import androidx.core.graphics.drawable.toBitmap
 import androidx.compose.ui.res.stringResource
 import com.agupta07505.smartisland.R
 import com.agupta07505.smartisland.data.INotificationHistoryRepository
+import com.agupta07505.smartisland.data.NotificationCaptureStatus
 import com.agupta07505.smartisland.data.NotificationHistoryEntry
+import com.agupta07505.smartisland.data.NotificationHistoryRestoreResult
 import com.agupta07505.smartisland.data.SmartIslandSettings
 import com.agupta07505.smartisland.data.SmartIslandSettingsRepository
 import com.agupta07505.smartisland.di.SmartIslandRepositories
 import com.agupta07505.smartisland.util.runCatchingLogged
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
@@ -166,6 +169,33 @@ private data class PendingHistoryRestore(
     val sqliteFile: java.io.File? = null
 )
 
+private suspend fun applyHistoryRestore(
+    repository: INotificationHistoryRepository,
+    restore: PendingHistoryRestore,
+    merge: Boolean
+): NotificationHistoryRestoreResult? = withContext(Dispatchers.IO) {
+    runCatching {
+        restore.sqliteFile?.let { file ->
+            file.inputStream().use { input ->
+                if (merge) repository.mergeSqliteBackup(input) else repository.replaceSqliteBackup(input)
+            }
+        } ?: restore.entries?.let { entries ->
+            if (merge) {
+                repository.mergeEntries(entries)
+            } else if (repository.replaceAll(entries)) {
+                val totalCount = repository.getCount()
+                NotificationHistoryRestoreResult(
+                    importedCount = totalCount,
+                    duplicatesSkipped = (entries.size - totalCount).coerceAtLeast(0),
+                    totalCount = totalCount
+                )
+            } else {
+                null
+            }
+        }
+    }.getOrNull()
+}
+
 private val AppSummarySaver: Saver<AppNotificationSummary?, Any> = listSaver(
     save = { summary ->
         if (summary == null) emptyList<Any>() else listOf(summary.packageName, summary.appName, summary.count)
@@ -193,10 +223,29 @@ fun NotificationHistorySection(
         }
     }
 
-    val historyEntries by resolvedHistoryRepo.history.collectAsState(initial = emptyList())
+    val recentHistorySnapshot by resolvedHistoryRepo.history.collectAsState(initial = emptyList())
+    val captureStatus by NotificationCaptureStatus.status.collectAsState()
+    var listenerPermissionGranted by remember(context) {
+        mutableStateOf(hasNotificationListenerAccess(context))
+    }
+    LaunchedEffect(context) {
+        while (true) {
+            listenerPermissionGranted = hasNotificationListenerAccess(context)
+            delay(1_500L)
+        }
+    }
     // Dialog and filter state is saved, so rotating the phone keeps an open dialog open.
     var searchQuery by rememberSaveable { mutableStateOf("") }
     var selectedFilterPackage by rememberSaveable { mutableStateOf<String?>(null) }
+    var historyEntries by remember(resolvedHistoryRepo) { mutableStateOf(emptyList<NotificationHistoryEntry>()) }
+    var appSummaries by remember(resolvedHistoryRepo) { mutableStateOf(emptyList<AppNotificationSummary>()) }
+    var totalHistoryCount by remember(resolvedHistoryRepo) { mutableStateOf(0) }
+    var filteredHistoryCount by remember(resolvedHistoryRepo) { mutableStateOf(0) }
+    var todayCount by remember(resolvedHistoryRepo) { mutableStateOf(0) }
+    var isLoadingPage by remember(resolvedHistoryRepo) { mutableStateOf(false) }
+    var historyRefreshToken by remember(resolvedHistoryRepo) { mutableStateOf(0) }
+    var loadedHistoryQuery by remember(resolvedHistoryRepo) { mutableStateOf<String?>(null) }
+    var loadedHistoryPackage by remember(resolvedHistoryRepo) { mutableStateOf<String?>(null) }
     var showClearAllConfirm by rememberSaveable { mutableStateOf(false) }
     var showAppFilterDialog by rememberSaveable { mutableStateOf(false) }
     var showDeleteByAppDialog by rememberSaveable { mutableStateOf(false) }
@@ -208,6 +257,68 @@ fun NotificationHistorySection(
     val selectedEntryForDetails = selectedEntryIdForDetails?.let { id -> historyEntries.firstOrNull { it.id == id } }
     var retentionMenuExpanded by rememberSaveable { mutableStateOf(false) }
     var pendingHistoryRestore by remember { mutableStateOf<PendingHistoryRestore?>(null) }
+    var pendingReplaceHistoryRestore by remember { mutableStateOf<PendingHistoryRestore?>(null) }
+
+    LaunchedEffect(
+        resolvedHistoryRepo,
+        searchQuery,
+        selectedFilterPackage,
+        historyRefreshToken,
+        recentHistorySnapshot.firstOrNull()?.id,
+        recentHistorySnapshot.size
+    ) {
+        val sameQuery = loadedHistoryQuery == searchQuery && loadedHistoryPackage == selectedFilterPackage
+        val pageLimit = if (sameQuery) maxOf(historyEntries.size, INotificationHistoryRepository.PAGE_SIZE)
+        else INotificationHistoryRepository.PAGE_SIZE
+        isLoadingPage = true
+        try {
+            val todayStartMillis = Calendar.getInstance().apply {
+                set(Calendar.HOUR_OF_DAY, 0)
+                set(Calendar.MINUTE, 0)
+                set(Calendar.SECOND, 0)
+                set(Calendar.MILLISECOND, 0)
+            }.timeInMillis
+            val newTotal = resolvedHistoryRepo.getCount()
+            val newFilteredCount = resolvedHistoryRepo.getCount(searchQuery, selectedFilterPackage)
+            val newTodayCount = resolvedHistoryRepo.getCountSince(todayStartMillis)
+            val newAppSummaries = resolvedHistoryRepo.getAppSummaries().map {
+                AppNotificationSummary(it.packageName, it.appName, it.count)
+            }
+            val firstPage = resolvedHistoryRepo.getPage(
+                query = searchQuery,
+                packageName = selectedFilterPackage,
+                limit = pageLimit
+            )
+            totalHistoryCount = newTotal
+            filteredHistoryCount = newFilteredCount
+            todayCount = newTodayCount
+            appSummaries = newAppSummaries
+            historyEntries = firstPage
+            loadedHistoryQuery = searchQuery
+            loadedHistoryPackage = selectedFilterPackage
+        } finally {
+            isLoadingPage = false
+        }
+    }
+
+    fun loadNextHistoryPage() {
+        if (isLoadingPage || historyEntries.size >= filteredHistoryCount) return
+        scope.launch {
+            isLoadingPage = true
+            try {
+                val nextPage = resolvedHistoryRepo.getPage(
+                    query = searchQuery,
+                    packageName = selectedFilterPackage,
+                    beforePostTimeMillis = historyEntries.lastOrNull()?.postTimeMillis,
+                    beforeId = historyEntries.lastOrNull()?.id,
+                    limit = INotificationHistoryRepository.PAGE_SIZE
+                )
+                historyEntries = historyEntries + nextPage
+            } finally {
+                isLoadingPage = false
+            }
+        }
+    }
 
     val historyExportLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.CreateDocument("application/vnd.sqlite3")
@@ -282,31 +393,39 @@ fun NotificationHistorySection(
             title = { Text(stringResource(R.string.history_backup_restore_title)) },
             text = { Text(stringResource(R.string.history_backup_restore_desc, restore.entryCount)) },
             confirmButton = {
-                Button(
-                    onClick = {
-                        scope.launch {
-                            val restoredCount = withContext(Dispatchers.IO) {
-                                restore.sqliteFile?.let { file ->
-                                    file.inputStream().use { resolvedHistoryRepo.restoreSqliteBackup(it) }
-                                } ?: restore.entries?.let { entries ->
-                                    if (resolvedHistoryRepo.replaceAll(entries)) entries.size else null
-                                }
+                Column(horizontalAlignment = Alignment.End) {
+                    Button(
+                        onClick = {
+                            scope.launch {
+                                val result = applyHistoryRestore(resolvedHistoryRepo, restore, merge = true)
+                                restore.sqliteFile?.delete()
+                                Toast.makeText(
+                                    context,
+                                    result?.let {
+                                        context.getString(
+                                            R.string.history_backup_merge_success,
+                                            it.importedCount,
+                                            it.duplicatesSkipped,
+                                            it.totalCount
+                                        )
+                                    } ?: context.getString(R.string.history_backup_import_failed),
+                                    Toast.LENGTH_LONG
+                                ).show()
+                                if (result != null) historyRefreshToken += 1
                             }
-                            restore.sqliteFile?.delete()
-                            Toast.makeText(
-                                context,
-                                if (restoredCount != null) {
-                                    context.getString(R.string.history_backup_restore_success, restoredCount)
-                                } else {
-                                    context.getString(R.string.history_backup_import_failed)
-                                },
-                                Toast.LENGTH_LONG
-                            ).show()
+                            pendingHistoryRestore = null
                         }
-                        pendingHistoryRestore = null
+                    ) {
+                        Text(stringResource(R.string.history_backup_merge))
                     }
-                ) {
-                    Text(stringResource(R.string.history_backup_restore_confirm))
+                    TextButton(
+                        onClick = {
+                            pendingReplaceHistoryRestore = restore
+                            pendingHistoryRestore = null
+                        }
+                    ) {
+                        Text(stringResource(R.string.history_backup_replace))
+                    }
                 }
             },
             dismissButton = {
@@ -320,51 +439,61 @@ fun NotificationHistorySection(
         )
     }
 
-    val appSummaries = remember(historyEntries) {
-        historyEntries
-            .groupBy { it.packageName }
-            .map { (pkg, entries) ->
-                AppNotificationSummary(
-                    packageName = pkg,
-                    appName = entries.firstOrNull()?.appName ?: pkg,
-                    count = entries.size
-                )
+    pendingReplaceHistoryRestore?.let { restore ->
+        AlertDialog(
+            onDismissRequest = {
+                restore.sqliteFile?.delete()
+                pendingReplaceHistoryRestore = null
+            },
+            title = { Text(stringResource(R.string.history_backup_replace_title)) },
+            text = { Text(stringResource(R.string.history_backup_replace_desc, restore.entryCount)) },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        scope.launch {
+                            val result = applyHistoryRestore(resolvedHistoryRepo, restore, merge = false)
+                            restore.sqliteFile?.delete()
+                            Toast.makeText(
+                                context,
+                                result?.let {
+                                    context.getString(R.string.history_backup_restore_success, it.totalCount)
+                                } ?: context.getString(R.string.history_backup_import_failed),
+                                Toast.LENGTH_LONG
+                            ).show()
+                            if (result != null) historyRefreshToken += 1
+                        }
+                        pendingReplaceHistoryRestore = null
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+                ) {
+                    Text(stringResource(R.string.history_backup_replace_confirm))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = {
+                    restore.sqliteFile?.delete()
+                    pendingReplaceHistoryRestore = null
+                }) {
+                    Text(stringResource(R.string.btn_cancel))
+                }
             }
-            .sortedByDescending { it.count }
+        )
     }
 
-    val filteredEntries = remember(historyEntries, searchQuery, selectedFilterPackage) {
-        var list = historyEntries
-        if (!selectedFilterPackage.isNullOrBlank()) {
-            list = list.filter { it.packageName == selectedFilterPackage }
-        }
-        if (searchQuery.isNotBlank()) {
-            val q = searchQuery.trim().lowercase(Locale.getDefault())
-            list = list.filter {
-                it.appName.lowercase(Locale.getDefault()).contains(q) ||
-                    it.title.lowercase(Locale.getDefault()).contains(q) ||
-                    it.text.lowercase(Locale.getDefault()).contains(q) ||
-                    it.packageName.lowercase(Locale.getDefault()).contains(q)
-            }
-        }
-        list
-    }
-
-    val groupedByDay = remember(filteredEntries) {
-        groupEntriesByDay(filteredEntries)
-    }
+    val groupedByDay = remember(historyEntries) { groupEntriesByDay(historyEntries) }
 
     if (showClearAllConfirm) {
         AlertDialog(
             onDismissRequest = { showClearAllConfirm = false },
             title = { Text(stringResource(R.string.confirm_clear_history_title)) },
-            text = { Text(stringResource(R.string.confirm_clear_history_msg, historyEntries.size)) },
+            text = { Text(stringResource(R.string.confirm_clear_history_msg, totalHistoryCount)) },
             confirmButton = {
                 Button(
                     onClick = {
                         scope.launch {
                             resolvedHistoryRepo.clearAll()
                             selectedFilterPackage = null
+                            historyRefreshToken += 1
                         }
                         showClearAllConfirm = false
                     },
@@ -394,6 +523,7 @@ fun NotificationHistorySection(
                             if (selectedFilterPackage == targetApp.packageName) {
                                 selectedFilterPackage = null
                             }
+                            if (deleted > 0) historyRefreshToken += 1
                             Toast.makeText(context, "Deleted $deleted notifications from ${targetApp.appName}", Toast.LENGTH_SHORT).show()
                         }
                         packageToDeleteConfirm = null
@@ -414,7 +544,7 @@ fun NotificationHistorySection(
     if (showAppFilterDialog) {
         AppFilterDialog(
             appSummaries = appSummaries,
-            totalCount = historyEntries.size,
+            totalCount = totalHistoryCount,
             selectedPackage = selectedFilterPackage,
             onDismiss = { showAppFilterDialog = false },
             onSelectFilter = { pkg ->
@@ -445,6 +575,7 @@ fun NotificationHistorySection(
             onDelete = {
                 scope.launch {
                     resolvedHistoryRepo.deleteEntry(entry.id)
+                    historyRefreshToken += 1
                     selectedEntryIdForDetails = null
                 }
             },
@@ -452,7 +583,7 @@ fun NotificationHistorySection(
                 packageToDeleteConfirm = AppNotificationSummary(
                     packageName = entry.packageName,
                     appName = entry.appName,
-                    count = historyEntries.count { it.packageName == entry.packageName }
+                    count = appSummaries.firstOrNull { it.packageName == entry.packageName }?.count ?: 0
                 )
                 selectedEntryIdForDetails = null
             }
@@ -507,7 +638,11 @@ fun NotificationHistorySection(
                                      color = MaterialTheme.colorScheme.onSurface
                                  )
                                  Text(
-                                     text = if (settings.enableNotificationHistory) "Logging active • On-device private" else "Disabled",
+                                     text = when {
+                                         !settings.enableNotificationHistory -> "Disabled"
+                                         settings.historyOnlyMode -> context.getString(R.string.history_only_mode_active)
+                                         else -> "Logging active • On-device private"
+                                     },
                                      style = MaterialTheme.typography.bodySmall,
                                      color = if (settings.enableNotificationHistory) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
                                  )
@@ -550,6 +685,83 @@ fun NotificationHistorySection(
                         }
                     }
                 }
+            }
+        }
+
+        item(key = "history_only_mode") {
+            Card(
+                colors = CardDefaults.cardColors(
+                    containerColor = if (settings.historyOnlyMode) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.45f)
+                    else MaterialTheme.colorScheme.surface
+                ),
+                shape = RoundedCornerShape(16.dp),
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(16.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Icon(Icons.Rounded.History, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(24.dp))
+                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text(stringResource(R.string.history_only_mode_title), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+                        Text(stringResource(R.string.history_only_mode_desc), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    Switch(
+                        checked = settings.historyOnlyMode,
+                        enabled = repository != null,
+                        onCheckedChange = { enabled -> scope.launch { repository?.setHistoryOnlyMode(enabled) } }
+                    )
+                }
+            }
+        }
+
+        item(key = "history_capture_status") {
+            val captureMessage = when {
+                !settings.enableNotificationHistory -> stringResource(R.string.history_capture_disabled)
+                !listenerPermissionGranted -> stringResource(R.string.history_capture_permission_missing)
+                !captureStatus.listenerConnected -> stringResource(R.string.history_capture_disconnected)
+                else -> stringResource(R.string.history_capture_connected)
+            }
+            val captureHealthy = settings.enableNotificationHistory && listenerPermissionGranted && captureStatus.listenerConnected
+            val lastEventText = if (captureStatus.lastEventAtMillis > 0L) {
+                stringResource(
+                    R.string.history_capture_last_event,
+                    SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()).format(Date(captureStatus.lastEventAtMillis))
+                )
+            } else {
+                stringResource(R.string.history_capture_no_events)
+            }
+            Surface(
+                shape = RoundedCornerShape(14.dp),
+                color = (if (captureHealthy) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error)
+                    .copy(alpha = 0.08f),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Box(
+                        Modifier.size(9.dp).clip(CircleShape).background(
+                            if (captureHealthy) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error
+                        )
+                    )
+                    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                        Text(captureMessage, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold)
+                        Text(lastEventText, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+            }
+        }
+
+        item(key = "history_metrics") {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                HistoryMetric(Modifier.weight(1f), stringResource(R.string.history_metric_total), totalHistoryCount)
+                HistoryMetric(Modifier.weight(1f), stringResource(R.string.history_metric_today), todayCount)
+                HistoryMetric(Modifier.weight(1f), stringResource(R.string.history_metric_apps), appSummaries.size)
             }
         }
 
@@ -771,6 +983,7 @@ fun NotificationHistorySection(
                                                     scope.launch {
                                                         repository.setNotificationHistoryRetentionHours(hours)
                                                         resolvedHistoryRepo.cleanupOldEntries(hours)
+                                                        historyRefreshToken += 1
                                                     }
                                                 }
                                             }
@@ -821,7 +1034,7 @@ fun NotificationHistorySection(
                                         },
                                         label = {
                                             Text(
-                                                text = stringResource(R.string.filter_all_apps) + " (${historyEntries.size})",
+                                                text = stringResource(R.string.filter_all_apps) + " ($totalHistoryCount)",
                                                 fontSize = 12.sp,
                                                 fontWeight = if (isAllSelected) FontWeight.Bold else FontWeight.Normal
                                             )
@@ -911,9 +1124,9 @@ fun NotificationHistorySection(
                             Text(
                                 text = if (selectedFilterPackage != null) {
                                     val activeName = appSummaries.find { it.packageName == selectedFilterPackage }?.appName ?: selectedFilterPackage
-                                    "$activeName: ${filteredEntries.size} logs"
+                                    "$activeName: $filteredHistoryCount logs"
                                 } else {
-                                    "${filteredEntries.size} saved"
+                                    "$filteredHistoryCount saved"
                                 },
                                 style = MaterialTheme.typography.labelMedium,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -954,7 +1167,7 @@ fun NotificationHistorySection(
                                     }
                                 }
 
-                                if (historyEntries.isNotEmpty()) {
+                                if (totalHistoryCount > 0) {
                                     TextButton(
                                         onClick = { showClearAllConfirm = true },
                                         colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error),
@@ -972,7 +1185,16 @@ fun NotificationHistorySection(
                 }
             }
 
-            if (groupedByDay.isEmpty()) {
+            if (groupedByDay.isEmpty() && isLoadingPage) {
+                item(key = "history_loading") {
+                    Text(
+                        text = stringResource(R.string.history_loading_page),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.fillMaxWidth().padding(24.dp)
+                    )
+                }
+            } else if (groupedByDay.isEmpty()) {
                 item(key = "empty_history_placeholder") {
                     Card(
                         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.25f)),
@@ -1049,9 +1271,39 @@ fun NotificationHistorySection(
                             entry = entry,
                             onCardClick = { selectedEntryIdForDetails = entry.id },
                             onDelete = {
-                                scope.launch { resolvedHistoryRepo.deleteEntry(entry.id) }
+                                scope.launch {
+                                    resolvedHistoryRepo.deleteEntry(entry.id)
+                                    historyRefreshToken += 1
+                                }
                             }
                         )
+                    }
+                }
+            }
+
+            if (historyEntries.size < filteredHistoryCount) {
+                item(key = "history_load_more") {
+                    Column(
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Text(
+                            stringResource(R.string.history_loaded_count, historyEntries.size, filteredHistoryCount),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        OutlinedButton(
+                            onClick = { loadNextHistoryPage() },
+                            enabled = !isLoadingPage,
+                            shape = RoundedCornerShape(10.dp)
+                        ) {
+                            Text(
+                                stringResource(
+                                    if (isLoadingPage) R.string.history_loading_page else R.string.history_load_more
+                                )
+                            )
+                        }
                     }
                 }
             }
@@ -1061,6 +1313,23 @@ fun NotificationHistorySection(
 
 private const val NOTIFICATION_HISTORY_BACKUP_FORMAT = "ryx-isla-notification-history"
 private const val NOTIFICATION_HISTORY_BACKUP_VERSION = 1
+
+@Composable
+private fun HistoryMetric(modifier: Modifier, title: String, value: Int) {
+    Surface(
+        modifier = modifier,
+        shape = RoundedCornerShape(14.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f)
+    ) {
+        Column(
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(3.dp)
+        ) {
+            Text(value.toString(), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+            Text(title, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
+    }
+}
 
 private fun parseNotificationHistoryBackupFile(jsonText: String): List<NotificationHistoryEntry>? {
     val root = JSONObject(jsonText)
@@ -1773,4 +2042,16 @@ private fun groupEntriesByDay(entries: List<NotificationHistoryEntry>): Map<Stri
 private fun isSameDay(cal1: Calendar, cal2: Calendar): Boolean {
     return cal1.get(Calendar.YEAR) == cal2.get(Calendar.YEAR) &&
         cal1.get(Calendar.DAY_OF_YEAR) == cal2.get(Calendar.DAY_OF_YEAR)
+}
+
+private fun hasNotificationListenerAccess(context: Context): Boolean {
+    val enabledListeners = android.provider.Settings.Secure.getString(
+        context.contentResolver,
+        "enabled_notification_listeners"
+    ).orEmpty()
+    val expected = android.content.ComponentName(
+        context,
+        com.agupta07505.smartisland.service.SmartIslandNotificationListenerService::class.java
+    )
+    return enabledListeners.split(':').any { android.content.ComponentName.unflattenFromString(it) == expected }
 }

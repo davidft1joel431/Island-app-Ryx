@@ -50,6 +50,28 @@ class NotificationHistoryRepository @Inject constructor(
         _history.value = entries
     }
 
+    override suspend fun getPage(
+        query: String,
+        packageName: String?,
+        beforePostTimeMillis: Long?,
+        beforeId: Long?,
+        limit: Int
+    ): List<NotificationHistoryEntry> = withContext(Dispatchers.IO) {
+        dbHelper.getPage(query, packageName, beforePostTimeMillis, beforeId, limit)
+    }
+
+    override suspend fun getCount(query: String, packageName: String?): Int = withContext(Dispatchers.IO) {
+        dbHelper.countEntries(query, packageName)
+    }
+
+    override suspend fun getCountSince(postTimeMillis: Long): Int = withContext(Dispatchers.IO) {
+        dbHelper.countEntriesSince(postTimeMillis)
+    }
+
+    override suspend fun getAppSummaries(): List<NotificationHistoryAppSummary> = withContext(Dispatchers.IO) {
+        dbHelper.getAppSummaries()
+    }
+
     override suspend fun getBackupEntries(): List<NotificationHistoryEntry> = withContext(Dispatchers.IO) {
         dbHelper.getAllEntries(limit = INotificationHistoryRepository.MAX_BACKUP_ENTRIES)
     }
@@ -59,13 +81,31 @@ class NotificationHistoryRepository @Inject constructor(
     }
 
     override suspend fun inspectSqliteBackup(input: InputStream): Int? = withContext(Dispatchers.IO) {
-        dbHelper.inspectSqliteBackup(input, restore = false)
+        dbHelper.inspectSqliteBackup(input)
     }
 
-    override suspend fun restoreSqliteBackup(input: InputStream): Int? = withContext(Dispatchers.IO) {
-        val count = dbHelper.inspectSqliteBackup(input, restore = true) ?: return@withContext null
-        reload()
-        count
+    override suspend fun mergeSqliteBackup(input: InputStream): NotificationHistoryRestoreResult? = withContext(Dispatchers.IO) {
+        writeMutex.withLock {
+            val result = dbHelper.mergeSqliteBackup(input) ?: return@withLock null
+            reload()
+            result
+        }
+    }
+
+    override suspend fun replaceSqliteBackup(input: InputStream): NotificationHistoryRestoreResult? = withContext(Dispatchers.IO) {
+        writeMutex.withLock {
+            val result = dbHelper.replaceSqliteBackup(input) ?: return@withLock null
+            reload()
+            result
+        }
+    }
+
+    override suspend fun mergeEntries(entries: List<NotificationHistoryEntry>): NotificationHistoryRestoreResult? = withContext(Dispatchers.IO) {
+        writeMutex.withLock {
+            val result = dbHelper.mergeEntries(entries.take(INotificationHistoryRepository.MAX_BACKUP_ENTRIES)) ?: return@withLock null
+            reload()
+            result
+        }
     }
 
     override suspend fun saveEntry(entry: NotificationHistoryEntry) = withContext(Dispatchers.IO) {
@@ -80,7 +120,9 @@ class NotificationHistoryRepository @Inject constructor(
     }
 
     override suspend fun replaceAll(entries: List<NotificationHistoryEntry>): Boolean = withContext(Dispatchers.IO) {
-        val replaced = dbHelper.replaceAll(entries.take(INotificationHistoryRepository.MAX_BACKUP_ENTRIES))
+        val uniqueEntries = entries.distinctBy { it.notificationKey to it.postTimeMillis }
+            .take(INotificationHistoryRepository.MAX_BACKUP_ENTRIES)
+        val replaced = dbHelper.replaceAll(uniqueEntries)
         if (replaced) reload()
         replaced
     }

@@ -18,9 +18,9 @@ import java.io.File
 import java.io.InputStream
 import java.io.OutputStream
 
-class NotificationHistoryDbHelper(context: Context) : SQLiteOpenHelper(
+class NotificationHistoryDbHelper(context: Context, databaseName: String = DATABASE_NAME) : SQLiteOpenHelper(
     context,
-    DATABASE_NAME,
+    databaseName,
     null,
     DATABASE_VERSION
 ) {
@@ -146,63 +146,139 @@ class NotificationHistoryDbHelper(context: Context) : SQLiteOpenHelper(
         }
     }
 
-    /** Validates a standalone SQLite history backup and optionally replaces this database atomically. */
-    fun inspectSqliteBackup(input: InputStream, restore: Boolean): Int? {
+    fun inspectSqliteBackup(input: InputStream): Int? = withValidatedBackup(input) { _, count -> count }
+
+    fun mergeSqliteBackup(input: InputStream): NotificationHistoryRestoreResult? =
+        withValidatedBackup(input) { file, count -> applySqliteBackup(file, count, replaceCurrent = false) }
+
+    fun replaceSqliteBackup(input: InputStream): NotificationHistoryRestoreResult? =
+        withValidatedBackup(input) { file, count -> applySqliteBackup(file, count, replaceCurrent = true) }
+
+    private fun <T> withValidatedBackup(input: InputStream, action: (File, Int) -> T?): T? {
         val file = File.createTempFile("ryx-history-import-", ".db", appContext.cacheDir)
         try {
             file.outputStream().buffered().use { output -> input.copyTo(output) }
-            val backup = try {
-                SQLiteDatabase.openDatabase(file.absolutePath, null, SQLiteDatabase.OPEN_READONLY)
-            } catch (_: Exception) {
-                return null
-            }
-            val count = try {
-                val format = backup.rawQuery("SELECT value FROM $BACKUP_TABLE WHERE name='format'", null).use {
-                    if (it.moveToFirst()) it.getString(0) else null
-                }
-                val version = backup.rawQuery("SELECT value FROM $BACKUP_TABLE WHERE name='version'", null).use {
-                    if (it.moveToFirst()) it.getString(0)?.toIntOrNull() else null
-                }
-                val rows = backup.rawQuery("SELECT COUNT(*) FROM $TABLE_HISTORY", null).use {
-                    if (it.moveToFirst()) it.getLong(0) else -1L
-                }
-                if (format != BACKUP_FORMAT || version != BACKUP_VERSION ||
-                    rows !in 0..com.agupta07505.smartisland.data.INotificationHistoryRepository.MAX_SQLITE_BACKUP_ENTRIES.toLong()
-                ) return null
-                rows.toInt()
-            } catch (_: Exception) {
-                return null
-            } finally {
-                backup.close()
-            }
-            if (!restore) return count
-
-            val db = writableDatabase
-            db.execSQL("ATTACH DATABASE ? AS history_backup", arrayOf(file.absolutePath))
-            try {
-                db.beginTransaction()
-                try {
-                    db.delete(TABLE_HISTORY, null, null)
-                    db.execSQL(
-                        """INSERT INTO $TABLE_HISTORY (
-                            $COL_ID, $COL_NOTIF_KEY, $COL_PACKAGE, $COL_APP_NAME, $COL_TITLE, $COL_TEXT,
-                            $COL_SUB_TEXT, $COL_POST_TIME, $COL_CATEGORY, $COL_CHANNEL_ID, $COL_MODE,
-                            $COL_ACTIONS_JSON, $COL_WAS_OPENED, $COL_WAS_DISMISSED, $COL_WAS_SILENT, $COL_HAS_VIBRATION
-                        ) SELECT $COL_ID, $COL_NOTIF_KEY, $COL_PACKAGE, $COL_APP_NAME, $COL_TITLE, $COL_TEXT,
-                            $COL_SUB_TEXT, $COL_POST_TIME, $COL_CATEGORY, $COL_CHANNEL_ID, $COL_MODE,
-                            $COL_ACTIONS_JSON, $COL_WAS_OPENED, $COL_WAS_DISMISSED, $COL_WAS_SILENT, $COL_HAS_VIBRATION
-                        FROM history_backup.$TABLE_HISTORY""".trimIndent()
-                    )
-                    db.setTransactionSuccessful()
-                } finally {
-                    db.endTransaction()
-                }
-            } finally {
-                db.execSQL("DETACH DATABASE history_backup")
-            }
-            return count
+            val count = validateSqliteBackup(file) ?: return null
+            return action(file, count)
         } finally {
             file.delete()
+        }
+    }
+
+    private fun validateSqliteBackup(file: File): Int? {
+        val backup = try {
+            SQLiteDatabase.openDatabase(file.absolutePath, null, SQLiteDatabase.OPEN_READONLY)
+        } catch (_: Exception) {
+            return null
+        }
+        return try {
+            val integrity = backup.rawQuery("PRAGMA integrity_check", null).use {
+                if (it.moveToFirst()) it.getString(0) else null
+            }
+            val format = backup.rawQuery("SELECT value FROM $BACKUP_TABLE WHERE name='format'", null).use {
+                if (it.moveToFirst()) it.getString(0) else null
+            }
+            val version = backup.rawQuery("SELECT value FROM $BACKUP_TABLE WHERE name='version'", null).use {
+                if (it.moveToFirst()) it.getString(0)?.toIntOrNull() else null
+            }
+            val declaredCount = backup.rawQuery("SELECT value FROM $BACKUP_TABLE WHERE name='count'", null).use {
+                if (it.moveToFirst()) it.getString(0)?.toLongOrNull() else null
+            }
+            // Confirm the expected columns exist before attaching the file for a write operation.
+            backup.rawQuery(
+                "SELECT $COL_NOTIF_KEY, $COL_PACKAGE, $COL_POST_TIME FROM $TABLE_HISTORY LIMIT 0",
+                null
+            ).use { }
+            val rows = backup.rawQuery("SELECT COUNT(*) FROM $TABLE_HISTORY", null).use {
+                if (it.moveToFirst()) it.getLong(0) else -1L
+            }
+            val invalidRows = backup.rawQuery(
+                "SELECT COUNT(*) FROM $TABLE_HISTORY WHERE $COL_NOTIF_KEY IS NULL OR TRIM($COL_NOTIF_KEY) = '' OR $COL_PACKAGE IS NULL OR TRIM($COL_PACKAGE) = '' OR $COL_APP_NAME IS NULL OR $COL_MODE IS NULL OR $COL_POST_TIME <= 0",
+                null
+            ).use { if (it.moveToFirst()) it.getLong(0) else -1L }
+            if (integrity != "ok" || format != BACKUP_FORMAT || version != BACKUP_VERSION ||
+                rows !in 0..INotificationHistoryRepository.MAX_SQLITE_BACKUP_ENTRIES.toLong() ||
+                declaredCount != rows || invalidRows != 0L
+            ) return null
+            rows.toInt()
+        } catch (_: Exception) {
+            null
+        } finally {
+            backup.close()
+        }
+    }
+
+    private fun applySqliteBackup(
+        file: File,
+        sourceCount: Int,
+        replaceCurrent: Boolean
+    ): NotificationHistoryRestoreResult? = runCatchingLogged(
+        TAG,
+        if (replaceCurrent) "Failed to replace notification history from SQLite backup"
+        else "Failed to merge notification history from SQLite backup"
+    ) {
+        val db = writableDatabase
+        db.execSQL("ATTACH DATABASE ? AS history_backup", arrayOf(file.absolutePath))
+        try {
+            db.beginTransaction()
+            try {
+                if (replaceCurrent) db.delete(TABLE_HISTORY, null, null)
+                val countBeforeImport = db.rawQuery("SELECT COUNT(*) FROM $TABLE_HISTORY", null).use {
+                    if (it.moveToFirst()) it.getLong(0) else 0L
+                }
+                db.execSQL(
+                    """INSERT OR IGNORE INTO $TABLE_HISTORY (
+                        $COL_NOTIF_KEY, $COL_PACKAGE, $COL_APP_NAME, $COL_TITLE, $COL_TEXT,
+                        $COL_SUB_TEXT, $COL_POST_TIME, $COL_CATEGORY, $COL_CHANNEL_ID, $COL_MODE,
+                        $COL_ACTIONS_JSON, $COL_WAS_OPENED, $COL_WAS_DISMISSED, $COL_WAS_SILENT, $COL_HAS_VIBRATION
+                    ) SELECT $COL_NOTIF_KEY, $COL_PACKAGE, $COL_APP_NAME, $COL_TITLE, $COL_TEXT,
+                        $COL_SUB_TEXT, $COL_POST_TIME, $COL_CATEGORY, $COL_CHANNEL_ID, $COL_MODE,
+                        $COL_ACTIONS_JSON, $COL_WAS_OPENED, $COL_WAS_DISMISSED, $COL_WAS_SILENT, $COL_HAS_VIBRATION
+                    FROM history_backup.$TABLE_HISTORY ORDER BY $COL_POST_TIME ASC, $COL_ID ASC""".trimIndent()
+                )
+                val countAfterImport = db.rawQuery("SELECT COUNT(*) FROM $TABLE_HISTORY", null).use {
+                    if (it.moveToFirst()) it.getLong(0) else countBeforeImport
+                }
+                db.setTransactionSuccessful()
+                val imported = (countAfterImport - countBeforeImport).toInt()
+                NotificationHistoryRestoreResult(
+                    importedCount = imported,
+                    duplicatesSkipped = (sourceCount - imported).coerceAtLeast(0),
+                    totalCount = countAfterImport.toInt()
+                )
+            } finally {
+                db.endTransaction()
+            }
+        } finally {
+            db.execSQL("DETACH DATABASE history_backup")
+        }
+    }
+
+    fun mergeEntries(entries: List<NotificationHistoryEntry>): NotificationHistoryRestoreResult? = runCatchingLogged(
+        TAG,
+        "Failed to merge notification history entries"
+    ) {
+        val db = writableDatabase
+        db.beginTransaction()
+        try {
+            val before = db.rawQuery("SELECT COUNT(*) FROM $TABLE_HISTORY", null).use {
+                if (it.moveToFirst()) it.getLong(0) else 0L
+            }
+            entries.forEach { entry ->
+                db.insertWithOnConflict(TABLE_HISTORY, null, contentValues(entry), SQLiteDatabase.CONFLICT_IGNORE)
+            }
+            val after = db.rawQuery("SELECT COUNT(*) FROM $TABLE_HISTORY", null).use {
+                if (it.moveToFirst()) it.getLong(0) else before
+            }
+            db.setTransactionSuccessful()
+            val imported = (after - before).toInt()
+            NotificationHistoryRestoreResult(
+                importedCount = imported,
+                duplicatesSkipped = (entries.size - imported).coerceAtLeast(0),
+                totalCount = after.toInt()
+            )
+        } finally {
+            db.endTransaction()
         }
     }
 
@@ -261,6 +337,99 @@ class NotificationHistoryDbHelper(context: Context) : SQLiteOpenHelper(
             }
             list
         } ?: emptyList()
+    }
+
+    fun getPage(
+        query: String,
+        packageName: String?,
+        beforePostTimeMillis: Long?,
+        beforeId: Long?,
+        limit: Int
+    ): List<NotificationHistoryEntry> {
+        return runCatchingLogged(TAG, "Failed to fetch a notification history page") {
+            val (selection, selectionArgs) = historySelection(query, packageName, beforePostTimeMillis, beforeId)
+            val list = mutableListOf<NotificationHistoryEntry>()
+            readableDatabase.query(
+                TABLE_HISTORY,
+                null,
+                selection,
+                selectionArgs,
+                null,
+                null,
+                "$COL_POST_TIME DESC, $COL_ID DESC",
+                limit.coerceAtLeast(1).toString()
+            ).use { cursor ->
+                while (cursor.moveToNext()) list.add(cursorToEntry(cursor))
+            }
+            list
+        } ?: emptyList()
+    }
+
+    fun countEntries(query: String = "", packageName: String? = null): Int {
+        return runCatchingLogged(TAG, "Failed to count notification history entries") {
+            val (selection, selectionArgs) = historySelection(query, packageName)
+            val sql = buildString {
+                append("SELECT COUNT(*) FROM $TABLE_HISTORY")
+                if (selection != null) append(" WHERE $selection")
+            }
+            readableDatabase.rawQuery(sql, selectionArgs).use { cursor ->
+                if (cursor.moveToFirst()) cursor.getInt(0) else 0
+            }
+        } ?: 0
+    }
+
+    fun countEntriesSince(postTimeMillis: Long): Int {
+        return runCatchingLogged(TAG, "Failed to count today's notification history") {
+            readableDatabase.rawQuery(
+                "SELECT COUNT(*) FROM $TABLE_HISTORY WHERE $COL_POST_TIME >= ?",
+                arrayOf(postTimeMillis.toString())
+            ).use { cursor -> if (cursor.moveToFirst()) cursor.getInt(0) else 0 }
+        } ?: 0
+    }
+
+    fun getAppSummaries(): List<NotificationHistoryAppSummary> {
+        return runCatchingLogged(TAG, "Failed to load notification history app totals") {
+            val summaries = mutableListOf<NotificationHistoryAppSummary>()
+            readableDatabase.rawQuery(
+                "SELECT $COL_PACKAGE, MAX($COL_APP_NAME), COUNT(*) FROM $TABLE_HISTORY GROUP BY $COL_PACKAGE ORDER BY COUNT(*) DESC, MAX($COL_APP_NAME) COLLATE NOCASE ASC",
+                null
+            ).use { cursor ->
+                while (cursor.moveToNext()) {
+                    summaries += NotificationHistoryAppSummary(
+                        packageName = cursor.getString(0),
+                        appName = cursor.getString(1) ?: cursor.getString(0),
+                        count = cursor.getInt(2)
+                    )
+                }
+            }
+            summaries
+        } ?: emptyList()
+    }
+
+    private fun historySelection(
+        query: String,
+        packageName: String?,
+        beforePostTimeMillis: Long? = null,
+        beforeId: Long? = null
+    ): Pair<String?, Array<String>?> {
+        val clauses = mutableListOf<String>()
+        val args = mutableListOf<String>()
+        if (!packageName.isNullOrBlank()) {
+            clauses += "$COL_PACKAGE = ?"
+            args += packageName
+        }
+        if (beforePostTimeMillis != null && beforeId != null) {
+            clauses += "($COL_POST_TIME < ? OR ($COL_POST_TIME = ? AND $COL_ID < ?))"
+            args += beforePostTimeMillis.toString()
+            args += beforePostTimeMillis.toString()
+            args += beforeId.toString()
+        }
+        if (query.isNotBlank()) {
+            val pattern = "%${query.trim()}%"
+            clauses += "($COL_APP_NAME LIKE ? OR $COL_TITLE LIKE ? OR $COL_TEXT LIKE ? OR $COL_PACKAGE LIKE ?)"
+            repeat(4) { args += pattern }
+        }
+        return clauses.takeIf { it.isNotEmpty() }?.joinToString(" AND ") to args.takeIf { it.isNotEmpty() }?.toTypedArray()
     }
 
     fun searchEntries(query: String, limit: Int = 200): List<NotificationHistoryEntry> {

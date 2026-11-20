@@ -102,6 +102,8 @@ data class SmartIslandSettings(
     /** Show an estimated transfer card from device-wide network speed when no app notification exists. */
     val detectTransfersBySpeed: Boolean = true,
     val enableNotificationHistory: Boolean = true,
+    /** Keep Android notifications untouched while recording them; the floating island stays hidden. */
+    val historyOnlyMode: Boolean = false,
     val notificationHistoryRetentionHours: Int = -1,
     val showBluetoothBattery: Boolean = true,
     val enableBatteryMode: Boolean = true,
@@ -456,6 +458,7 @@ data class SmartIslandSettings(
 
         val settingsObj = JSONObject()
         settingsObj.put("enabled", enabled)
+        settingsObj.put("historyOnlyMode", historyOnlyMode)
         settingsObj.put("width", width.toDouble())
         settingsObj.put("height", height.toDouble())
         settingsObj.put("xOffset", xOffset.toDouble())
@@ -951,6 +954,7 @@ data class SmartIslandSettings(
 
             return SmartIslandSettings(
                 enabled = obj.optBoolean("enabled", defaults.enabled),
+                historyOnlyMode = obj.optBoolean("historyOnlyMode", defaults.historyOnlyMode),
                 width = safeFloat("width", defaults.width, MIN_WIDTH, MAX_WIDTH),
                 height = safeFloat("height", defaults.height, MIN_HEIGHT, MAX_HEIGHT),
                 xOffset = safeFloat("xOffset", defaults.xOffset, MIN_X_OFFSET, MAX_X_OFFSET),

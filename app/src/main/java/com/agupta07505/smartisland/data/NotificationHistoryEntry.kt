@@ -75,3 +75,9 @@ data class NotificationHistoryEntry(
         }
     }
 }
+
+data class NotificationHistoryAppSummary(
+    val packageName: String,
+    val appName: String,
+    val count: Int
+)

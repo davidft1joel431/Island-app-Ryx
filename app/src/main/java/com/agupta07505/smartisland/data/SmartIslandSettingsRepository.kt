@@ -58,6 +58,7 @@ private val Context.smartIslandDataStore by preferencesDataStore(
 class SmartIslandSettingsRepository(private val context: Context) {
     private object Keys {
         val Enabled = booleanPreferencesKey("enabled")
+        val HistoryOnlyMode = booleanPreferencesKey("history_only_mode")
         val Width = floatPreferencesKey("width")
         val Height = floatPreferencesKey("height")
         val XOffset = floatPreferencesKey("x_offset")
@@ -359,6 +360,7 @@ class SmartIslandSettingsRepository(private val context: Context) {
             val defaults = SmartIslandSettings.Default
             SmartIslandSettings(
                 enabled = prefs[Keys.Enabled] ?: defaults.enabled,
+                historyOnlyMode = prefs[Keys.HistoryOnlyMode] ?: defaults.historyOnlyMode,
                 width = validDimension(
                     prefs[Keys.Width],
                     defaults.width,
@@ -1365,6 +1367,12 @@ class SmartIslandSettingsRepository(private val context: Context) {
     }
     suspend fun setEnableNotificationHistory(value: Boolean) = editSafely {
         it[Keys.EnableNotificationHistory] = value
+        if (!value) it[Keys.HistoryOnlyMode] = false
+    }
+
+    suspend fun setHistoryOnlyMode(value: Boolean) = editSafely {
+        it[Keys.HistoryOnlyMode] = value
+        if (value) it[Keys.EnableNotificationHistory] = true
     }
     suspend fun setNotificationHistoryRetentionHours(value: Int) = editSafely {
         it[Keys.NotificationHistoryRetentionHours] = value
@@ -1542,6 +1550,7 @@ class SmartIslandSettingsRepository(private val context: Context) {
 
     suspend fun restoreSettings(settings: SmartIslandSettings) = editSafely { prefs ->
         prefs[Keys.Enabled] = settings.enabled
+        prefs[Keys.HistoryOnlyMode] = settings.historyOnlyMode
         prefs[Keys.Width] = validDimension(
             settings.width,
             SmartIslandSettings.Default.width,

@@ -322,11 +322,10 @@ internal fun rememberIslandLayout(
     val hyperOsStyle = settings.hyperOsIslandStyle
     val collapsedMode = notifications.getOrNull(safeIndex)?.mode ?: IslandMode.Empty
     val collapsedCard = notifications.getOrNull(safeIndex)
-    // Every Demo > Activities event uses the expanded island capsule in HyperOS. Connectivity
-    // events live in their own Demo group and retain the brief capsule, with Hotspot kept as the
-    // requested persistent system activity.
+    // Every Demo > Activities and Power event uses the expanded island capsule in HyperOS.
+    // Connectivity events retain the brief capsule, with Hotspot kept as the system exception.
     val hyperOsActivityCapsule = collapsedCard?.let {
-        IslandEvent.forNotification(it)?.group == "Activities" || it.mode == IslandMode.Hotspot
+        IslandEvent.forNotification(it)?.group in setOf("Activities", "Power") || it.mode == IslandMode.Hotspot
     } == true
     val hyperOsMessagingCapsule = hyperOsStyle && collapsedCard?.mode == IslandMode.Notification &&
         settings.hyperOsMessagingExpansion == "capsule" &&

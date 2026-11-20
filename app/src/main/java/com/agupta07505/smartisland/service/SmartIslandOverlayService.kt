@@ -969,7 +969,7 @@ class SmartIslandOverlayService : AccessibilityService() {
                 repository.settings.collect { settings ->
                     if (destroyed) return@collect
                     com.agupta07505.smartisland.util.AppLogRecorder.applySetting(applicationContext, settings.recordLogs)
-                    if (!settings.enabled) {
+                    if (!settings.enabled || settings.historyOnlyMode) {
                         stopOverlaySession()
                     } else {
                         startOverlaySession(settings)
@@ -1101,7 +1101,7 @@ class SmartIslandOverlayService : AccessibilityService() {
         serviceScope.launch {
             runSuspendCatchingLogged(TAG, "Service reconnect failed") {
                 val settings = repository.settings.first()
-                if (settings.enabled) {
+                if (settings.enabled && !settings.historyOnlyMode) {
                     startOverlaySession(settings)
                 } else {
                     stopOverlaySession()
